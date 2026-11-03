@@ -1,0 +1,16 @@
+{
+  "devices": [
+    {
+      "id": "gpu-slot-0",
+      "kind": "gpu",
+      "model": "Approved GPU resource",
+      "resource": "nvidia.com/gpu"
+    },
+    {
+      "id": "fpga-slot-0",
+      "kind": "fpga",
+      "model": "Approved FPGA resource",
+      "resource": "example.com/fpga"
+    }
+  ]
+}
