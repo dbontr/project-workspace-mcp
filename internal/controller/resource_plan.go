@@ -198,7 +198,7 @@ func (db *Database) PlanWorkspace(req WorkspaceRequest) (map[string]any, error) 
 		options = append(options, c.values)
 	}
 	return map[string]any{
-		"status": map[bool]string{true: "candidates", false: "no_match"}[eligibleCount > 0],
+		"status":  map[bool]string{true: "candidates", false: "no_match"}[eligibleCount > 0],
 		"project": req.ProjectID, "image": chosenImage,
 		"requested_cpu": req.CPU, "requested_memory_mb": req.MemoryMB,
 		"hardware": hardware, "min_gpu_memory_mb": req.MinGPUMemoryMB,
