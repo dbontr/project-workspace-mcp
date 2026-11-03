@@ -21,12 +21,11 @@ import (
 	"unsafe"
 )
 
-// Database uses the Python controller's existing SQLite schema and WAL locks.
-// Go and Python can access the same database, but only one process should own
-// the worker scheduler until the compute-control endpoints have migrated.
+// Database stores project, artifact, and scheduler state in one SQLite file.
 type Database struct {
-	mu     sync.Mutex
-	handle *C.sqlite3
+	mu       sync.Mutex
+	handle   *C.sqlite3
+	filename string
 }
 
 func OpenDatabase(filename string) (*Database, error) {
@@ -45,18 +44,19 @@ func OpenDatabase(filename string) (*Database, error) {
 		}
 		return nil, errors.New(message)
 	}
-	db := &Database{handle: handle}
+	db := &Database{handle: handle, filename: filename}
 	C.sqlite3_busy_timeout(handle, 30000)
-	for _, sql := range []string{
-		`PRAGMA journal_mode=WAL`,
-		`PRAGMA foreign_keys=ON`,
-		`CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,title TEXT NOT NULL,created REAL NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS notes(project TEXT NOT NULL,name TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated REAL NOT NULL,PRIMARY KEY(project,name),FOREIGN KEY(project) REFERENCES projects(id))`,
-	} {
-		if err := db.exec(sql); err != nil {
-			db.Close()
-			return nil, err
-		}
+	if err := db.exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := db.exec("PRAGMA foreign_keys=ON"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := db.InitSchema(); err != nil {
+		db.Close()
+		return nil, err
 	}
 	return db, nil
 }
