@@ -71,3 +71,4 @@
 - [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) — GitHub. Used for: gating OCI package publication on Kubernetes Helm integration tests.
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) — Kubernetes. Used for: isolated controller-only backup password projection, init-container copies, and backend credential injection.
 - [Kubernetes init containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) — Kubernetes. Used for: preparing owner-only Restic credentials before controller startup.
+- [Restic REST server](https://github.com/restic/rest-server) — Restic project. Used for: disposable Kubernetes CI REST-backend and networked encrypted backup verification.
