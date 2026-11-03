@@ -50,6 +50,9 @@ jobs:
         run: |
           gofmt -d internal/controller/project_context.go internal/controller/project_context_http.go internal/controller/project_context_test.go
           test -z "$(gofmt -l internal/controller/project_context.go internal/controller/project_context_http.go internal/controller/project_context_test.go)"
+      - name: Format TLS worker acceptance tests
+        run: |
+          test -z "$(gofmt -l internal/controller/tls_worker_test.go)"
       - name: Format personal task components
         run: |
           gofmt -d internal/controller/personal_tasks.go internal/controller/personal_tasks_http.go internal/controller/personal_tasks_test.go
