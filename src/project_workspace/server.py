@@ -9,7 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import Response, HTMLResponse, FileResponse
+from fastapi.responses import Response, HTMLResponse, FileResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
@@ -111,6 +111,9 @@ class WorkspaceRequest(BaseModel):
     project_id: str
     environment: str | None = None
     hardware: dict[str, int] = Field(default_factory=dict)
+    usb_passthrough: bool = False
+    usb_node: str | None = None
+    usb_device_id: str | None = None
     image: str = 'python:3.12-slim'
     cpu: float = 1
     memory_mb: int = 512
@@ -193,9 +196,12 @@ def list_github_repositories(project_id: str) -> list[str]:
 @mcp.tool()
 def workspace_create(project_id: str, image: str = 'python:3.12-slim',
                      cpu: float = 1, memory_mb: int = 512, duration_minutes: int = 120,
-                     hardware: dict[str, int] | None = None, environment: str | None = None) -> dict:
+                     hardware: dict[str, int] | None = None, environment: str | None = None,
+                     usb_passthrough: bool = False, usb_node: str | None = None,
+                     usb_device_id: str | None = None) -> dict:
     """Reserve an online Linux worker and request an isolated interactive container."""
-    return store.workspace_create(project_id, image, cpu, memory_mb, duration_minutes, hardware, environment)
+    return store.workspace_create(project_id, image, cpu, memory_mb, duration_minutes, hardware,
+                                  environment, usb_passthrough, usb_node, usb_device_id)
 
 
 @mcp.tool()
@@ -217,6 +223,13 @@ def workspace_operation(project_id: str, workspace_id: str, operation_id: str) -
 
 
 @mcp.tool()
+def workspace_import_artifact(project_id: str, workspace_id: str, artifact_id: str,
+                              path: str) -> dict:
+    """Import a project artifact into a ready workspace without a second network download."""
+    return store.workspace_import_file(project_id, workspace_id, artifact_id, path)
+
+
+@mcp.tool()
 def workspace_destroy(project_id: str, workspace_id: str) -> dict:
     """Stop an interactive workspace, retaining its named volume for recovery."""
     return store.workspace_stop(project_id, workspace_id)
@@ -224,7 +237,7 @@ def workspace_destroy(project_id: str, workspace_id: str) -> dict:
 
 @mcp.tool()
 def list_hardware() -> list[dict]:
-    """Discover exclusive GPUs, NPUs, and FPGAs and their active workspace leases."""
+    """Discover exclusive GPU, NPU, FPGA, and opt-in USB device leases."""
     return store.hardware_inventory()
 
 
@@ -355,6 +368,7 @@ app.add_middleware(TrustedHostMiddleware,
                    allowed_hosts=ALLOWED_HOSTS)
 
 
+
 @app.get('/health')
 def health():
     return {'status': 'ok'}
@@ -412,6 +426,52 @@ def artifact_http(project_id: str, artifact_id: str):
     meta, path = store.artifact_info(project_id, artifact_id)
     return FileResponse(path, media_type='application/octet-stream', filename=meta['name'],
                         headers={'X-Content-SHA256': meta['sha256']})
+
+
+@app.put('/api/projects/{project_id}/artifacts/upload', dependencies=[Depends(admin)])
+async def admin_artifact_upload_http(project_id: str, request: Request,
+                                     x_artifact_name: str = Header(default=''),
+                                     x_content_sha256: str = Header(default='')):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', x_artifact_name):
+        raise HTTPException(400, 'Invalid artifact name')
+    if not re.fullmatch(r'[0-9a-f]{64}', x_content_sha256):
+        raise HTTPException(400, 'Expected SHA-256 digest is required')
+    max_bytes = int(os.getenv('PWM_MAX_ARTIFACT_BYTES', str(2 * 1024**3)))
+    if max_bytes < 1 or max_bytes > 100 * 1024**3:
+        raise HTTPException(500, 'Invalid artifact storage limit')
+    directory = Path(store.path).parent / 'artifacts'
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, path = tempfile.mkstemp(prefix='.upload-', dir=directory)
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with os.fdopen(fd, 'wb') as output:
+            async for block in request.stream():
+                size += len(block)
+                if size > max_bytes:
+                    raise HTTPException(413, 'Artifact exceeds configured size limit')
+                digest.update(block)
+                output.write(block)
+            output.flush()
+            os.fsync(output.fileno())
+        if digest.hexdigest() != x_content_sha256:
+            raise HTTPException(400, 'Artifact digest mismatch')
+        return store.artifact_import_stream(project_id, x_artifact_name,
+                                            path, size, digest.hexdigest())
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+class ArtifactImport(BaseModel):
+    artifact_id: str
+    path: str
+
+
+@app.post('/api/projects/{project_id}/workspaces/{workspace_id}/artifacts/import',
+          dependencies=[Depends(admin)])
+def admin_workspace_import_http(project_id: str, workspace_id: str, value: ArtifactImport):
+    return store.workspace_import_file(project_id, workspace_id,
+                                       value.artifact_id, value.path)
 
 
 @app.get('/api/hardware', dependencies=[Depends(admin)])
@@ -497,7 +557,8 @@ def pair_node(value: Pairing):
 @app.post('/api/workspaces', dependencies=[Depends(admin)])
 def create_workspace_http(value: WorkspaceRequest):
     return store.workspace_create(value.project_id, value.image, value.cpu, value.memory_mb,
-                                  value.duration_minutes, value.hardware, value.environment)
+                                  value.duration_minutes, value.hardware, value.environment,
+                                  value.usb_passthrough, value.usb_node, value.usb_device_id)
 
 
 @app.get('/api/projects/{project_id}/workspaces', dependencies=[Depends(admin)])
@@ -608,8 +669,9 @@ def operation_finish_http(node_id: str, value: OperationFinish,
 
 
 @app.exception_handler(ValueError)
-async def invalid_request(request, error: ValueError):
-    return PlainTextResponse(str(error), status_code=409 if 'conflict' in str(error).lower() else 400)
+async def invalid_request(request: Request, error: ValueError):
+    return JSONResponse({'detail': str(error)},
+                        status_code=409 if 'conflict' in str(error).lower() else 400)
 
 
 class ProtectedMCP:

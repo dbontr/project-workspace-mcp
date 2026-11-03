@@ -25,6 +25,7 @@ import (
 
 type Runner struct {
 	Devices      []Device
+	USBEnabled   bool
 	Images       map[string]bool
 	BuildNetwork bool
 	MaxArtifact  int64
@@ -51,6 +52,33 @@ func NewRunner(devices []Device) *Runner {
 		}
 	}
 	return &Runner{Devices: devices, Images: images, BuildNetwork: os.Getenv("PWM_BUILD_NETWORK") == "1", MaxArtifact: max}
+}
+
+// AvailableDevices rechecks removable USB disks on each heartbeat and allocation.
+func (r *Runner) AvailableDevices() []Device {
+	devices := make([]Device, 0, len(r.Devices))
+	ids := make(map[string]bool)
+	for _, d := range r.Devices {
+		if d.Kind == "usb" && !r.USBEnabled {
+			continue
+		}
+		if d.Kind == "usb" {
+			if _, _, err := usbDockerMapping(d.Paths[0]); err != nil {
+				continue
+			}
+		}
+		devices = append(devices, d)
+		ids[d.ID] = true
+	}
+	if r.USBEnabled {
+		for _, d := range DiscoverUSBDisks() {
+			if !ids[d.ID] && len(devices) < 64 {
+				devices = append(devices, d)
+				ids[d.ID] = true
+			}
+		}
+	}
+	return devices
 }
 
 func name(id string) (string, error) {
@@ -161,7 +189,12 @@ func (r *Runner) Start(ctx context.Context, id string, p map[string]any) (map[st
 			return nil, err
 		}
 	}
-	flags, err := DeviceDockerArgs(selected, r.Devices)
+	for _, d := range selected {
+		if d.Kind == "usb" && (!r.USBEnabled || p["usb_passthrough"] != true) {
+			return nil, errors.New("USB passthrough requires the worker opt-in and workspace toggle")
+		}
+	}
+	flags, err := DeviceDockerArgsAuthorized(selected, r.AvailableDevices(), r.USBEnabled && p["usb_passthrough"] == true)
 	if err != nil {
 		return nil, err
 	}
@@ -573,6 +606,43 @@ func (r *Runner) Handle(ctx context.Context, op Operation, c *Client) (map[strin
 			return nil, err
 		}
 		return map[string]any{"image": image, "image_id": strings.TrimSpace(string(id))}, nil
+	case "import_file":
+		destination, err := safePath(getString(payload, "path"))
+		if err != nil {
+			return nil, err
+		}
+		artifactID := getString(payload, "artifact_id")
+		if !workspaceID.MatchString(artifactID) {
+			return nil, errors.New("invalid file artifact ID")
+		}
+		if c == nil {
+			return nil, errors.New("artifact transfer requires a controller")
+		}
+		file, err := os.CreateTemp("", "pwm-file-import-*")
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		os.Remove(file.Name())
+		if err := c.Artifact(ctx, op, artifactID, file); err != nil {
+			return nil, err
+		}
+		stat, err := file.Stat()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			return nil, err
+		}
+		// The destination is relative to the workspace and must not exist.
+		// Imports cannot silently overwrite a previous file or symlink.
+		parent := path.Dir(destination)
+		command := "set -eu; umask 077; mkdir -p " + shellQuote(parent) +
+			"; [ ! -e " + shellQuote(destination) + " ] && [ ! -L " + shellQuote(destination) + " ]; cat > " + shellQuote(destination)
+		if _, err := r.checked(ctx, 2*time.Hour, file, "exec", "-i", n, "sh", "-c", command); err != nil {
+			return nil, err
+		}
+		return map[string]any{"path": getString(payload, "path"), "size": stat.Size()}, nil
 	case "import_archive":
 		return r.importArchive(ctx, op, c)
 	default:

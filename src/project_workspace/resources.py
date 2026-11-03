@@ -24,13 +24,28 @@ class ResourceStoreMixin:
                     for r in nodes for d in validate_devices(json.loads(r['capabilities']))]
 
     def workspace_create(self, project, image='python:3.12-slim', cpu=1, memory_mb=512,
-                         duration_minutes=120, hardware=None, environment=None):
+                         duration_minutes=120, hardware=None, environment=None, usb_passthrough=False,
+                         usb_node=None, usb_device_id=None):
         if not isinstance(image, str) or not IMAGE.fullmatch(image):
             raise ValueError('Invalid image')
         if (not 0.1 <= cpu <= 32 or not 64 <= memory_mb <= 131072 or
                 not 1 <= duration_minutes <= 1440):
             raise ValueError('Workspace limits exceeded')
         request = validate_request(hardware)
+        if type(usb_passthrough) is not bool:
+            raise ValueError('USB passthrough toggle must be a boolean')
+        if request.get('usb') and not usb_passthrough:
+            raise ValueError('USB passthrough must be explicitly enabled for this workspace')
+        if usb_passthrough:
+            if not isinstance(usb_node, str) or not NAME.fullmatch(usb_node):
+                raise ValueError('USB passthrough requires the selected worker node')
+            if not isinstance(usb_device_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', usb_device_id):
+                raise ValueError('USB passthrough requires an exact device ID')
+            if request.get('usb', 0) not in (0, 1):
+                raise ValueError('USB passthrough allocates exactly one selected device')
+            request['usb'] = 1
+        elif usb_node is not None or usb_device_id is not None:
+            raise ValueError('USB device selection requires enabling passthrough')
         if environment is not None and (not isinstance(environment, str) or not NAME.fullmatch(environment)):
             raise ValueError('Invalid environment name')
         now = time.time()
@@ -50,6 +65,8 @@ class ResourceStoreMixin:
                                (now-90,)).fetchall()
             selected = None
             for node in nodes:
+                if usb_passthrough and node['id'] != usb_node:
+                    continue
                 if preferred_node is not None and node['id'] != preferred_node:
                     continue
                 caps = json.loads(node['capabilities'])
@@ -66,8 +83,12 @@ class ResourceStoreMixin:
                 busy = {r['device_id'] for r in db.execute(
                     'SELECT device_id FROM hardware_leases WHERE node=? AND released IS NULL',
                     (node['id'],))}
-                devices = choose_devices(validate_devices(caps), busy, request)
-                if devices is not None:
+                inventory = validate_devices(caps)
+                if usb_passthrough:
+                    inventory = [d for d in inventory if d['kind'] != 'usb' or d['id'] == usb_device_id]
+                devices = choose_devices(inventory, busy, request)
+                if devices is not None and (not usb_passthrough or
+                                            any(d['id'] == usb_device_id and d['kind'] == 'usb' for d in devices)):
                     selected = node['id'], devices
                     break
             if selected is None:
@@ -83,6 +104,7 @@ class ResourceStoreMixin:
             self._enqueue(db, wid, node_id, 'start', {
                 'image': image, 'cpu': cpu, 'memory_mb': memory_mb,
                 'devices': [{'id': d['id'], 'kind': d['kind']} for d in devices],
+                'usb_passthrough': usb_passthrough,
             })
             return {'id': wid, 'project': project, 'node': node_id, 'status': 'starting',
                     'expires': now + duration_minutes * 60,

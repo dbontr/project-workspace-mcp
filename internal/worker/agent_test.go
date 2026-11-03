@@ -229,3 +229,64 @@ func TestAgentContinuesAfterTransientHeartbeatEOF(t *testing.T) {
 		t.Fatalf("worker never recovered after connection closure: %d", heartbeats)
 	}
 }
+
+func TestUSBPassthroughRequiresBothExplicitOptIns(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "devices.json")
+	policy := `{"devices":[{"id":"usb-stick","kind":"usb","paths":["/dev/disk/by-id/usb-Example_123"]}]}`
+	if err := os.WriteFile(file, []byte(policy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	devices, err := LoadDevices(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := NewRunner(devices)
+	if len(runner.AvailableDevices()) != 0 {
+		t.Fatal("advertised USB while disabled")
+	}
+	payload := map[string]any{"image": "python:3.12-slim", "cpu": 1.0, "memory_mb": 512.0, "devices": []DeviceClaim{{ID: "usb-stick", Kind: "usb"}}, "usb_passthrough": false}
+	if _, err := runner.Start(context.Background(), strings.Repeat("0", 32), payload); err == nil || !strings.Contains(err.Error(), "USB passthrough") {
+		t.Fatalf("accepted disabled USB workspace: %v", err)
+	}
+	runner.USBEnabled = true
+	payload["usb_passthrough"] = false
+	if _, err := runner.Start(context.Background(), strings.Repeat("0", 32), payload); err == nil {
+		t.Fatal("accepted workspace with USB toggle off")
+	}
+	payload["usb_passthrough"] = true
+	if _, err := runner.Start(context.Background(), strings.Repeat("0", 32), payload); err == nil {
+		t.Fatal("accepted a missing USB device")
+	}
+	for _, path := range []string{"/dev/sda", "/dev/null", "/etc/passwd", "/dev/disk/by-id/usb-Example-part1", "/dev/disk/by-id/ata-SYSTEM"} {
+		if usbPathAllowed(path) {
+			t.Fatalf("accepted unsafe USB path %s", path)
+		}
+	}
+	if !usbPathAllowed("/dev/disk/by-id/usb-Example_123") || !usbPathAllowed("/dev/serial/by-id/usb-Adapter") || !usbPathAllowed("/dev/bus/usb/001/002") {
+		t.Fatal("rejected a supported USB alias")
+	}
+	if _, err := LoadDevices(writeDeviceManifest(t, `{"devices":[{"id":"usb-stick","kind":"usb","paths":["/dev/sda"]}]}`)); err == nil {
+		t.Fatal("accepted raw host disk path")
+	}
+}
+
+func writeDeviceManifest(t *testing.T, payload string) string {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "devices.json")
+	if err := os.WriteFile(file, []byte(payload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func TestImportArtifactValidatesDestinationBeforeDownloading(t *testing.T) {
+	runner := NewRunner(nil)
+	id := strings.Repeat("a", 32)
+	for _, target := range []string{"../device", "/etc/passwd", "images//disk.img"} {
+		payload, _ := json.Marshal(map[string]any{"path": target, "artifact_id": id})
+		_, err := runner.Handle(context.Background(), Operation{Workspace: id, Action: "import_file", Payload: payload}, nil)
+		if err == nil || !strings.Contains(err.Error(), "workspace path") {
+			t.Fatalf("unsafe artifact destination %q accepted: %v", target, err)
+		}
+	}
+}

@@ -15,3 +15,7 @@
 - [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) — Docker. Used for: portable environment archives.
 - [AMD Vivado 2025.2 supported operating systems](https://docs.amd.com/r/2025.2-English/ug973-vivado-release-notes-install-license/Supported-Operating-Systems) — AMD. Used for: supported architecture, host requirements, and documented toolchain limitations.
 - [AMD Vivado installer information](https://www.amd.com/en/support/adaptive-socs-and-fpgas/installer-info-general.html) — AMD. Used for: proprietary installer and license handling requirements.
+- [Linux sysfs](https://www.kernel.org/doc/html/latest/filesystems/sysfs.html) — Linux kernel documentation. Used for: checking device USB-bus ancestry from major/minor identity.
+- [lsblk(8)](https://man7.org/linux/man-pages/man8/lsblk.8.html) — util-linux. Used for: verifying whole USB disks and refusing mounted or mapped storage before passthrough.
+- [SQLite C API](https://www.sqlite.org/c3ref/intro.html) — SQLite. Used for: shared transactional project storage from the Go controller.
+- [cgo command](https://pkg.go.dev/cmd/cgo) — Go project. Used for: linking the controller to the system SQLite library without introducing another persistent database.
