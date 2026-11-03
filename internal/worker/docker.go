@@ -25,6 +25,7 @@ import (
 )
 
 type Runner struct {
+	Kube               *Kubernetes
 	WorkerID           string
 	ReconcileOnConnect bool
 	Devices            []Device
@@ -515,6 +516,9 @@ func (r *Runner) build(ctx context.Context, p map[string]any) (map[string]any, e
 }
 
 func (r *Runner) Handle(ctx context.Context, op Operation, c *Client) (map[string]any, error) {
+	if r.Kube != nil {
+		return r.Kube.Handle(ctx, r, op, c)
+	}
 	payload, err := stringPayload(op.Payload)
 	if err != nil {
 		return nil, err
@@ -813,6 +817,10 @@ var workerNodeName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,62}$`)
 // It runs after successful authentication and before the worker claims work.
 // Jobs created by older versions without worker labels need manual review.
 func (r *Runner) ReconcileStaleJobs(ctx context.Context, node string) error {
+	if r.Kube != nil {
+		r.Kube.Worker = node
+		return r.Kube.ReconcileStaleJobs(ctx)
+	}
 	if !workerNodeName.MatchString(node) {
 		return errors.New("invalid worker ID")
 	}
@@ -853,6 +861,9 @@ func (r *Runner) ReconcileStaleJobs(ctx context.Context, node string) error {
 }
 
 func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
+	if r.Kube != nil {
+		return r.Kube.ExecuteJob(ctx, r, job)
+	}
 	if !workspaceID.MatchString(job.ID) {
 		return "failed", "invalid job ID"
 	}
