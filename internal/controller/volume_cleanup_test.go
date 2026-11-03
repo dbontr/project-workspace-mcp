@@ -41,7 +41,7 @@ func TestGuardedVolumePruningRequiresRestorableCheckpoint(t *testing.T) {
 	snapshotID := asString(info["snapshot_id"])
 	for _, attempt := range []struct {
 		project, snapshot string
-		confirm bool
+		confirm           bool
 	}{
 		{"demo", snapshotID, false},
 		{"other", snapshotID, true},
