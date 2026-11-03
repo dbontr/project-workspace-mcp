@@ -133,8 +133,8 @@ func (k *Kubernetes) saveOutput(ctx context.Context, r *Runner, op Operation, c 
 	if c == nil {
 		return nil, errors.New("artifact output requires a controller")
 	}
-	if !workspaceID.MatchString(op.Workspace) {
-		return nil, errors.New("invalid workspace ID")
+	if err := k.requireWorkspace(ctx, op.Workspace); err != nil {
+		return nil, err
 	}
 	f, err := os.CreateTemp("", "pwm-kube-output-*")
 	if err != nil {
@@ -201,6 +201,9 @@ func (k *Kubernetes) importFile(ctx context.Context, r *Runner, op Operation, c 
 func (k *Kubernetes) captureDisplay(ctx context.Context, r *Runner, op Operation, c *Client) (map[string]any, error) {
 	if c == nil || !workspaceID.MatchString(op.Workspace) {
 		return nil, errors.New("invalid display capture request")
+	}
+	if err := k.requireWorkspace(ctx, op.Workspace); err != nil {
+		return nil, err
 	}
 	info, err := r.workspaceExec(ctx, 15*time.Second, nil, op.Workspace, "xdpyinfo", "-display", ":99")
 	if err != nil {

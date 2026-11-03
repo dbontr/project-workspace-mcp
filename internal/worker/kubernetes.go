@@ -3,6 +3,8 @@ package worker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +31,7 @@ type Kubernetes struct {
 	OwnsConfig   bool
 	Storage      string
 	StorageClass string
+	Devices      []KubernetesDevice
 	CPU          float64
 	MemoryMB     int
 	MaxJobs      int
@@ -190,6 +193,40 @@ func (k *Kubernetes) create(ctx context.Context, resource map[string]any) error 
 	return err
 }
 
+// ensureOwnedCreate permits an interrupted start operation to be retried without
+// overwriting an existing Pod or claim. The canonical specification fingerprint
+// must match; Kubernetes adds default fields to live Pod specs.
+func (k *Kubernetes) ensureOwnedCreate(ctx context.Context, resource map[string]any, kind, name, id, ownerKind string) error {
+	spec, ok := resource["spec"].(map[string]any)
+	if !ok {
+		return errors.New("Kubernetes resource has no specification")
+	}
+	data, err := json.Marshal(spec)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(data)
+	fingerprint := hex.EncodeToString(hash[:])
+	meta := kubeObject(resource, "metadata")
+	meta["annotations"] = map[string]string{"pwm.dev/spec-sha256": fingerprint}
+	if err := k.create(ctx, resource); err == nil {
+		return nil
+	} else {
+		live, lookupErr := k.get(ctx, kind, name)
+		if lookupErr != nil {
+			return fmt.Errorf("create Kubernetes %s %s: %w (lookup: %v)", kind, name, err, lookupErr)
+		}
+		if !k.owns(live, id, ownerKind) {
+			return fmt.Errorf("existing Kubernetes %s is not owned by this workspace", kind)
+		}
+		annotations := kubeObject(kubeObject(live, "metadata"), "annotations")
+		if annotations["pwm.dev/spec-sha256"] != fingerprint {
+			return fmt.Errorf("existing Kubernetes %s specification does not match the requested workspace", kind)
+		}
+		return nil
+	}
+}
+
 func (k *Kubernetes) get(ctx context.Context, kind, name string) (map[string]any, error) {
 	out, err := k.checked(ctx, nil, "get", kind, name, "-o", "json")
 	if err != nil {
@@ -306,8 +343,8 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 		return nil, errors.New("invalid Kubernetes worker or workspace ID")
 	}
 	image := getString(p, "image")
-	if !r.Images[image] && !imageName.MatchString(image) {
-		return nil, errors.New("image not approved")
+	if !r.Images[image] {
+		return nil, errors.New("Kubernetes Pod image is not in the approved OCI registry pool")
 	}
 	cpu, memory := getFloat(p, "cpu"), getFloat(p, "memory_mb")
 	if cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 || float64(int(memory)) != memory {
@@ -322,10 +359,11 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 	if err != nil {
 		return nil, err
 	}
-	if err := k.create(ctx, k.claim(id)); err != nil {
+	if err := k.ensureOwnedCreate(ctx, k.claim(id), "pvc", kubeClaimName(id), id, "volume"); err != nil {
 		return nil, fmt.Errorf("create workspace PVC: %w", err)
 	}
-	if err := k.create(ctx, k.workspacePod(id, image, cpu, int(memory), display, width, height, devices)); err != nil {
+	if err := k.ensureOwnedCreate(ctx, k.workspacePod(id, image, cpu, int(memory), display, width, height, devices),
+		"pod", kubePodName(id), id, "workspace"); err != nil {
 		return nil, fmt.Errorf("create workspace Pod: %w", err)
 	}
 	if _, err := k.checked(ctx, nil, "wait", "--for=condition=Ready", "pod/"+kubePodName(id), "--timeout=180s"); err != nil {
@@ -347,38 +385,64 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 // hardwareResources translates leased device-plugin resources into Kubernetes
 // extended resources. Host-device paths and direct USB mapping are forbidden.
 func (k *Kubernetes) hardwareResources(p map[string]any) (map[string]string, error) {
+	if p["usb_passthrough"] == true {
+		return nil, errors.New("USB passthrough requires a separately approved Kubernetes device-plugin adapter")
+	}
 	var selected []DeviceClaim
 	if p["devices"] != nil {
-		encoded, _ := json.Marshal(p["devices"])
-		if err := json.Unmarshal(encoded, &selected); err != nil {
+		data, err := json.Marshal(p["devices"])
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(data, &selected); err != nil {
 			return nil, err
 		}
 	}
-	if len(selected) > 8 || p["usb_passthrough"] == true {
-		return nil, errors.New("Kubernetes USB passthrough requires a separately approved device-plugin adapter")
+	if len(selected) > 8 {
+		return nil, errors.New("too many Kubernetes device allocations")
+	}
+	approved := make(map[string]KubernetesDevice, len(k.Devices))
+	for _, device := range k.Devices {
+		approved[device.ID] = device
 	}
 	resources := map[string]string{}
 	counts := map[string]int{}
-	for _, item := range selected {
-		if !deviceID.MatchString(item.ID) || item.Kind == "usb" ||
-			(item.Kind != "gpu" && item.Kind != "npu" && item.Kind != "fpga") {
-			return nil, errors.New("invalid Kubernetes device lease")
+	used := map[string]bool{}
+	for _, lease := range selected {
+		device, ok := approved[lease.ID]
+		if !ok || used[lease.ID] || device.Kind != lease.Kind || device.Resource == "" {
+			return nil, errors.New("hardware lease does not match Kubernetes device-plugin policy")
 		}
-		counts[item.Kind]++
+		used[lease.ID] = true
+		counts[device.Resource]++
 	}
-	for kind, count := range counts {
-		resource := os.Getenv("PWM_KUBE_RESOURCE_" + strings.ToUpper(kind))
-		if !regexp.MustCompile("^[a-z0-9.-]+/[A-Za-z0-9_.-]+$").MatchString(resource) {
-			return nil, fmt.Errorf("Kubernetes %s device-plugin resource is not configured", kind)
-		}
+	for resource, count := range counts {
 		resources[resource] = strconv.Itoa(count)
 	}
 	return resources, nil
 }
 
-func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
+// requireWorkspace checks project and worker ownership before any Pod exec.
+func (k *Kubernetes) requireWorkspace(ctx context.Context, id string) error {
 	if !workspaceID.MatchString(id) {
-		return nil, errors.New("invalid workspace ID")
+		return errors.New("invalid workspace ID")
+	}
+	pod, err := k.get(ctx, "pod", kubePodName(id))
+	if err != nil {
+		return fmt.Errorf("inspect workspace Pod: %w", err)
+	}
+	if !k.owns(pod, id, "workspace") {
+		return errors.New("workspace Pod does not belong to this worker and project")
+	}
+	if kubeObject(pod, "metadata")["deletionTimestamp"] != nil {
+		return errors.New("workspace Pod is terminating")
+	}
+	return nil
+}
+
+func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
+	if err := k.requireWorkspace(ctx, id); err != nil {
+		return nil, err
 	}
 	command := append([]string{"exec", "pod/" + kubePodName(id), "-c", "workspace", "--"}, args...)
 	return k.checked(ctx, nil, command...)
@@ -387,6 +451,9 @@ func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byt
 func (k *Kubernetes) Command(ctx context.Context, id, command string, input io.Reader) (map[string]any, error) {
 	if !workspaceID.MatchString(id) || strings.TrimSpace(command) == "" || len(command) > 16000 {
 		return nil, errors.New("invalid workspace command")
+	}
+	if err := k.requireWorkspace(ctx, id); err != nil {
+		return nil, err
 	}
 	args := []string{"exec"}
 	if input != nil {
@@ -408,7 +475,14 @@ func (k *Kubernetes) Stop(ctx context.Context, id string) (map[string]any, error
 	}
 	pod, err := k.get(ctx, "pod", kubePodName(id))
 	if err != nil {
-		return nil, fmt.Errorf("inspect workspace Pod before termination: %w", err)
+		if !strings.Contains(err.Error(), "(NotFound)") {
+			return nil, fmt.Errorf("inspect workspace Pod before termination: %w", err)
+		}
+		claim, claimErr := k.get(ctx, "pvc", kubeClaimName(id))
+		if claimErr != nil || !k.owns(claim, id, "volume") {
+			return nil, errors.New("workspace Pod is absent and retained claim could not be verified")
+		}
+		return map[string]any{"status": "stopped", "claim": kubeClaimName(id)}, nil
 	}
 	if !k.owns(pod, id, "workspace") {
 		return nil, errors.New("workspace Pod does not match controller ownership")

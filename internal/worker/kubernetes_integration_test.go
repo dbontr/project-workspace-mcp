@@ -69,6 +69,22 @@ func TestKubernetesLivePodPVCCreateExecuteJobAndCleanup(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(readBack)) != "persistent data" {
 		t.Fatalf("PVC readback failed: %s %v", readBack, err)
 	}
+	// A controller retry must reuse the original Pod and PVC without
+	// resetting workspace files or accepting a changed immutable Pod request.
+	if _, err := k.Start(ctx, r, id, map[string]any{
+		"image": "busybox:1.36", "cpu": 0.25, "memory_mb": float64(128),
+	}); err != nil {
+		t.Fatalf("interrupted workspace start could not be recovered: %v", err)
+	}
+	if _, err := k.Start(ctx, r, id, map[string]any{
+		"image": "busybox:1.36", "cpu": 0.5, "memory_mb": float64(128),
+	}); err == nil {
+		t.Fatal("workspace accepted changed immutable resources")
+	}
+	readBack, err = k.exec(ctx, id, "cat", "/workspace/proof.txt")
+	if err != nil || strings.TrimSpace(string(readBack)) != "persistent data" {
+		t.Fatalf("workspace contents were lost on repeated startup: %s %v", readBack, err)
+	}
 	job := Job{ID: strings.Repeat("d", 32),
 		Image: "busybox:1.36", CPU: 0.25, MemoryMB: 128,
 		Command: "echo kubernetes-job"}
@@ -78,6 +94,9 @@ func TestKubernetesLivePodPVCCreateExecuteJobAndCleanup(t *testing.T) {
 	}
 	if _, err := k.Stop(ctx, id); err != nil {
 		t.Fatalf("Pod teardown failed: %v", err)
+	}
+	if _, err := k.Stop(ctx, id); err != nil {
+		t.Fatalf("idempotent Pod teardown failed: %v", err)
 	}
 	if _, err := k.PruneVolume(ctx, id); err != nil {
 		t.Fatalf("PVC cleanup failed: %v", err)

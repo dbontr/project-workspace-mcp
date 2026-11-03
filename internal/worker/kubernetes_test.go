@@ -131,7 +131,7 @@ func TestKubernetesDevicePluginPolicy(t *testing.T) {
 	}); err == nil {
 		t.Fatal("GPU allocation accepted without a configured device-plugin resource")
 	}
-	t.Setenv("PWM_KUBE_RESOURCE_GPU", "nvidia.com/gpu")
+	k.Devices = []KubernetesDevice{{ID: "gpu-0", Kind: "gpu", Resource: "nvidia.com/gpu"}}
 	assignment, err := k.hardwareResources(map[string]any{
 		"devices": []any{map[string]any{"id": "gpu-0", "kind": "gpu"}},
 	})

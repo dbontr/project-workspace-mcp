@@ -347,6 +347,9 @@ func (r *Runner) workspaceExec(ctx context.Context, timeout time.Duration, input
 		return nil, err
 	}
 	if r.Kube != nil {
+		if err := r.Kube.requireWorkspace(ctx, id); err != nil {
+			return nil, err
+		}
 		args := []string{"exec"}
 		if input != nil {
 			args = append(args, "-i")
