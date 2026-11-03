@@ -91,7 +91,11 @@ helm upgrade --install pwm-research deploy/helm/project-workspace \
 ```
 
 Install a separate worker release and namespace for each additional project,
-with a distinct worker ID, token Secret, and storage quota. The Helm chart
+with a distinct worker ID, token Secret, and storage quota. Helm uninstall
+does not remove the controller's state PVC or project namespaces; both carry
+`helm.sh/resource-policy: keep` so uninstallation cannot silently erase
+durable project records or workspace PVCs. Review retained data and its
+off-host backup before any deliberate namespace or PVC deletion. The Helm chart
 provides namespace-restricted RBAC, a workload ServiceAccount with automatic
 token mounting disabled, restricted Pod security settings, a default-deny
 NetworkPolicy and ResourceQuota. Verify that the cluster CNI enforces
