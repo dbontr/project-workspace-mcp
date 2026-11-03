@@ -259,7 +259,7 @@ func (db *Database) expireLocked(now float64) error {
 		return e
 	}
 	if e := db.execLocked(`UPDATE checkpointed_stops SET status='expired',updated=?
-		WHERE status='pending' AND workspace IN(SELECT id FROM workspaces
+		WHERE status IN ('pending','failed') AND workspace IN(SELECT id FROM workspaces
 		WHERE expires<? AND status IN ('starting','ready'))`, now, now); e != nil {
 		return e
 	}
