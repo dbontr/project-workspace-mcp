@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEndpointPolicy(t *testing.T) {
@@ -147,5 +148,84 @@ func TestDockerBuildArgs(t *testing.T) {
 	context := dockerBuildArgs("none", "pwm-env-demo-test:v1", "/approved/toolchain")
 	if got := strings.Join(context, " "); got != "build --network none --tag pwm-env-demo-test:v1 -f - /approved/toolchain" {
 		t.Fatalf("invalid context build: %s", got)
+	}
+}
+
+func TestControllerRetriesUnexpectedEOFButRejectsUnauthorized(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			connection, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			connection.Close()
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	client := &Client{Base: server.URL, Token: "worker-token", Node: "worker-one", HTTP: server.Client()}
+	err := client.request(context.Background(), "POST", "/api/worker/worker-one/heartbeat", map[string]any{"capabilities": map[string]any{"cpu": 1}}, nil)
+	if err == nil || !retryableControllerError(err) {
+		t.Fatalf("expected transient EOF: %v", err)
+	}
+	attempts := 0
+	if err := retryController(context.Background(), err, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.request(context.Background(), "POST", "/api/worker/worker-one/heartbeat", map[string]any{"capabilities": map[string]any{"cpu": 1}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("unexpected heartbeat count: %d", calls)
+	}
+	if retryableControllerError(&HTTPStatusError{Code: 401}) {
+		t.Fatal("tried to retry invalid credential")
+	}
+	if !retryableControllerError(&HTTPStatusError{Code: 503}) {
+		t.Fatal("did not retry temporary outage")
+	}
+}
+
+func TestAgentContinuesAfterTransientHeartbeatEOF(t *testing.T) {
+	var heartbeats int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/worker/worker-one/heartbeat":
+			heartbeats++
+			if heartbeats == 1 {
+				c, _, err := w.(http.Hijacker).Hijack()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				c.Close()
+				return
+			}
+			w.Write([]byte(`{"ok":true}`))
+		case "/api/worker/worker-one/operation/claim":
+			w.Write([]byte(`{"operation":null}`))
+		case "/api/worker/worker-one/claim":
+			w.Write([]byte(`{"job":null}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+	client := &Client{Base: server.URL, Token: "token", Node: "worker-one", HTTP: server.Client()}
+	err := client.Run(ctx, NewRunner(nil))
+	if err != context.DeadlineExceeded {
+		t.Fatalf("worker should stop on cancellation: %v", err)
+	}
+	if heartbeats < 2 {
+		t.Fatalf("worker never recovered after connection closure: %d", heartbeats)
 	}
 }

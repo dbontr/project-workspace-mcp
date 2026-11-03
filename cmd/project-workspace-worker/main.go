@@ -66,7 +66,7 @@ func run(args []string) error {
 		*tokenFile = filepath.Join(defaultDir, *node+".token")
 	}
 	c := &worker.Client{Base: base, Node: *node, HTTP: &http.Client{Transport: &http.Transport{
-		MaxIdleConnsPerHost: 2, IdleConnTimeout: 60 * time.Second, ResponseHeaderTimeout: 120 * time.Second}}}
+		MaxIdleConnsPerHost: 2, IdleConnTimeout: 2 * time.Second, ResponseHeaderTimeout: 120 * time.Second}}}
 	if cmd == "join" {
 		if *code == "" {
 			return errors.New("worker pairing code is required")

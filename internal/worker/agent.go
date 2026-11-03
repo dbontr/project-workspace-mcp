@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -80,12 +81,52 @@ func (c *Client) request(ctx context.Context, method, path string, input any, ou
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-		return fmt.Errorf("controller %s %s: %s: %s", method, path, res.Status, string(body))
+		return &HTTPStatusError{Code: res.StatusCode, Method: method, Path: path, Body: string(body)}
 	}
 	if output != nil {
 		return json.NewDecoder(io.LimitReader(res.Body, 8*1024*1024)).Decode(output)
 	}
 	return nil
+}
+
+// HTTPStatusError keeps permanent credential and authorization failures distinct
+// from network and server failures. Do not retry invalid credentials indefinitely.
+type HTTPStatusError struct {
+	Code   int
+	Method string
+	Path   string
+	Body   string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("controller %s %s: HTTP %d: %s", e.Method, e.Path, e.Code, e.Body)
+}
+
+func retryableControllerError(err error) bool {
+	var status *HTTPStatusError
+	if errors.As(err, &status) {
+		return status.Code == 408 || status.Code == 429 || status.Code >= 500
+	}
+	return true
+}
+
+func retryController(ctx context.Context, err error, attempts *int) error {
+	if !retryableControllerError(err) {
+		return err
+	}
+	*attempts++
+	power := *attempts - 1
+	if power > 5 {
+		power = 5
+	}
+	delay := time.Second * time.Duration(1<<power)
+	log.Printf("controller temporarily unavailable (%v); retrying in %s", err, delay)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
 }
 
 func (c *Client) Pair(ctx context.Context, code string, capabilities map[string]any) (string, error) {
@@ -101,6 +142,7 @@ func (c *Client) Run(ctx context.Context, runner *Runner) error {
 	if c.Node == "" || c.Token == "" || c.HTTP == nil {
 		return errors.New("worker requires node credential")
 	}
+	attempts := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -111,35 +153,53 @@ func (c *Client) Run(ctx context.Context, runner *Runner) error {
 		}
 		beat := map[string]any{"capabilities": capabilities}
 		if err := c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/heartbeat", c.Node), beat, nil); err != nil {
-			return err
+			if failure := retryController(ctx, err, &attempts); failure != nil {
+				return failure
+			}
+			continue
 		}
 		var op struct {
 			Operation *Operation `json:"operation"`
 		}
 		if err := c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/operation/claim", c.Node), nil, &op); err != nil {
-			return err
+			if failure := retryController(ctx, err, &attempts); failure != nil {
+				return failure
+			}
+			continue
 		}
 		if op.Operation != nil {
 			if err := c.executeOperation(ctx, runner, *op.Operation); err != nil {
-				return err
+				if failure := retryController(ctx, err, &attempts); failure != nil {
+					return failure
+				}
+				continue
 			}
+			attempts = 0
 			continue
 		}
 		var job struct {
 			Job *Job `json:"job"`
 		}
 		if err := c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/claim", c.Node), nil, &job); err != nil {
-			return err
+			if failure := retryController(ctx, err, &attempts); failure != nil {
+				return failure
+			}
+			continue
 		}
 		if job.Job != nil {
 			status, result := runner.ExecuteJob(ctx, *job.Job)
 			response := map[string]any{"job_id": job.Job.ID, "lease_token": job.Job.LeaseToken,
 				"status": status, "result": result}
 			if err := c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/finish", c.Node), response, nil); err != nil {
-				return err
+				if failure := retryController(ctx, err, &attempts); failure != nil {
+					return failure
+				}
+				continue
 			}
+			attempts = 0
 			continue
 		}
+		attempts = 0
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

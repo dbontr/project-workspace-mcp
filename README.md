@@ -44,7 +44,7 @@ On a worker machine, replace the URL, node ID, and code:
 ./project-workspace-worker serve --controller https://controller.example --node worker-one
 ```
 
-Pairing writes a worker credential to the user's configuration directory with mode `0600`. Worker credentials are distinct from the administrator token. The agent makes outbound HTTPS requests to the controller, reports capacity, claims bounded operations, renews long operation leases, and reports verified results. A loopback HTTP controller is accepted for local integration testing only. The Python CLI's `worker` command remains available for existing deployments, but the Go agent is the preferred path.
+Pairing writes a worker credential to the user's configuration directory with mode `0600`. Worker credentials are distinct from the administrator token. The agent makes outbound HTTPS requests to the controller, reports capacity, claims bounded operations, renews long operation leases, and reports verified results. A loopback HTTP controller is accepted for local integration testing only. Transient controller connection failures are retried with bounded exponential backoff; permanent authentication failures stop the agent. An operation whose completion acknowledgment was lost remains subject to its lease and requires reconciliation rather than blind reexecution. The Python CLI's `worker` command remains available for existing deployments, but the Go agent is the preferred path.
 
 ## Projects, environments, and workspace snapshots
 
