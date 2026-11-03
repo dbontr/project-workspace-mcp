@@ -3,7 +3,6 @@ package controller
 import (
 	"encoding/json"
 	"errors"
-	"regexp"
 )
 
 // Personal task claims use the same fenced, expiring lease contract as project
@@ -162,7 +161,7 @@ func (db *Database) FinishPersonalTaskClaim(owner, task, key, token, status stri
 		}
 		seen := map[string]bool{}
 		for _, id := range results {
-			if !regexp.MustCompile(`^[a-f0-9]{32}$`).MatchString(id) || seen[id] {
+			if !contributionArtifactID.MatchString(id) || seen[id] {
 				return errors.New("invalid or duplicate task file artifact")
 			}
 			seen[id] = true
