@@ -1,0 +1,27 @@
+[Unit]
+Description=Project Workspace MCP Docker worker
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=project-workspace-worker
+Group=project-workspace-worker
+SupplementaryGroups=docker
+WorkingDirectory=/var/lib/project-workspace-worker
+Environment=HOME=/var/lib/project-workspace-worker
+EnvironmentFile=/etc/project-workspace/worker.env
+ExecStart=/usr/local/bin/project-workspace-worker serve --controller ${PWM_CONTROLLER_URL} --node ${PWM_NODE_ID}
+StateDirectory=project-workspace-worker
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
