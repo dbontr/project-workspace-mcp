@@ -50,6 +50,26 @@ func (s *Server) handleResearch(w http.ResponseWriter, r *http.Request, p []stri
 		return true
 	}
 	switch p[4] {
+	case "topics":
+		if len(p) == 5 {
+			v, err := s.DB.ResearchTopics(project)
+			send(w, v, err)
+			return true
+		}
+		if len(p) == 6 {
+			limit := 30
+			if text := r.URL.Query().Get("limit"); text != "" {
+				n, err := strconv.Atoi(text)
+				if err != nil {
+					fail(w, 400, "invalid topic result limit")
+					return true
+				}
+				limit = n
+			}
+			v, err := s.DB.ResearchTopicPassages(project, p[5], limit)
+			send(w, v, err)
+			return true
+		}
 	case "sources":
 		if len(p) == 5 {
 			v, err := s.DB.ResearchSources(project)
