@@ -46,9 +46,9 @@ func TestTLSPairingSurvivesControllerRestartAndRevocation(t *testing.T) {
 		t.Fatalf("worker credential gained administrator access: HTTP %d", code)
 	}
 	heartbeat := map[string]any{"capabilities": capabilities}
-	code, _ = call(t, tlsFirst, http.MethodPost,
+	code, accepted := call(t, tlsFirst, http.MethodPost,
 		"/api/worker/worker-one/heartbeat", token, heartbeat)
-	wantOK(t, code, map[string]any{"heartbeat": "accepted"})
+	wantOK(t, code, accepted)
 
 	tlsFirst.Close()
 	if err := db.Close(); err != nil {
