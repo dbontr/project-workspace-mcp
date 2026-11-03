@@ -145,3 +145,36 @@ jobs:
         env:
           RUN_DISPLAY_INTEGRATION: '1'
         run: go test -count=1 -timeout 240s -run '^TestDockerVirtualDisplayCapture$' ./internal/controller
+
+  kubernetes-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+      - name: Validate Kubernetes Helm release
+        run: |
+          helm lint deploy/helm/project-workspace
+          helm template pwm-system deploy/helm/project-workspace > /tmp/project-workspace.yaml
+          test -s /tmp/project-workspace.yaml
+      - name: Create disposable Kubernetes cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: v0.30.0
+          node_image: kindest/node:v1.34.0
+          kubectl_version: v1.34.1
+      - name: Verify project-scoped Kubernetes YAML
+        run: |
+          kubectl apply --dry-run=client -f /tmp/project-workspace.yaml
+          kubectl get storageclass
+      - name: Preload sandbox image
+        run: |
+          docker pull busybox:1.36
+          kind load docker-image busybox:1.36
+      - name: Verify native Kubernetes Pod PVC Job and cleanup
+        env:
+          RUN_KUBE_INTEGRATION: '1'
+        run: go test -count=1 -timeout 8m -run '^TestKubernetesLivePodPVCCreateExecuteJobAndCleanup$' ./internal/worker
