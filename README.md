@@ -368,6 +368,43 @@ text; an integration that converts ChatGPT's native file attachments to this
 transport requires a separate client-side file-capable connector. It is not
 automatically established by installing this repository.
 
+## Project context and immutable research contributions
+
+Canonical context uses the existing revision-guarded project notes with names
+`project` (equivalent to `Project.md`) and `context` (equivalent to
+`Context.md`). `knowledge_context` returns both notes, the latest handoff,
+recent decisions and linked repository metadata. The controller identifies
+itself as `controller-local`: this does not silently replace a separately
+configured authoritative Project Knowledge store.
+
+Research notes, findings, decisions and handoffs can also be saved as
+**immutable contributions**, so parallel workers do not overwrite one another.
+Each contribution retains a SHA-256 digest, authenticated author, creation
+time, and optional source artifact ID or linked repository with an exact
+40-character commit SHA. The controller verifies that referenced artifacts
+and repositories belong to the project. Moving branch names are not valid
+immutable revision provenance.
+
+The MCP tools are `knowledge_context`, `knowledge_contribute`,
+`knowledge_contributions`, `knowledge_contribution` and
+`knowledge_search_contributions`. The REST equivalents are:
+
+```sh
+curl -fsS -H "Authorization: Bearer $TOKEN" "$BASE/api/projects/research/knowledge/context"
+curl -fsS -X POST "$BASE/api/projects/research/knowledge/contributions" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind":"handoff","title":"Verified phase result","body":"Tests passed; next action recorded"}'
+```
+
+Viewer grants permit reading context and contributions; editors can append.
+The authenticated caller is recorded by the controller, never accepted from a
+user-controlled request body. Listing and search return bounded excerpts and
+stable IDs; reading a contribution validates its body checksum. Canonical
+note updates continue using `expected_version`. These operations do not
+automatically extract PDF pages, index uploaded documents, or create an
+off-host backup. They preserve context in the controller's database and
+therefore require the same verified backup and restore practices.
+
 ## GitHub and persistent knowledge
 
 Associate each GitHub repository with its project using `link_github_repository`. GitHub credentials stay exclusively on the controller; workers receive immutable archives rather than repository tokens. MCP tools support repository information, issue and PR lists, GitHub file reads, checkout by immutable revision, and revision-guarded draft PR publication. Extended repository REST actions are disabled for writes until the administrator explicitly enables `PWM_GITHUB_GENERIC_WRITES=1`.
