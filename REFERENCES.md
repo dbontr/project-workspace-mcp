@@ -24,3 +24,8 @@
 - [SQLite VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — SQLite. Used for: consistent SQLite database snapshots during offline backup.
 
 - [Debian apt-get manual](https://manpages.debian.org/stable/apt/apt-get.8.en.html) — Debian. Used for: operator-approved apt package installation in versioned OCI environments.
+
+- [RFC 7519: JSON Web Token](https://www.rfc-editor.org/rfc/rfc7519) — IETF. Used for: JWT claim validation and bearer-token expiration.
+- [RFC 7517: JSON Web Key](https://www.rfc-editor.org/rfc/rfc7517) — IETF. Used for: JSON Web Key Set parsing and key selection.
+- [RFC 7518: JSON Web Algorithms](https://www.rfc-editor.org/rfc/rfc7518) — IETF. Used for: RS256 signature validation.
+- [RFC 9728: OAuth 2.0 Protected Resource Metadata](https://www.rfc-editor.org/rfc/rfc9728) — IETF. Used for: OAuth resource metadata and bearer challenges.
