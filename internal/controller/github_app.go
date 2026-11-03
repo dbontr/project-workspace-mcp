@@ -130,15 +130,15 @@ func (a *GitHubApp) jwt() (string, error) {
 // installation token cannot read other repositories in the installation.
 // GraphQL needs project-wide access to linked repositories and uses the
 // installation's configured repository selection instead.
-func githubTokenScope(requestPath string) string {
+func githubTokenScope(requestPath string) (string, error) {
 	if !strings.HasPrefix(requestPath, "/repos/") {
-		return ""
+		return "", nil
 	}
 	parts := strings.Split(strings.TrimPrefix(requestPath, "/repos/"), "/")
 	if len(parts) < 2 || !validGitRepository(parts[0]+"/"+parts[1]) {
-		return ""
+		return "", errors.New("invalid scoped GitHub repository path")
 	}
-	return parts[1]
+	return parts[1], nil
 }
 
 func (g *GitHub) credential(requestPath string) (string, error) {
@@ -148,7 +148,11 @@ func (g *GitHub) credential(requestPath string) (string, error) {
 		}
 		return g.Token, nil
 	}
-	return g.App.installationToken(g, githubTokenScope(requestPath))
+	scope, err := githubTokenScope(requestPath)
+	if err != nil {
+		return "", err
+	}
+	return g.App.installationToken(g, scope)
 }
 
 func (a *GitHubApp) installationToken(g *GitHub, scope string) (string, error) {
