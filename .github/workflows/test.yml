@@ -92,6 +92,9 @@ jobs:
       - name: Verify worker heartbeat implementation format
         run: |
           test -z "$(gofmt -l internal/worker/agent.go internal/worker/agent_test.go internal/worker/docker.go internal/worker/recovery_test.go)"
+      - name: Verify display capture component formatting
+        run: |
+          test -z "$(gofmt -l internal/controller/display_image.go internal/controller/display_image_test.go internal/worker/display.go internal/worker/display_test.go internal/controller/artifacts.go internal/controller/integration_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
@@ -117,3 +120,9 @@ jobs:
         run: |
           docker pull python:3.12-slim
           go test -count=1 -timeout 240s -run '^TestDockerControllerWorker$' ./internal/controller
+      - name: Build a graphical workspace image
+        run: docker build -t pwm-env-display:v1 -f examples/display/Dockerfile .
+      - name: Verify graphical workspace screenshot capture
+        env:
+          RUN_DISPLAY_INTEGRATION: '1'
+        run: go test -count=1 -timeout 240s -run '^TestDockerVirtualDisplayCapture$' ./internal/controller

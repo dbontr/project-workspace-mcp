@@ -52,10 +52,11 @@ var tools = []toolDefinition{
 	{"task_claim", "Claim a work key with a fenced, expiring lease", []string{"project_id", "work_key"}, []string{"lease_seconds"}},
 	{"task_claim_renew", "Renew a live task lease by generation and secret token", []string{"project_id", "work_key", "lease_token", "generation"}, []string{"lease_seconds"}},
 	{"task_claim_finish", "Complete or release a task lease, validating result artifact ownership", []string{"project_id", "work_key", "lease_token", "generation", "status"}, []string{"artifact_ids"}},
-	{"resource_plan", "Rank eligible Docker workers and explain resource constraints without reserving anything", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id", "node_id", "min_gpu_memory_mb", "architecture"}},
-	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id", "node_id", "min_gpu_memory_mb", "architecture"}},
+	{"resource_plan", "Rank eligible Docker workers and explain resource constraints without reserving anything", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id", "node_id", "min_gpu_memory_mb", "architecture", "display", "display_width", "display_height"}},
+	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id", "node_id", "min_gpu_memory_mb", "architecture", "display", "display_width", "display_height"}},
 	{"workspace_list", "List project workspaces", []string{"project_id"}, nil},
 	{"workspace_call", "Queue a command or file operation", []string{"project_id", "workspace_id", "action", "payload"}, nil},
+	{"workspace_capture_display", "Capture the isolated workspace virtual display as a durable PNG artifact; inspect the completed operation for its artifact ID", []string{"project_id", "workspace_id"}, nil},
 	{"workspace_operation", "Get a worker-confirmed operation result", []string{"project_id", "workspace_id", "operation_id"}, nil},
 	{"workspace_import_artifact", "Import a stored artifact into a workspace", []string{"project_id", "workspace_id", "artifact_id", "path"}, nil},
 	{"workspace_destroy", "Stop a workspace and release confirmed resources", []string{"project_id", "workspace_id"}, nil},
@@ -106,6 +107,7 @@ var tools = []toolDefinition{
 	{"artifact_info", "Read the metadata and verified digest of a saved project artifact", []string{"project_id", "artifact_id"}, nil},
 	{"artifact_send_base64", "Store a project file up to 512 KiB from base64 and its SHA-256 digest; larger files use REST streaming", []string{"project_id", "name", "sha256", "data_base64"}, nil},
 	{"artifact_read_base64", "Return a verified project file up to 512 KiB as base64; larger files use authenticated REST downloads", []string{"project_id", "artifact_id"}, nil},
+	{"artifact_view_image", "Render a verified project PNG up to 4 MiB as native MCP image content for visual review", []string{"project_id", "artifact_id"}, nil},
 	{"github_project_attach", "Bind a GitHub Projects V2 board by URL or node ID", []string{"project_id"}, []string{"github_project_id", "url"}},
 	{"github_project_board", "Read the linked GitHub Projects board reference", []string{"project_id"}, nil},
 	{"github_project_items", "Read live GitHub Project items and fields", []string{"project_id"}, []string{"after"}},
@@ -231,6 +233,14 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request, who caller) {
 		}
 		if e != nil {
 			response["result"] = map[string]any{"content": []map[string]any{{"type": "text", "text": e.Error()}}, "isError": true}
+		} else if picture, ok := result.(*PNGImageResult); ok {
+			response["result"] = map[string]any{
+				"content": []map[string]any{
+					{"type": "image", "mimeType": "image/png", "data": picture.Data},
+					{"type": "text", "text": encode(picture.Metadata)},
+				},
+				"structuredContent": picture.Metadata, "isError": false,
+			}
 		} else {
 			out := map[string]any{"result": result}
 			if object, ok := result.(map[string]any); ok {
@@ -418,6 +428,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "workspace_call":
 		payload, _ := a["payload"].(map[string]any)
 		return db.CallWorkspace(project, workspace, get("action"), payload)
+	case "workspace_capture_display":
+		return db.CallWorkspace(project, workspace, "capture_display", map[string]any{})
 	case "workspace_operation":
 		return db.Operation(project, workspace, get("operation_id"))
 	case "workspace_import_artifact":
@@ -605,6 +617,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.StoreMCPArtifact(project, get("name"), get("sha256"), get("data_base64"))
 	case "artifact_read_base64":
 		return db.ReadMCPArtifact(project, get("artifact_id"))
+	case "artifact_view_image":
+		return db.ReadPNGImage(project, get("artifact_id"))
 	}
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {

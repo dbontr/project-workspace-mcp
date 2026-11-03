@@ -358,7 +358,7 @@ func (db *Database) Operation(project, ws, id string) (map[string]any, error) {
 	return row, nil
 }
 func (db *Database) CallWorkspace(project, ws, action string, payload map[string]any) (map[string]any, error) {
-	allowed := map[string]bool{"command": true, "read_file": true, "write_file": true, "list_directory": true, "search": true, "export_file": true, "snapshot": true}
+	allowed := map[string]bool{"command": true, "read_file": true, "write_file": true, "list_directory": true, "search": true, "export_file": true, "snapshot": true, "capture_display": true}
 	if !allowed[action] || len(encode(payload)) > 262144 {
 		return nil, errors.New("invalid workspace operation")
 	}
