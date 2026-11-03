@@ -57,9 +57,9 @@ func (s *Server) handlePersonalTaskClaims(w http.ResponseWriter, r *http.Request
 			return true
 		case "finish":
 			var in struct {
-				LeaseToken string   `json:"lease_token"`
-				Generation int      `json:"generation"`
-				Status     string   `json:"status"`
+				LeaseToken  string   `json:"lease_token"`
+				Generation  int      `json:"generation"`
+				Status      string   `json:"status"`
 				ArtifactIDs []string `json:"artifact_ids"`
 			}
 			if err := bodyJSON(r, &in); err != nil {
