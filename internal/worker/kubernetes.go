@@ -458,7 +458,7 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 				"app.kubernetes.io/managed-by": "project-workspace", "pwm.dev/kind": "job", "pwm.dev/worker": worker,
 			}}, "spec": map[string]any{
 				"restartPolicy": "Never", "automountServiceAccountToken": false,
-				"serviceAccountName": "pwm-sandbox", "securityContext":    sandboxPodSecurity(),
+				"serviceAccountName": "pwm-sandbox", "securityContext": sandboxPodSecurity(),
 				"containers": []any{map[string]any{
 					"name": "task", "image": job.Image, "command": []string{"sh", "-c", job.Command},
 					"resources":       kubernetesResources(job.CPU, job.MemoryMB, nil),
