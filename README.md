@@ -219,7 +219,7 @@ project-workspace-worker join --controller https://controller.example --node wor
 project-workspace-worker serve --controller https://controller.example --node worker-one
 ```
 
-A pairing code is single-use and expires after ten minutes. Each worker has a distinct, revocable credential. The worker contacts the controller over outbound HTTPS and claims work with expiring fenced tokens. Intermittent network failures use bounded retries; failed cleanup never releases a leased device prematurely. Each worker continues reporting node health and capacity every 30 seconds while Docker jobs or workspace operations are running; rejected worker credentials cancel further execution. The node's reported online status is not proof that an individual job or operation has completed.
+A pairing code is single-use and expires after ten minutes. Each worker has a distinct, revocable credential. The worker contacts the controller over outbound HTTPS and claims work with expiring fenced tokens. Intermittent network failures use bounded retries; failed cleanup never releases a leased device prematurely. Each worker continues reporting node health and capacity every 30 seconds while Docker jobs or workspace operations are running; rejected worker credentials cancel further execution. The node's reported online status is not proof that an individual job or operation has completed. Short-lived Docker jobs use controller-derived container names; when a worker command is interrupted or times out, the worker attempts bounded removal of that exact job container and confirms its absence. Host crashes may still require independent orphan reconciliation.
 
 ## Projects, workspaces, and environments
 
