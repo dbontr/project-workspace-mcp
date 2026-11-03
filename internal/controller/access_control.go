@@ -52,12 +52,12 @@ var readableTools = map[string]bool{
 	"github_get_pull_request": true, "github_verify_pull_request": true,
 	"github_project_board": true, "github_project_items": true, "github_project_fields": true,
 	"repository_memberships": true, "library_resolve": true,
-	"library_read_file": true, "library_sources": true,
+	"library_read_file": true,
 }
 var rootTools = map[string]bool{
 	"create_project": true, "list_compute_nodes": true, "list_hardware": true,
 	"pool_register_image": true, "pool_register_software": true,
-	"library_create": true, "library_list": true, "library_add_source": true,
+	"library_create": true, "library_list": true, "library_sources": true, "library_add_source": true,
 	"link_github_repository": true, "github_repository_api": true,
 	"github_create_issue": true, "github_update_issue": true,
 	"github_comment_issue": true, "github_create_branch": true,
@@ -128,9 +128,9 @@ func (s *Server) authorizeREST(r *http.Request, p []string, who caller) bool {
 		if r.Method != http.MethodGet {
 			needed = 2
 		}
-		if len(p) >= 4 && (p[3] == "github" || p[3] == "planning" || p[3] == "libraries" || p[3] == "permissions") &&
-			r.Method != http.MethodGet {
-			needed = 3
+		if len(p) >= 4 && (p[3] == "github" || p[3] == "planning" || p[3] == "libraries") && r.Method != http.MethodGet {
+			s.DB.AuditAccess(who.Principal, project, "rest:"+r.Method+":"+r.URL.Path, false)
+			return false
 		}
 		if len(p) >= 4 && p[3] == "permissions" {
 			needed = 3
