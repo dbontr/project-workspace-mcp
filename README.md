@@ -100,8 +100,44 @@ provides namespace-restricted RBAC, a workload ServiceAccount with automatic
 token mounting disabled, restricted Pod security settings, a default-deny
 NetworkPolicy and ResourceQuota. Verify that the cluster CNI enforces
 NetworkPolicy and that the CSI driver provisions writable volumes before
-allowing untrusted workloads. GPU/NPU/FPGA resources require approved
-Kubernetes device plugins. Direct USB/host-device mapping is not enabled.
+allowing untrusted workloads. GPU/NPU/FPGA allocation uses operator-approved Kubernetes device-plugin
+resource profiles. The worker advertises the declared slots to the controller,
+and the scheduler assigns real cluster resources using the Pod's extended
+resource requests and limits. Device slots are advisory inventory; they are
+not direct host paths, nor proof that a plugin or physical board is currently
+available. A request that cannot be placed remains subject to Kubernetes
+admission, resource limits, and scheduling timeouts. To activate hardware,
+install the appropriate Kubernetes device plugin, verify its advertised
+resource names, and declare one slot per allocatable resource unit in an
+operator-maintained manifest:
+
+```sh
+kubectl -n pwm-system create configmap pwm-research-devices \
+  --from-file=devices.json=deploy/kubernetes/devices.example.json
+helm upgrade --install pwm-research deploy/helm/project-workspace \
+  --namespace pwm-system --set controller.enabled=false \
+  --set worker.projectID=research --set worker.workloadNamespace=pwm-research \
+  --set worker.name=research-agent \
+  --set worker.deviceManifestConfigMap=pwm-research-devices
+```
+
+Set the exact `worker.image`, worker credential Secret, storage class, and
+quota values used by the authoritative release. The example device manifest
+contains illustrative resource identifiers; replace them with verified
+device-plugin names and capacities. Do not advertise devices that the
+cluster has not made schedulable. Each manifest ID represents one schedulable
+extended-resource slot, not a specific host path. GPU VRAM in a profile is
+operator-declared metadata; enforce minimum VRAM using distinct plugin
+resource types or vendor scheduling constraints when multiple GPU models
+share a cluster. The backend rejects USB/host paths and device claims that
+do not match the approved manifest.
+
+Pod and PVC creation is retry-safe: the controller's immutable workspace
+request produces a resource specification fingerprint, and existing resources
+are reused only when both their worker/project ownership labels and
+fingerprint match. Every Pod exec and artifact export checks ownership before
+access, and stopping a workspace retains its claim for explicit cleanup.
+Direct USB/host-device mapping is not enabled.
 
 `project-workspace-worker doctor --backend kubernetes --project research
 --namespace pwm-research --node research-agent` reports configured capacity.
