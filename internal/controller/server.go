@@ -219,6 +219,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.handleAccess(w, r, parts, who) {
 		return
 	}
+	if s.handleResourcePlan(w, r, parts) {
+		return
+	}
 	if s.handleTaskClaims(w, r, parts) {
 		return
 	}
