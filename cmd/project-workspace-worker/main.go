@@ -52,6 +52,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	capabilities["images"] = runner.ApprovedImages()
 	if cmd == "doctor" {
 		encoded, _ := json.MarshalIndent(capabilities, "", "  ")
 		fmt.Println(string(encoded))

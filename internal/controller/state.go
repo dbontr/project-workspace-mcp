@@ -52,6 +52,20 @@ func validateCaps(caps map[string]any) error {
 			return fmt.Errorf("invalid worker capacity %s", field)
 		}
 	}
+	if raw, ok := caps["images"]; ok {
+		images, valid := raw.([]any)
+		if !valid || len(images) > 128 {
+			return errors.New("invalid worker image inventory")
+		}
+		seenImages := map[string]bool{}
+		for _, v := range images {
+			image, valid := v.(string)
+			if !valid || !validImage.MatchString(image) || seenImages[image] {
+				return errors.New("invalid or duplicate approved image")
+			}
+			seenImages[image] = true
+		}
+	}
 	devices, _ := caps["devices"].([]any)
 	if len(devices) > 64 {
 		return errors.New("too many devices")

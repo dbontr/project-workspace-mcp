@@ -22,3 +22,5 @@
 - [GitHub automatic deletion of merged branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches) — GitHub. Used for: opt-in native branch cleanup through repository settings.
 - [GitHub pull request reviews](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews) — GitHub. Used for: distinction between an author's self-verification and independently approving a PR.
 - [SQLite VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — SQLite. Used for: consistent SQLite database snapshots during offline backup.
+
+- [Debian apt-get manual](https://manpages.debian.org/stable/apt/apt-get.8.en.html) — Debian. Used for: operator-approved apt package installation in versioned OCI environments.

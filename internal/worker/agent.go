@@ -151,6 +151,7 @@ func (c *Client) Run(ctx context.Context, runner *Runner) error {
 		if err != nil {
 			return err
 		}
+		capabilities["images"] = runner.ApprovedImages()
 		beat := map[string]any{"capabilities": capabilities}
 		if err := c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/heartbeat", c.Node), beat, nil); err != nil {
 			if failure := retryController(ctx, err, &attempts); failure != nil {

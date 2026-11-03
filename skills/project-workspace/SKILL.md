@@ -46,3 +46,21 @@ explicit confirmation. Do not delete branches from forks or shared work.
 When repository administrators want automatic cleanup for all merged branches,
 configure `github_set_branch_auto_delete` intentionally and report the
 provider-confirmed setting.
+
+
+## Shared image and software catalogs
+
+Before reserving a worker, call `pool_list_images` to discover images approved
+by operators and their currently eligible online worker nodes. Select the
+`image_pool_id` in `workspace_create` when using a shared image; a catalog
+entry alone does not install an image. `pool_list_software` retrieves curated
+apt package sets. Compose a definition with `environment_define_from_pool`
+and explicitly build it on an authorized worker. Only the owner should
+register image and software entries. Proprietary tools belong in
+operator-approved images, subject to installation and license restrictions.
+
+For files up to 512 KiB, use `artifact_send_base64` with an independently
+computed SHA-256, and `artifact_read_base64` for verified retrieval. Larger
+files require authenticated streamed REST transfer, followed by
+`workspace_import_artifact`. These tools do not themselves attach a file
+uploaded in the chat UI; that requires file-capable connector mediation.

@@ -27,7 +27,7 @@ var tools = []toolDefinition{
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
 	{"list_github_repositories", "List linked repositories", []string{"project_id"}, nil},
-	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "hardware", "usb_passthrough", "usb_node", "usb_device_id"}},
+	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id"}},
 	{"workspace_list", "List project workspaces", []string{"project_id"}, nil},
 	{"workspace_call", "Queue a command or file operation", []string{"project_id", "workspace_id", "action", "payload"}, nil},
 	{"workspace_operation", "Get a worker-confirmed operation result", []string{"project_id", "workspace_id", "operation_id"}, nil},
@@ -36,6 +36,11 @@ var tools = []toolDefinition{
 	{"list_hardware", "List hardware and leases", nil, nil},
 	{"environment_define", "Save a versioned OCI environment definition", []string{"project_id", "name", "base_image"}, []string{"dockerfile", "expected_version", "context", "architecture"}},
 	{"environment_list", "List environment definitions", []string{"project_id"}, nil},
+	{"pool_list_images", "List operator-approved OCI images and eligible online workers", nil, nil},
+	{"pool_register_image", "Register an approved OCI image; workers must separately allowlist it", []string{"image_id", "image"}, []string{"description", "architecture"}},
+	{"pool_list_software", "List approved software package collections", nil, nil},
+	{"pool_register_software", "Register an immutable apt package collection for a base image", []string{"software_id", "image_id", "packages"}, []string{"description"}},
+	{"environment_define_from_pool", "Compose a versioned OCI environment from approved image and software IDs", []string{"project_id", "name", "image_id", "software_ids"}, []string{"expected_version"}},
 	{"environment_build", "Build an OCI environment", []string{"project_id", "name", "workspace_id"}, nil},
 	{"environment_export", "Save an OCI image archive", []string{"project_id", "name", "workspace_id"}, nil},
 	{"environment_import", "Load an OCI image archive", []string{"project_id", "name", "workspace_id", "artifact_id"}, nil},
@@ -64,6 +69,9 @@ var tools = []toolDefinition{
 	{"github_checkout_repository", "Checkout a GitHub archive into a workspace", []string{"project_id", "workspace_id", "repository", "ref"}, nil},
 	{"github_publish_artifacts", "Publish project artifacts to a revision-guarded draft PR", []string{"project_id", "repository", "base_branch", "expected_head", "changes", "title"}, []string{"body"}},
 	{"list_project_artifacts", "List durable project artifacts", []string{"project_id"}, nil},
+	{"artifact_info", "Read the metadata and verified digest of a saved project artifact", []string{"project_id", "artifact_id"}, nil},
+	{"artifact_send_base64", "Store a project file up to 512 KiB from base64 and its SHA-256 digest; larger files use REST streaming", []string{"project_id", "name", "sha256", "data_base64"}, nil},
+	{"artifact_read_base64", "Return a verified project file up to 512 KiB as base64; larger files use authenticated REST downloads", []string{"project_id", "artifact_id"}, nil},
 	{"github_project_attach", "Bind a GitHub Projects V2 board by URL or node ID", []string{"project_id"}, []string{"github_project_id", "url"}},
 	{"github_project_board", "Read the linked GitHub Projects board reference", []string{"project_id"}, nil},
 	{"github_project_items", "Read live GitHub Project items and fields", []string{"project_id"}, []string{"after"}},
@@ -91,6 +99,8 @@ func kindFor(key string) string {
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
+	case "packages", "software_ids":
+		return "array"
 	case "hardware", "payload", "params", "changes":
 		return "object"
 	}
@@ -99,7 +109,11 @@ func kindFor(key string) string {
 func (t toolDefinition) schema() map[string]any {
 	properties := map[string]any{}
 	for _, key := range append(append([]string{}, t.Required...), t.Optional...) {
-		properties[key] = map[string]any{"type": kindFor(key)}
+		prop := map[string]any{"type": kindFor(key)}
+		if key == "software_ids" || key == "packages" {
+			prop["items"] = map[string]any{"type": "string"}
+		}
+		properties[key] = prop
 	}
 	required := t.Required
 	if required == nil {
@@ -244,6 +258,24 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 		return db.EnvironmentDefine(project, get("name"), get("base_image"), get("dockerfile"), get("context"), get("architecture"), asInt(a["expected_version"]))
 	case "environment_list":
 		return db.Environments(project)
+	case "pool_list_images":
+		return db.ImagePool()
+	case "pool_register_image":
+		return db.RegisterPoolImage(get("image_id"), get("image"), get("description"), get("architecture"))
+	case "pool_list_software":
+		return db.SoftwarePool()
+	case "pool_register_software":
+		var packages []string
+		if err := JSONRequest(a["packages"], &packages); err != nil {
+			return nil, err
+		}
+		return db.RegisterPoolSoftware(get("software_id"), get("image_id"), get("description"), packages)
+	case "environment_define_from_pool":
+		var software []string
+		if err := JSONRequest(a["software_ids"], &software); err != nil {
+			return nil, err
+		}
+		return db.EnvironmentFromPool(project, get("name"), get("image_id"), software, asInt(a["expected_version"]))
 	case "environment_build":
 		return db.EnvironmentAction(project, get("name"), workspace, "build_image", "")
 	case "environment_export":
@@ -345,6 +377,12 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 		return s.CheckoutLibrarySource(project, workspace, get("library_id"), get("repository"), get("source_path"))
 	case "list_project_artifacts":
 		return db.Artifacts(project)
+	case "artifact_info":
+		return db.ArtifactInfo(project, get("artifact_id"))
+	case "artifact_send_base64":
+		return db.StoreMCPArtifact(project, get("name"), get("sha256"), get("data_base64"))
+	case "artifact_read_base64":
+		return db.ReadMCPArtifact(project, get("artifact_id"))
 	}
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {

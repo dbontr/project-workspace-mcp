@@ -11,6 +11,7 @@ type WorkspaceRequest struct {
 	ProjectID       string         `json:"project_id"`
 	Image           string         `json:"image"`
 	Environment     string         `json:"environment"`
+	ImagePoolID     string         `json:"image_pool_id"`
 	CPU             float64        `json:"cpu"`
 	MemoryMB        int            `json:"memory_mb"`
 	DurationMinutes int            `json:"duration_minutes"`
@@ -54,12 +55,26 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 	if req.Environment != "" && !validID.MatchString(req.Environment) {
 		return nil, errors.New("invalid environment")
 	}
+	if req.ImagePoolID != "" && (!validID.MatchString(req.ImagePoolID) || req.Environment != "") {
+		return nil, errors.New("invalid image pool selection")
+	}
 	var out map[string]any
 	err := db.transaction(func() error {
 		if e := requireProject(db, req.ProjectID); e != nil {
 			return e
 		}
 		preferred, arch := "", ""
+		if req.ImagePoolID != "" {
+			image, e := db.lockedOne("SELECT image,architecture FROM pool_images WHERE id=?", req.ImagePoolID)
+			if e != nil {
+				return e
+			}
+			if image == nil {
+				return errors.New("image not found in approved pool")
+			}
+			req.Image = asString(image["image"])
+			arch = asString(image["architecture"])
+		}
 		if req.Environment != "" {
 			p, e := db.lockedOne("SELECT * FROM environments WHERE project=? AND name=?", req.ProjectID, req.Environment)
 			if e != nil {
@@ -84,6 +99,9 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 				continue
 			}
 			caps := decodeObject(asString(node["capabilities"]))
+			if req.ImagePoolID != "" && !workerHasImage(caps, req.Image) {
+				continue
+			}
 			if !asBool(caps["docker"]) || asFloat(caps["cpu"]) < req.CPU || asFloat(caps["memory_mb"]) < float64(req.MemoryMB) {
 				continue
 			}
@@ -172,6 +190,9 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 		out = map[string]any{"id": id, "project": req.ProjectID, "node": nodeID, "status": "starting", "expires": expires, "hardware": devices, "environment": nil}
 		if req.Environment != "" {
 			out["environment"] = req.Environment
+		}
+		if req.ImagePoolID != "" {
+			out["image_pool_id"] = req.ImagePoolID
 		}
 		return nil
 	})

@@ -18,6 +18,10 @@ jobs:
         run: |
           gofmt -d internal/controller/backup.go internal/controller/backup_test.go cmd/project-workspace-controller/main.go
           test -z "$(gofmt -l internal/controller/backup.go internal/controller/backup_test.go cmd/project-workspace-controller/main.go)"
+      - name: Format new Go components
+        run: |
+          gofmt -d internal/controller/software_pool.go internal/controller/software_pool_http.go internal/controller/software_pool_test.go internal/controller/artifact_transfer.go
+          test -z "$(gofmt -l internal/controller/software_pool.go internal/controller/software_pool_http.go internal/controller/software_pool_test.go internal/controller/artifact_transfer.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables

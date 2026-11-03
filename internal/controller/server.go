@@ -181,6 +181,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "invalid controller credential")
 		return
 	}
+	if s.handlePool(w, r, parts) {
+		return
+	}
 	if s.handleGitHubWorkflow(w, r, parts) {
 		return
 	}

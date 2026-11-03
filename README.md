@@ -77,6 +77,64 @@ USB access is **off by default**. The node operator enables it using `project-wo
 
 Large OS images can be streamed to `PUT /api/projects/PROJECT/artifacts/upload` with `X-Artifact-Name`, `X-Content-SHA256`, and the owner bearer credential. Use `POST /api/projects/PROJECT/workspaces/WORKSPACE/artifacts/import` to stage the verified artifact in a workspace. The artifact path is relative to the workspace, and imports refuse unintended overwrites.
 
+## Approved images and software packages
+
+The controller has an administrator-managed image and software pool. A pool
+entry does **not** automatically install an image, authorize a worker, or
+grant access to hardware. Workers report the exact OCI references approved by
+their local `PWM_ALLOWED_IMAGES` setting; `pool_list_images` displays
+the currently eligible online workers. Images in the pool can be used in
+`workspace_create(image_pool_id="...")`, which refuses to schedule a worker
+that has not explicitly approved the selected image. Ordinary direct image
+and versioned environment options remain supported.
+
+```sh
+curl -fsS -X POST "$BASE/api/pool/images" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"id":"debian-bookworm","image":"debian:bookworm-slim","description":"Debian base"}'
+curl -fsS "$BASE/api/pool/images" -H "Authorization: Bearer $TOKEN"
+```
+
+The software catalog contains immutable, curated apt package sets associated
+with one Debian or Ubuntu base image. It never accepts shell commands as
+package names. Non-apt toolchains and licensed applications should instead
+be provided as approved, versioned OCI images. Register packages and compose
+an environment before requesting a worker build:
+
+```sh
+curl -fsS -X POST "$BASE/api/pool/software" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"id":"c-toolchain","image_id":"debian-bookworm","packages":["gcc","make"]}'
+curl -fsS -X POST "$BASE/api/projects/research/environments/from-pool" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"c-build","image_id":"debian-bookworm","software_ids":["c-toolchain"],"expected_version":0}'
+```
+
+Then start a base-image workspace, call `environment_build`, await
+worker-confirmed success, and start a workspace selecting the ready environment.
+The build requires network access (`PWM_BUILD_NETWORK=1` on the authorized
+worker) or an accessible local apt cache. Builds do not bypass image or
+hardware policy, provide a private registry, redistribute proprietary software,
+or guarantee availability of packages in upstream repositories.
+
+### File transfer over MCP
+
+The `artifact_send_base64` tool accepts `project_id`, `name`,
+`sha256`, and `data_base64` for files up to **512 KiB**. The controller
+verifies the digest before persisting them. `artifact_info` reads metadata
+and `artifact_read_base64` retrieves a verified small file. Use
+`workspace_import_artifact` to stage it in a ready worker, or export a worker
+file as a durable artifact. These operations are project-scoped and require
+the existing owner credential.
+
+For larger PDFs, images, notebooks, datasets, and OS images, use the
+authenticated streamed REST upload `PUT /api/projects/PROJECT/artifacts/upload`
+and download `GET /api/projects/PROJECT/artifacts/ARTIFACT_ID`.
+The content hash is mandatory. The current MCP attachment tool takes base64
+text; an integration that converts ChatGPT's native file attachments to this
+transport requires a separate client-side file-capable connector. It is not
+automatically established by installing this repository.
+
 ## GitHub and persistent knowledge
 
 Associate each GitHub repository with its project using `link_github_repository`. GitHub credentials stay exclusively on the controller; workers receive immutable archives rather than repository tokens. MCP tools support repository information, issue and PR lists, GitHub file reads, checkout by immutable revision, and revision-guarded draft PR publication. Extended repository REST actions are disabled for writes until the administrator explicitly enables `PWM_GITHUB_GENERIC_WRITES=1`.
