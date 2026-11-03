@@ -116,6 +116,8 @@ var tools = []toolDefinition{
 	{"research_ingest_passages", "Append or replace bounded source-linked text passages with an expected index revision", []string{"library", "source_id", "mode", "expected_revision", "passages"}, nil},
 	{"research_sources", "List indexed research sources visible through a project's linked libraries", []string{"project_id"}, nil},
 	{"research_search", "Search indexed passages with source locators within the caller's permitted project", []string{"project_id", "query"}, []string{"limit"}},
+	{"research_topics", "List topic labels and passage counts in the project's linked research libraries", []string{"project_id"}, nil},
+	{"research_browse_topic", "Retrieve source-linked passages for one project-visible research topic", []string{"project_id", "topic"}, []string{"limit"}},
 	{"research_read_passage", "Retrieve and verify a source-linked research passage at its immutable citation ID", []string{"project_id", "passage_id"}, nil},
 	{"library_create", "Register an independent shared research or Lean library", []string{"library_id", "title", "kind"}, []string{"description"}},
 	{"library_list", "List shared libraries independent of projects", nil, nil},
@@ -538,6 +540,14 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.IngestResearchPassages(get("library"), get("source_id"), get("mode"), asInt(a["expected_revision"]), passages)
 	case "research_sources":
 		return db.ResearchSources(project)
+	case "research_topics":
+		return db.ResearchTopics(project)
+	case "research_browse_topic":
+		limit := asInt(a["limit"])
+		if limit == 0 {
+			limit = 30
+		}
+		return db.ResearchTopicPassages(project, get("topic"), limit)
 	case "research_search":
 		limit := asInt(a["limit"])
 		if limit == 0 {

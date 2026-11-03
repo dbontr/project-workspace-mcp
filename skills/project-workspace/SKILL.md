@@ -31,6 +31,12 @@ the current index epoch; `replace` starts a new visible epoch without
 deleting prior records. Do not invent location metadata or claim automatic
 PDF understanding; a trusted preprocessor must derive the text.
 
+To explore the available research subjects, call `research_topics` for
+the authorized project and `research_browse_topic` to read passages
+associated with a selected label. Report source count and cited passages,
+not a fabricated consensus. Reindexing replaces the visible topic set
+while preserving historical citations.
+
 For retrieval, select the authenticated project and use
 `research_sources`, `research_search`, and `research_read_passage`.
 Only the project's explicitly linked shared libraries are visible. Search

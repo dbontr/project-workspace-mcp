@@ -494,6 +494,16 @@ restricts results to the requesting project's linked libraries.
 The full passage read verifies its SHA-256. Historical citations remain
 readable after reindexing while searches use only the current epoch.
 
+Topic discovery is available through `research_topics` and
+`GET /api/projects/PROJECT/research/topics`. Each entry reports the topic
+label, number of indexed passages, and distinct sources in the project's
+linked libraries. Browse a label through `research_browse_topic` or
+`GET /api/projects/PROJECT/research/topics/TOPIC`, which returns
+source-linked passages with their stable citation IDs. Topic browsing
+uses SQLite JSON indexing functions over the visible source epochs and
+never exposes sources from unlinked libraries. It is a navigational view,
+not an independently authored topic summary or knowledge graph.
+
 This is **source-linked lexical retrieval**. It is not a semantic embedding
 index, PDF parser, or automatic source upload from ChatGPT. A trusted
 preprocessor or file-capable connector must upload the original bytes and
