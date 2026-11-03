@@ -14,7 +14,7 @@ input:not([type=checkbox]){flex:1;min-width:180px}select{min-width:180px}label{d
 main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}
 section{background:#19232f;border:1px solid #334155;border-radius:.8rem;padding:1.2rem;min-height:150px}
 h2{font-size:1.1rem;margin-top:0}ul{list-style:none;margin:0;padding:0}li{padding:.65rem 0;border-top:1px solid #334155;overflow-wrap:anywhere}
-strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb7185}
+strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb7185}details{padding:.5rem 0;border-top:1px solid #334155}summary{cursor:pointer;font-weight:600}.control-note{font-size:.9rem}
 </style>
 </head>
 <body>
@@ -45,7 +45,78 @@ strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb718
     <button type="submit">Link GitHub Project</button>
   </form>
 </section>
+<section aria-label="Program catalog administration">
+  <h2>Software catalog</h2>
+  <p>Register approved OCI images, curate apt package sets, and review software requests. Disabling or retiring an entry prevents new catalog allocations; it does not uninstall applications from existing environments.</p>
+  <details>
+    <summary>Add an OCI image</summary>
+    <form id="image-register">
+      <input id="image-id" required placeholder="Catalog ID, e.g. ubuntu-base" aria-label="Image catalog ID">
+      <input id="image-ref" required placeholder="OCI reference, e.g. ubuntu:24.04" aria-label="OCI reference">
+      <input id="image-description" placeholder="Description" aria-label="Image description">
+      <select id="image-arch" aria-label="Architecture"><option value="">Any architecture</option><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
+      <button type="submit">Register image</button>
+    </form>
+  </details>
+  <details>
+    <summary>Add an approved apt package collection</summary>
+    <form id="package-register">
+      <input id="package-id" required placeholder="Software ID, e.g. spice-tools" aria-label="Software catalog ID">
+      <select id="package-image" required aria-label="Approved Debian or Ubuntu image"></select>
+      <input id="package-names" required placeholder="Packages, separated by commas" aria-label="Apt package names">
+      <input id="package-description" placeholder="Description" aria-label="Package collection description">
+      <button type="submit">Register packages</button>
+    </form>
+  </details>
+  <details>
+    <summary>Request or register a program</summary>
+    <form id="program-propose">
+      <input id="program-id" required placeholder="Program ID, e.g. ltspice" aria-label="Program ID">
+      <input id="program-name" required placeholder="Program name" aria-label="Program name">
+      <input id="program-version" placeholder="Version" aria-label="Program version">
+      <select id="program-platform" aria-label="Target platform">
+        <option value="linux-container">Linux container</option>
+        <option value="windows-native">Windows native</option>
+        <option value="macos-native">macOS native</option>
+      </select>
+      <select id="program-delivery" aria-label="Installation route">
+        <option value="apt">Approved apt packages</option><option value="oci">Approved OCI image</option><option value="native">Native installer (requires adapter)</option>
+      </select>
+      <input id="program-source" type="url" required placeholder="https://publisher.example/software" aria-label="Official publisher page">
+      <input id="program-license" placeholder="License and use restrictions for operator review" aria-label="License notes">
+      <input id="program-description" placeholder="Purpose" aria-label="Program description">
+      <button type="submit">Create program request</button>
+    </form>
+  </details>
+  <details>
+    <summary>Disable, reactivate, or retire catalog entries</summary>
+    <form id="entry-change">
+      <select id="entry-select" required aria-label="Catalog entry"></select>
+      <select id="entry-state" aria-label="New entry status"><option value="disabled">Disable</option><option value="active">Reactivate</option><option value="retired">Retire permanently</option></select>
+      <input id="entry-reason" required placeholder="Reason" aria-label="Reason for catalog change">
+      <button type="submit">Apply status</button>
+    </form>
+  </details>
+  <details>
+    <summary>Review a requested program</summary>
+    <form id="program-review">
+      <select id="review-program" required aria-label="Program to review"></select>
+      <select id="review-state" aria-label="Review decision">
+        <option value="reviewed">Reviewed</option><option value="available">Make available</option>
+        <option value="disabled">Disable</option><option value="rejected">Reject</option><option value="retired">Retire permanently</option>
+      </select>
+      <select id="review-pool-kind" aria-label="Approved execution source"><option value="">No execution source</option><option value="software">Apt collection</option><option value="image">OCI image</option></select>
+      <input id="review-pool-id" placeholder="Linked approved pool ID (for available)" aria-label="Pool entry ID">
+      <input id="review-note" required placeholder="License review, validation, or decision reason" aria-label="Review decision reason">
+      <button type="submit">Record review</button>
+    </form>
+    <small class="control-note">A program marked reviewed is not installed. Native Windows/macOS applications cannot be marked available until a separately verified native adapter exists.</small>
+  </details>
+</section>
 <main>
+  <section><h2>OCI image pool</h2><ul id="pool-images"><li class="muted">Connect to view approved images.</li></ul></section>
+  <section><h2>Apt package pool</h2><ul id="pool-software"><li class="muted">Connect to view approved packages.</li></ul></section>
+  <section><h2>Program requests</h2><ul id="pool-programs"><li class="muted">Connect to view registered programs.</li></ul></section>
   <section><h2>Projects</h2><ul id="projects"><li class="muted">Connect to view projects.</li></ul></section>
   <section><h2>Compute nodes</h2><ul id="nodes"><li class="muted">Connect to view workers.</li></ul></section>
   <section><h2>Active workspaces</h2><ul id="workspaces"><li class="muted">Connect to view workspaces.</li></ul></section>
@@ -56,10 +127,26 @@ strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb718
 <script>
 let credential='';
 let availableUSB=[];
+let poolImages=[],poolSoftware=[],poolPrograms=[];
 const el=id=>document.getElementById(id);
 function item(parent,header,detail){let li=document.createElement('li');let a=document.createElement('strong');a.textContent=header;let b=document.createElement('div');b.className='muted';b.textContent=detail;li.append(a,b);parent.append(li)}
 function render(id,rows,show){let box=el(id);box.replaceChildren();if(!rows.length)item(box,'None','No entries');else rows.forEach(x=>item(box,...show(x)))}
 async function get(path){let response=await fetch(path,{headers:{Authorization:'Bearer '+credential},cache:'no-store'});if(!response.ok)throw new Error('Request '+response.status+' for '+path);return response.json()}
+async function post(path,payload){
+  const response=await fetch(path,{method:'POST',headers:{Authorization:'Bearer '+credential,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const body=await response.json();if(!response.ok)throw new Error(body.detail||'Request failed: '+response.status);return body;
+}
+function pickOptions(id,entries){
+  const select=el(id),previous=select.value;select.replaceChildren();
+  for(const [value,label] of entries){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option)}
+  if(entries.some(([value])=>value===previous))select.value=previous;
+}
+async function submitPool(event,operation){
+  event.preventDefault();
+  if(!credential){el('notice').textContent='Connect first';return}
+  try{const result=await operation();await refresh();el('notice').textContent='Catalog saved: '+(result.id||result.name||result.status)}
+  catch(error){el('notice').textContent=error.message}
+}
 async function refresh(){
   const projects=await get('/api/projects');const nodes=await get('/api/nodes');
   const projectSelect=el('project-select');const selectedProject=projectSelect.value;
@@ -70,6 +157,16 @@ async function refresh(){
     const planningOption=document.createElement('option');planningOption.value=p.id;planningOption.textContent=p.title+' ('+p.id+')';planningSelect.append(planningOption)}
   if(projects.some(p=>p.id===selectedPlanning))planningSelect.value=selectedPlanning;
   if(projects.some(p=>p.id===selectedProject))projectSelect.value=selectedProject;
+  [poolImages,poolSoftware,poolPrograms]=await Promise.all([get('/api/pool/images'),get('/api/pool/software'),get('/api/pool/programs')]);
+  render('pool-images',poolImages,p=>[p.id+' · '+p.status,p.image+' · '+(p.available_nodes||[]).length+' eligible workers · revision '+p.revision]);
+  render('pool-software',poolSoftware,p=>[p.id+' · '+p.status,p.packages.join(', ')+' · '+p.image_id+' · revision '+p.revision]);
+  render('pool-programs',poolPrograms,p=>[p.name+' · '+p.status,p.platform+' / '+p.distribution+' · '+p.id+' · revision '+p.revision]);
+  pickOptions('package-image',poolImages.filter(x=>x.status==='active').map(x=>[x.id,x.id+' ('+x.image+')']));
+  pickOptions('entry-select',[
+    ...poolImages.filter(x=>x.status!=='retired').map(x=>['image:'+x.id,'Image: '+x.id+' · '+x.status]),
+    ...poolSoftware.filter(x=>x.status!=='retired').map(x=>['software:'+x.id,'Packages: '+x.id+' · '+x.status])
+  ]);
+  pickOptions('review-program',poolPrograms.filter(x=>!['retired','rejected'].includes(x.status)).map(x=>[x.id,x.name+' · '+x.status]));
   const hardware=await get('/api/hardware');
   availableUSB=hardware.filter(d=>d.kind==='usb'&&d.online&&!d.leased_to);
   const deviceSelect=el('usb-device');const previous=deviceSelect.value;
@@ -96,6 +193,36 @@ async function refresh(){
   render('libraries',libraries,l=>[l.title,l.kind+' · '+l.id]);
   el('notice').textContent='';
 }
+el('program-platform').addEventListener('change',()=>{el('program-delivery').value=el('program-platform').value==='linux-container'?'apt':'native'});
+el('image-register').addEventListener('submit',event=>submitPool(event,()=>post('/api/pool/images',{
+  id:el('image-id').value,image:el('image-ref').value,description:el('image-description').value,architecture:el('image-arch').value
+})));
+el('package-register').addEventListener('submit',event=>submitPool(event,()=>post('/api/pool/software',{
+  id:el('package-id').value,image_id:el('package-image').value,
+  description:el('package-description').value,packages:el('package-names').value.split(',').map(x=>x.trim()).filter(Boolean)
+})));
+el('program-propose').addEventListener('submit',event=>submitPool(event,()=>post('/api/pool/programs',{
+  id:el('program-id').value,name:el('program-name').value,version:el('program-version').value,
+  platform:el('program-platform').value,distribution:el('program-delivery').value,
+  source_url:el('program-source').value,license_notes:el('program-license').value,
+  description:el('program-description').value
+})));
+el('entry-change').addEventListener('submit',event=>submitPool(event,()=>{
+  const [kind,id]=el('entry-select').value.split(':');
+  const entry=(kind==='image'?poolImages:poolSoftware).find(x=>x.id===id);
+  if(!entry)throw new Error('Choose an entry');
+  return post('/api/pool/'+(kind==='image'?'images':'software')+'/'+encodeURIComponent(id)+'/state',{
+    status:el('entry-state').value,reason:el('entry-reason').value,expected_revision:entry.revision
+  })
+}));
+el('program-review').addEventListener('submit',event=>submitPool(event,()=>{
+  const program=poolPrograms.find(x=>x.id===el('review-program').value);
+  if(!program)throw new Error('Choose a program');
+  return post('/api/pool/programs/'+encodeURIComponent(program.id)+'/review',{
+    status:el('review-state').value,expected_revision:program.revision,review_note:el('review-note').value,
+    pool_kind:el('review-pool-kind').value,pool_id:el('review-pool-id').value
+  })
+}));
 el('planning-link').addEventListener('submit',async event=>{
   event.preventDefault();
   if(!credential){el('notice').textContent='Connect first';return}
