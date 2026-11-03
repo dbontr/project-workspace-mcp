@@ -124,6 +124,21 @@ software from existing workspaces or deletes retained artifacts. Never
 download, redistribute, or run a proprietary installer merely because a
 program request cites a publisher URL.
 
+## Encrypted recovery snapshots
+
+The controller supports optional Restic-backed encrypted snapshots of
+canonical SQLite state, referenced artifacts, research objects, and personal
+task file revisions. Only controller administrators may configure
+`PWM_RESTIC_REPOSITORY` and a protected
+`PWM_RESTIC_PASSWORD_FILE`. The in-process interval scheduler can safely
+snapshot the active Database; the standalone `backup-offsite` command must
+run while the authoritative controller process is stopped. Preserve the exact
+snapshot ID, verify encrypted repository integrity and perform
+`restore-offsite SNAPSHOT_ID` plus `verify-offsite SNAPSHOT_ID` on an
+independent recovery host. Never treat a local repository or CI test as
+proof of off-site resilience. Never send repository keys to compute workers.
+Recovery does not restore running processes or uncollected workspace files.
+
 ## Advisory resource planning
 
 Call `resource_plan` before a resource-intensive workspace. Supply CPU,
