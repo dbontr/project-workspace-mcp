@@ -22,6 +22,11 @@ var tools = []toolDefinition{
 	{"read_project_note", "Read a versioned note", []string{"project_id", "name"}, nil},
 	{"write_project_note", "Write a note with a revision guard", []string{"project_id", "name", "body", "expected_version"}, nil},
 	{"search_project_knowledge", "Search project notes", []string{"project_id", "query"}, nil},
+	{"knowledge_context", "Read canonical project and context notes, latest handoff, decisions and linked repositories", []string{"project_id"}, nil},
+	{"knowledge_contribute", "Append an immutable project handoff, decision, finding or note with source provenance", []string{"project_id", "kind", "title", "body"}, []string{"repository", "revision", "artifact_id"}},
+	{"knowledge_contributions", "List immutable project contributions and provenance", []string{"project_id"}, []string{"kind", "limit"}},
+	{"knowledge_contribution", "Read a checksum-verified immutable project contribution", []string{"project_id", "contribution_id"}, nil},
+	{"knowledge_search_contributions", "Search project handoffs, decisions and findings", []string{"project_id", "query"}, nil},
 	{"list_compute_nodes", "List workers and availability", nil, nil},
 	{"submit_compute_job", "Queue a one-shot command", []string{"project_id", "command"}, []string{"image", "cpu", "memory_mb"}},
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
@@ -107,7 +112,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "number", "generation", "lease_seconds":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "number", "generation", "lease_seconds", "limit":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
@@ -183,7 +188,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request, who caller) {
 		} else if !who.Root && name == "list_projects" {
 			result, e = s.DB.ProjectsForPrincipal(who.Principal)
 		} else {
-			result, e = s.callTool(name, args)
+			result, e = s.callToolFor(who, name, args)
 		}
 		if e != nil {
 			response["result"] = map[string]any{"content": []map[string]any{{"type": "text", "text": e.Error()}}, "isError": true}
@@ -200,6 +205,10 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request, who caller) {
 	reply(w, 200, response)
 }
 func (s *Server) callTool(name string, a map[string]any) (any, error) {
+	return s.callToolFor(caller{Principal: "controller-owner", Root: true}, name, a)
+}
+
+func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, error) {
 	var spec *toolDefinition
 	for i := range tools {
 		if tools[i].Name == name {
@@ -233,6 +242,24 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 		return db.WriteNote(project, get("name"), get("body"), asInt(a["expected_version"]))
 	case "search_project_knowledge":
 		return db.SearchNotes(project, get("query"))
+	case "knowledge_context":
+		return db.ProjectContext(project)
+	case "knowledge_contribute":
+		var request ContributionRequest
+		if err := JSONRequest(a, &request); err != nil {
+			return nil, err
+		}
+		return db.ContributeProject(project, request, who.Principal)
+	case "knowledge_contributions":
+		limit := asInt(a["limit"])
+		if limit == 0 {
+			limit = 50
+		}
+		return db.ProjectContributions(project, get("kind"), limit)
+	case "knowledge_contribution":
+		return db.ProjectContribution(project, get("contribution_id"))
+	case "knowledge_search_contributions":
+		return db.ProjectContributionSearch(project, get("query"))
 	case "list_compute_nodes":
 		return db.Nodes()
 	case "submit_compute_job":

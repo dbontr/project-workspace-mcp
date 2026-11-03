@@ -20,6 +20,23 @@ Treat the project, not the machine or chat, as the unit of work. The installed S
 
 The controller and worker are implemented in Go. Python is an optional application inside an approved workspace image, not a service dependency. The controller currently has one privileged administrator identity. Never put its token, GitHub credentials, or host SSH keys inside worker command payloads, project notes, snapshots, or image recipes. Docker is not a hostile-tenant security boundary. Report physical hardware integrations as unverified unless exercised on authorized devices.
 
+## Project context and contribution records
+
+Use `knowledge_context` to inspect canonical `project` and `context`
+notes, the latest handoff, recent decisions, and exact repository links.
+These local records do not supersede an external authoritative Project
+Knowledge system unless the operator has explicitly designated this
+controller as that system. Update canonical notes through
+`write_project_note(expected_version=...)`; never overwrite them blindly.
+Use `knowledge_contribute` to append a decision, finding, note, or handoff,
+including a linked repository at an exact commit SHA or a verified project
+artifact ID when available. Search with
+`knowledge_search_contributions`, inspect the full immutable record with
+`knowledge_contribution`, and do not infer implementation success merely
+from a recorded handoff. The controller binds the authenticated principal
+automatically. Parallel workers contribute immutable records rather than
+editing a shared context file without a revision guard.
+
 ## Cooperative project work
 
 Before beginning a long or duplicate-prone operation, derive a stable

@@ -43,6 +43,7 @@ var readableTools = map[string]bool{
 	"list_projects":    true,
 	"pool_list_images": true, "pool_list_software": true, "pool_list_programs": true,
 	"read_project_note": true, "search_project_knowledge": true,
+	"knowledge_context": true, "knowledge_contributions": true, "knowledge_contribution": true, "knowledge_search_contributions": true,
 	"list_project_jobs": true, "list_github_repositories": true,
 	"task_claim_list": true, "task_claim_status": true, "resource_plan": true,
 	"workspace_list": true, "workspace_operation": true,

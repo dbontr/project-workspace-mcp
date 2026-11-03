@@ -42,6 +42,10 @@ jobs:
         run: |
           gofmt -d internal/controller/resource_plan.go internal/controller/resource_plan_http.go internal/controller/resource_plan_test.go internal/controller/workspaces.go
           test -z "$(gofmt -l internal/controller/resource_plan.go internal/controller/resource_plan_http.go internal/controller/resource_plan_test.go internal/controller/workspaces.go)"
+      - name: Format project context components
+        run: |
+          gofmt -d internal/controller/project_context.go internal/controller/project_context_http.go internal/controller/project_context_test.go
+          test -z "$(gofmt -l internal/controller/project_context.go internal/controller/project_context_http.go internal/controller/project_context_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
