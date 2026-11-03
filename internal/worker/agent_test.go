@@ -6,11 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -288,5 +290,101 @@ func TestImportArtifactValidatesDestinationBeforeDownloading(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "workspace path") {
 			t.Fatalf("unsafe artifact destination %q accepted: %v", target, err)
 		}
+	}
+}
+
+
+func TestWorkerHeartbeatContinuesDuringJobExecution(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	if err := os.WriteFile(docker, []byte("#!/bin/sh\nsleep 0.3\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var heartbeats atomic.Int32
+	var claimed atomic.Bool
+	finished := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/worker/worker-one/heartbeat":
+			heartbeats.Add(1)
+			w.Write([]byte(`{"ok":true}`))
+		case "/api/worker/worker-one/operation/claim":
+			w.Write([]byte(`{"operation":null}`))
+		case "/api/worker/worker-one/claim":
+			if claimed.CompareAndSwap(false, true) {
+				w.Write([]byte(`{"job":{"id":"test-job","command":"echo test","image":"debian:bookworm-slim","cpu":1,"memory_mb":128,"lease_token":"test-lease"}}`))
+			} else {
+				w.Write([]byte(`{"job":null}`))
+			}
+		case "/api/worker/worker-one/finish":
+			select {
+			case finished <- struct{}{}:
+			default:
+			}
+			w.Write([]byte(`{"ok":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &Client{Base: server.URL, Token: "test-token", Node: "worker-one", HTTP: server.Client()}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		result <- client.runWithHeartbeatInterval(ctx, NewRunner(nil), 20*time.Millisecond)
+	}()
+	select {
+	case <-finished:
+	case <-ctx.Done():
+		t.Fatal("worker did not complete its assigned job")
+	}
+	if count := heartbeats.Load(); count < 3 {
+		t.Errorf("node heartbeat stopped during job execution: %d reports", count)
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("worker should stop when cancelled: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker did not shut down")
+	}
+}
+
+func TestBackgroundHeartbeatRevocationStopsWorker(t *testing.T) {
+	var heartbeats atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/worker/worker-one/heartbeat":
+			if heartbeats.Add(1) > 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte(`{"detail":"revoked"}`))
+				return
+			}
+			w.Write([]byte(`{"ok":true}`))
+		case "/api/worker/worker-one/operation/claim":
+			w.Write([]byte(`{"operation":null}`))
+		case "/api/worker/worker-one/claim":
+			w.Write([]byte(`{"job":null}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &Client{Base: server.URL, Token: "test-token", Node: "worker-one", HTTP: server.Client()}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := client.runWithHeartbeatInterval(ctx, NewRunner(nil), 20*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "worker heartbeat rejected") {
+		t.Fatalf("worker did not stop on revoked heartbeat: %v", err)
+	}
+	if n := heartbeats.Load(); n < 2 {
+		t.Fatalf("background heartbeat did not execute: %d", n)
 	}
 }
