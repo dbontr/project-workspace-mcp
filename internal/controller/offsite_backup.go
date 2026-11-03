@@ -25,7 +25,7 @@ var resticSnapshotID = regexp.MustCompile(`^[a-f0-9]{8,64}$`)
 
 func ResticConfigFromEnv() ResticRepositoryConfig {
 	return ResticRepositoryConfig{
-		Repository: os.Getenv("PWM_RESTIC_REPOSITORY"),
+		Repository:   os.Getenv("PWM_RESTIC_REPOSITORY"),
 		PasswordFile: os.Getenv("PWM_RESTIC_PASSWORD_FILE"),
 	}
 }
