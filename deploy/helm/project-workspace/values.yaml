@@ -34,6 +34,7 @@ worker:
   workspaceStorage: 10Gi
   workspaceStorageClass: ""
   allowedImages: "debian:bookworm-slim"
+  deviceManifestConfigMap: ""
   resources:
     requests:
       cpu: 250m
