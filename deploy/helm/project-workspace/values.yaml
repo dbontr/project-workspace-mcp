@@ -3,6 +3,7 @@ systemNamespace: pwm-system
 controller:
   enabled: true
   image: ghcr.io/dbontr/project-workspace-controller:main
+  imagePullPolicy: Always
   secretName: pwm-controller-credentials
   tlsSecretName: pwm-controller-tls
   publicURL: ""
@@ -23,6 +24,7 @@ controller:
 worker:
   enabled: true
   image: ghcr.io/dbontr/project-workspace-worker:main
+  imagePullPolicy: Always
   name: research-agent
   projectID: research
   workloadNamespace: pwm-research
