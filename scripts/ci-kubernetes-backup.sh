@@ -90,6 +90,7 @@ kubectl -n "$namespace" create secret generic pwm-restic-ci-password \
 
 cat > "$scratch/backup-values.yaml" <<'YAML'
 controller:
+  allowedHosts: "pwm-controller,pwm-controller.pwm-system.svc.cluster.local,localhost"
   backupInterval: 24h
   offsite:
     repository: rest:http://pwm-restic-store.pwm-system.svc.cluster.local:8000/controller
@@ -100,7 +101,6 @@ helm upgrade pwm-controller deploy/helm/project-workspace \
   --set worker.enabled=false \
   --set controller.image=pwm-controller:ci \
   --set controller.imagePullPolicy=IfNotPresent \
-  --set controller.allowedHosts="pwm-controller,pwm-controller.pwm-system.svc.cluster.local,localhost" \
   --set controller.databaseSize=1Gi
 kubectl -n "$namespace" rollout status deployment/pwm-controller --timeout=180s
 
