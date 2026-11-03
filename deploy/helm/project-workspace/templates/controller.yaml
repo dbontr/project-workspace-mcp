@@ -1,0 +1,152 @@
+{{- if .Values.controller.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pwm-controller
+  namespace: {{ .Values.systemNamespace }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pwm-controller-state
+  namespace: {{ .Values.systemNamespace }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.controller.storageClass }}
+  storageClassName: {{ .Values.controller.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.controller.databaseSize }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pwm-controller
+  namespace: {{ .Values.systemNamespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pwm-controller
+  template:
+    metadata:
+      labels:
+        app: pwm-controller
+    spec:
+      serviceAccountName: pwm-controller
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: {{ .Values.controller.image | quote }}
+          imagePullPolicy: Always
+          args: ["controller", "--listen", "0.0.0.0:8443"]
+          ports:
+            - containerPort: 8443
+              name: https
+          env:
+            - name: HOME
+              value: /tmp
+            - name: PWM_DB
+              value: /data/state.db
+            - name: PWM_ALLOW_REMOTE_LISTEN
+              value: "1"
+            - name: PWM_TLS_CERT_FILE
+              value: /tls/tls.crt
+            - name: PWM_TLS_KEY_FILE
+              value: /tls/tls.key
+            - name: PWM_ALLOWED_HOSTS
+              value: {{ .Values.controller.allowedHosts | quote }}
+            - name: PWM_ALLOWED_ORIGINS
+              value: {{ .Values.controller.allowedOrigins | quote }}
+            - name: PWM_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.secretName }}
+                  key: admin_token
+            {{- if .Values.controller.publicURL }}
+            - name: PWM_PUBLIC_URL
+              value: {{ .Values.controller.publicURL | quote }}
+            {{- end }}
+            {{- if .Values.controller.githubPATSecretName }}
+            - name: PWM_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.githubPATSecretName }}
+                  key: token
+            {{- end }}
+            {{- if .Values.controller.backupInterval }}
+            - name: PWM_RESTIC_BACKUP_INTERVAL
+              value: {{ .Values.controller.backupInterval | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: state
+              mountPath: /data
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+            - name: scratch
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: https
+              scheme: HTTPS
+              httpHeaders:
+                - name: Host
+                  value: pwm-controller.{{ .Values.systemNamespace }}.svc.cluster.local
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: https
+              scheme: HTTPS
+              httpHeaders:
+                - name: Host
+                  value: pwm-controller.{{ .Values.systemNamespace }}.svc.cluster.local
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: pwm-controller-state
+        - name: tls
+          secret:
+            secretName: {{ .Values.controller.tlsSecretName }}
+            defaultMode: 288
+        - name: scratch
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pwm-controller
+  namespace: {{ .Values.systemNamespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: pwm-controller
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+{{- end }}
