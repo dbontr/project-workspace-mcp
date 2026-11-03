@@ -284,7 +284,7 @@ func TestPersonalTaskMCPIdentityAndVersionChecks(t *testing.T) {
 	}
 	created := callMCP(alice, "task_send_base64", map[string]any{
 		"task_id": id, "name": "proof.bin", "sha256": checksum([]byte("proof")),
-		"data_base64": base64.StdEncoding.EncodeToString([]byte("proof")),
+		"data_base64":       base64.StdEncoding.EncodeToString([]byte("proof")),
 		"expected_revision": 0,
 	})
 	if asBool(created["isError"]) {
