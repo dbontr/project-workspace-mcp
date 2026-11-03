@@ -127,8 +127,11 @@ def test_go_agent_hardware_environment_and_artifact_roundtrip(tmp_path):
                     'expected_version':0}
             definition=api('POST','/api/projects/integration/environments',json=recipe)
             built=api('POST',f'/api/projects/integration/environments/python-tools/build/{clone_id}')
-            until(lambda:(lambda op:op if op['status']=='succeeded' else None)(api(
-                'GET',f'/api/projects/integration/workspaces/{clone_id}/operations/{built["operation_id"]}')),timeout=240)
+            def build_done():
+                op=api('GET',f'/api/projects/integration/workspaces/{clone_id}/operations/{built["operation_id"]}')
+                if op['status']=='failed':pytest.fail(f'Environment build failed: {op["result"]}')
+                return op if op['status']=='succeeded' else None
+            until(build_done,timeout=180)
             environments=api('GET','/api/projects/integration/environments')
             assert environments[0]['status']=='ready'
             exported=api('POST',f'/api/projects/integration/environments/python-tools/export/{clone_id}')

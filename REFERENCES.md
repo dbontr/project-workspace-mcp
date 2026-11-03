@@ -5,6 +5,7 @@
 - [GitHub REST API — Git trees](https://docs.github.com/en/rest/git/trees) — GitHub. Used for: revision-guarded tree, blob, commit, branch, and draft pull request publication.
 - [GitHub REST API — Repository contents](https://docs.github.com/en/rest/repos/contents) — GitHub. Used for: repository contents and archive checkout.
 - [Docker run command](https://docs.docker.com/reference/cli/docker/container/run/) — Docker. Used for: resource limits and isolated worker containers.
+- [Docker build context](https://docs.docker.com/build/concepts/context/) — Docker. Used for: differentiating standard input Dockerfiles from filesystem build contexts.
 - [SQLite documentation](https://www.sqlite.org/docs.html) — SQLite. Used for: transactional state, WAL, and artifact metadata.
 - [FastAPI](https://fastapi.tiangolo.com/) — FastAPI. Used for: HTTP API validation and authenticated controller routes.
 - [HTTPX](https://www.python-httpx.org/) — Encode. Used for: worker polling and GitHub REST requests.

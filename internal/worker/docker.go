@@ -346,6 +346,16 @@ func safeArchiveEntry(entry string) bool {
 	return true
 }
 
+// An empty build context consumes stdin as the Dockerfile. The Docker CLI
+// rejects -f - when the context is also -, because both would read stdin.
+func dockerBuildArgs(network, image, contextDir string) []string {
+	args := []string{"build", "--network", network, "--tag", image}
+	if contextDir == "-" {
+		return append(args, "-")
+	}
+	return append(args, "-f", "-", contextDir)
+}
+
 func (r *Runner) build(ctx context.Context, p map[string]any) (map[string]any, error) {
 	image := getString(p, "image")
 	base := getString(p, "base_image")
@@ -416,7 +426,7 @@ func (r *Runner) build(ctx context.Context, p map[string]any) (map[string]any, e
 		if r.BuildNetwork {
 			network = "default"
 		}
-		_, err := r.checked(ctx, 2*time.Hour, strings.NewReader(dockerfile), "build", "--network", network, "--tag", image, "-f", "-", contextDir)
+		_, err := r.checked(ctx, 2*time.Hour, strings.NewReader(dockerfile), dockerBuildArgs(network, image, contextDir)...)
 		if err != nil {
 			return nil, err
 		}

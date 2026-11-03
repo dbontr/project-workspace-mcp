@@ -138,3 +138,14 @@ func TestPairingAndFencedArtifactUpload(t *testing.T) {
 		t.Fatalf("upload failed %s %v", id, err)
 	}
 }
+
+func TestDockerBuildArgs(t *testing.T) {
+	empty := dockerBuildArgs("none", "pwm-env-demo-test:v1", "-")
+	if got := strings.Join(empty, " "); got != "build --network none --tag pwm-env-demo-test:v1 -" {
+		t.Fatalf("invalid no-context build: %s", got)
+	}
+	context := dockerBuildArgs("none", "pwm-env-demo-test:v1", "/approved/toolchain")
+	if got := strings.Join(context, " "); got != "build --network none --tag pwm-env-demo-test:v1 -f - /approved/toolchain" {
+		t.Fatalf("invalid context build: %s", got)
+	}
+}
