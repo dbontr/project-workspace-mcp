@@ -130,7 +130,7 @@ if [ "$role" = controller ]; then
 else
     if [ ! -s "$token" ]; then
         runuser -u "$account" -- env HOME="$state" "$target" join \
-            --controller "$controller_url" --node "$node" --code-stdin < "$pairing_file"
+            --backend docker --controller "$controller_url" --node "$node" --code-stdin < "$pairing_file"
     fi
     if [ ! -e "$config" ]; then
         printf 'PWM_CONTROLLER_URL=%s\nPWM_NODE_ID=%s\n' "$controller_url" "$node" > "$config"
