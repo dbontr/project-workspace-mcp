@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"image/png"
 	"net/http"
 	"os"
 	"os/exec"
@@ -237,6 +240,28 @@ func TestDockerVirtualDisplayCapture(t *testing.T) {
 	}
 	if asInt(viewed.Metadata["width"]) != 800 || asInt(viewed.Metadata["height"]) != 600 {
 		t.Fatalf("captured image did not match virtual display: %v", viewed.Metadata)
+	}
+	bytesPNG, err := base64.StdEncoding.DecodeString(viewed.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pixels, err := png.Decode(bytes.NewReader(bytesPNG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseR, baseG, baseB, _ := pixels.At(0, 0).RGBA()
+	var painted bool
+	for y := 0; y < 600 && !painted; y += 10 {
+		for x := 0; x < 800; x += 10 {
+			r, g, b, _ := pixels.At(x, y).RGBA()
+			if r != baseR || g != baseG || b != baseB {
+				painted = true
+				break
+			}
+		}
+	}
+	if !painted {
+		t.Fatal("captured display has no visible GUI content")
 	}
 	if _, err := db.StopWorkspace("demo", ws); err != nil {
 		t.Fatal(err)
