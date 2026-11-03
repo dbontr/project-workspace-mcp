@@ -33,6 +33,12 @@ def manifest(path=None):
         if not isinstance(paths,list) or len(paths)>8 or any(not isinstance(p,str)
                 or not p.startswith('/dev/') or '..' in p.split('/') or len(p)>255 for p in paths):
             raise ValueError('Invalid host device path')
+        if device.get('kind') == 'usb':
+            if os.getenv('PWM_ENABLE_USB_PASSTHROUGH') != '1':
+                raise ValueError('USB passthrough is disabled on this worker')
+            if cdi or any(not (p.startswith('/dev/disk/by-id/usb-') or p.startswith('/dev/serial/by-id/')
+                                   or p.startswith('/dev/bus/usb/')) for p in paths):
+                raise ValueError('USB requires stable USB device paths and no CDI')
         if not cdi and not paths:
             raise ValueError('Device policy needs CDI name or paths')
     return devices
@@ -56,6 +62,9 @@ def docker_args(requested, configured):
         if device.get('cdi'):
             args += ['--device',device['cdi']]
         for path in device.get('paths',[]):
+            if device.get('kind') == 'usb':
+                # USB disk writes are available on the Go worker only.
+                raise ValueError('USB passthrough requires the Go worker')
             # Do not follow symlinks and do not pass arbitrary regular files.
             info = os.lstat(path)
             if not stat.S_ISCHR(info.st_mode):

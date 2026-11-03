@@ -10,7 +10,7 @@
 *{box-sizing:border-box}body{margin:0;padding:2rem;max-width:1120px;margin:auto}
 h1{font-size:1.65rem;letter-spacing:-.03em}p,small{color:#94a3b8}
 form{display:flex;flex-wrap:wrap;gap:.7rem;margin:1.5rem 0}input,button,select{font:inherit;border:1px solid #334155;border-radius:.55rem;padding:.65rem .85rem;background:#1e293b;color:#f1f5f9}
-input{flex:1;min-width:230px}button{cursor:pointer;background:#2563eb;border-color:#2563eb}button:hover{filter:brightness(1.12)}
+input:not([type=checkbox]){flex:1;min-width:180px}select{min-width:180px}label{display:flex;align-items:center;gap:.5rem}.usb-warning{color:#fcd34d}#usb-options[hidden]{display:none}button{cursor:pointer;background:#2563eb;border-color:#2563eb}button:hover{filter:brightness(1.12)}
 main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}
 section{background:#19232f;border:1px solid #334155;border-radius:.8rem;padding:1.2rem;min-height:150px}
 h2{font-size:1.1rem;margin-top:0}ul{list-style:none;margin:0;padding:0}li{padding:.65rem 0;border-top:1px solid #334155;overflow-wrap:anywhere}
@@ -21,6 +21,21 @@ strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb718
 <header><h1>Project Workspace MCP</h1><p>Projects, compute resources, and durable workspaces.</p></header>
 <form id="auth"><input id="token" type="password" required placeholder="Administrator token" aria-label="Administrator token" autocomplete="off"><button>Connect</button></form>
 <p id="notice" role="status" aria-live="polite"></p>
+<section aria-label="Create workspace">
+  <h2>Create workspace</h2>
+  <form id="create">
+    <select id="project-select" aria-label="Project" required><option value="">Connect to select a project</option></select>
+    <input id="cpu" type="number" step="0.5" min="0.5" max="32" value="1" aria-label="CPU cores" required>
+    <input id="memory" type="number" step="128" min="128" max="131072" value="1024" aria-label="Memory in MiB" required>
+    <label><input id="usb-toggle" type="checkbox"> Enable USB passthrough</label>
+    <div id="usb-options" hidden>
+      <label for="usb-device">USB device to attach</label>
+      <select id="usb-device"><option value="">Select a USB device</option></select>
+      <small class="usb-warning">A workspace with USB access can overwrite the selected device. Select the exact device intended for flashing. All mounted disks are rejected.</small>
+    </div>
+    <button type="submit">Create workspace</button>
+  </form>
+</section>
 <main>
   <section><h2>Projects</h2><ul id="projects"><li class="muted">Connect to view projects.</li></ul></section>
   <section><h2>Compute nodes</h2><ul id="nodes"><li class="muted">Connect to view workers.</li></ul></section>
@@ -29,12 +44,27 @@ strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb718
 </main>
 <script>
 let credential='';
+let availableUSB=[];
 const el=id=>document.getElementById(id);
 function item(parent,header,detail){let li=document.createElement('li');let a=document.createElement('strong');a.textContent=header;let b=document.createElement('div');b.className='muted';b.textContent=detail;li.append(a,b);parent.append(li)}
 function render(id,rows,show){let box=el(id);box.replaceChildren();if(!rows.length)item(box,'None','No entries');else rows.forEach(x=>item(box,...show(x)))}
 async function get(path){let response=await fetch(path,{headers:{Authorization:'Bearer '+credential},cache:'no-store'});if(!response.ok)throw new Error('Request '+response.status+' for '+path);return response.json()}
 async function refresh(){
   const projects=await get('/api/projects');const nodes=await get('/api/nodes');
+  const projectSelect=el('project-select');const selectedProject=projectSelect.value;
+  projectSelect.replaceChildren();
+  for(const p of projects){const option=document.createElement('option');option.value=p.id;option.textContent=p.title+' ('+p.id+')';projectSelect.append(option)}
+  if(projects.some(p=>p.id===selectedProject))projectSelect.value=selectedProject;
+  const hardware=await get('/api/hardware');
+  availableUSB=hardware.filter(d=>d.kind==='usb'&&d.online&&!d.leased_to);
+  const deviceSelect=el('usb-device');const previous=deviceSelect.value;
+  deviceSelect.replaceChildren();
+  const none=document.createElement('option');none.value='';none.textContent='Select a USB device';deviceSelect.append(none);
+  for(let i=0;i<availableUSB.length;i++){
+    const d=availableUSB[i],option=document.createElement('option');
+    option.value=d.node+'::'+d.id;option.textContent=d.node+' / '+(d.model||d.id)+' ('+d.id+')';deviceSelect.append(option)
+  }
+  if(availableUSB.some(d=>d.node+'::'+d.id===previous))deviceSelect.value=previous;
   render('projects',projects,p=>[p.title,p.id]);
   render('nodes',nodes,n=>[n.id,n.online?'Online · '+(n.capabilities.cpu||0)+' CPU · '+(n.capabilities.memory_mb||0)+' MiB available':'Offline']);
   const workspaces=[];const artifacts=[];
@@ -46,6 +76,23 @@ async function refresh(){
   render('artifacts',artifacts.slice(-30),([p,a])=>[a.name,p+' · '+a.size+' bytes · SHA256 '+a.sha256.slice(0,12)]);
   el('notice').textContent='';
 }
+el('usb-toggle').addEventListener('change',()=>{el('usb-options').hidden=!el('usb-toggle').checked});
+el('create').addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(!credential){el('notice').textContent='Connect first';return}
+  const usb=el('usb-toggle').checked;
+  const device=availableUSB.find(d=>d.node+'::'+d.id===el('usb-device').value);
+  if(usb&&!device){el('notice').textContent='Select the USB device to reserve';return}
+  const request={project_id:el('project-select').value,cpu:Number(el('cpu').value),
+    memory_mb:Number(el('memory').value),usb_passthrough:usb};
+  if(usb){request.hardware={usb:1};request.usb_node=device.node;request.usb_device_id=device.id}
+  try{
+    const response=await fetch('/api/workspaces',{method:'POST',headers:{Authorization:'Bearer '+credential,'Content-Type':'application/json'},body:JSON.stringify(request)});
+    const body=await response.json();
+    if(!response.ok)throw new Error(body.detail||'Workspace creation failed: '+response.status);
+    await refresh();el('notice').textContent='Workspace '+body.id.slice(0,12)+' scheduled';
+  }catch(e){el('notice').textContent=e.message}
+});
 el('auth').addEventListener('submit',async event=>{event.preventDefault();credential=el('token').value;el('token').value='';try{await refresh()}catch(e){credential='';el('notice').textContent=e.message}});
 </script>
 </body>

@@ -33,7 +33,6 @@ def test_admin_and_worker_credentials_are_separate(monkeypatch,tmp_path):
         assert client.post('/api/worker/node-two/claim',headers=worker_headers).status_code==401
 
 
-
 def test_mcp_initialize_and_tool_discovery_require_admin_credential(monkeypatch, tmp_path):
     monkeypatch.setenv('PWM_ADMIN_TOKEN', 'administrator-secret-' + 'z' * 48)
     monkeypatch.setenv('PWM_DB', str(tmp_path / 'mcp.db'))
@@ -72,3 +71,30 @@ def test_mcp_initialize_and_tool_discovery_require_admin_credential(monkeypatch,
         assert discovered.status_code == 200, discovered.text
         names = {tool['name'] for tool in discovered.json()['result']['tools']}
         assert {'workspace_create', 'workspace_call', 'github_checkout_repository'} <= names
+
+
+def test_usb_workspace_toggle_is_off_by_default_and_selects_exact_device(monkeypatch, tmp_path):
+    monkeypatch.setenv('PWM_ADMIN_TOKEN', 'controller-secret-' + 'x' * 48)
+    monkeypatch.setenv('PWM_DB', str(tmp_path / 'controller.db'))
+    sys.modules.pop('project_workspace.server', None)
+    server = importlib.import_module('project_workspace.server')
+    admin = {'Authorization': 'Bearer ' + 'controller-secret-' + 'x' * 48}
+    with TestClient(server.app, base_url='http://localhost') as client:
+        assert client.post('/api/projects', headers=admin, json={'id': 'demo', 'title': 'Demo'}).status_code == 200
+        code = client.post('/api/pairing', headers=admin).json()['pairing_code']
+        joined = client.post('/api/pair', json={'pairing_code': code, 'name': 'worker-one',
+            'capabilities': {'cpu': 4, 'memory_mb': 8192, 'max_jobs': 1, 'docker': True,
+                'devices': [{'id': 'usb-drive-1', 'kind': 'usb'}]}})
+        assert joined.status_code == 200
+        base = {'project_id': 'demo', 'cpu': 1, 'memory_mb': 512, 'hardware': {'usb': 1}}
+        denied = client.post('/api/workspaces', headers=admin, json=base)
+        assert denied.status_code == 400 and 'explicitly enabled' in denied.text
+        denied = client.post('/api/workspaces', headers=admin, json={**base, 'usb_passthrough': True})
+        assert denied.status_code == 400 and 'selected worker' in denied.text
+        chosen = client.post('/api/workspaces', headers=admin, json={**base,
+            'usb_passthrough': True, 'usb_node': 'worker-one', 'usb_device_id': 'usb-drive-1'})
+        assert chosen.status_code == 200, chosen.text
+        assert chosen.json()['hardware'] == [{'id':'usb-drive-1','kind':'usb'}]
+        next_ = client.post('/api/workspaces', headers=admin, json={**base,
+            'usb_passthrough': True, 'usb_node': 'worker-one', 'usb_device_id': 'usb-drive-1'})
+        assert next_.status_code == 400 and 'capacity and hardware' in next_.text

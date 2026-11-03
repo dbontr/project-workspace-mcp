@@ -3,7 +3,7 @@
 import re
 
 DEVICE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-KINDS = frozenset({"gpu", "npu", "fpga"})
+KINDS = frozenset({"gpu", "npu", "fpga", "usb"})
 
 
 def validate_devices(capabilities):
@@ -31,7 +31,7 @@ def validate_request(request):
     if request is None:
         return {}
     if not isinstance(request, dict) or set(request) - KINDS:
-        raise ValueError("Hardware requests must use gpu, npu or fpga")
+        raise ValueError("Hardware requests must use gpu, npu, fpga or usb")
     if any(type(count) is not int or count < 0 or count > 8 for count in request.values()):
         raise ValueError("Invalid hardware request count")
     if sum(request.values()) > 8:

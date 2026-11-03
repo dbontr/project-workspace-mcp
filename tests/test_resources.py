@@ -188,3 +188,26 @@ def test_environment_image_can_be_exported_and_loaded_on_another_node(store,tmp_
     assert using['node']=='node-two'
     with pytest.raises(ValueError,match='not associated'):
         store.environment_import('alpha','vivado',destination['id'],'0'*32)
+
+
+def test_usb_passthrough_requires_exact_device_and_both_toggles(store):
+    store.node_register('node-two', {'cpu':4,'memory_mb':8192,'max_jobs':1,'docker':True,
+        'devices':[{'id':'usb-drive-a','kind':'usb','model':'USB flash drive'},
+                   {'id':'usb-drive-b','kind':'usb','model':'USB flash drive'}]})
+    with pytest.raises(ValueError,match='explicitly enabled'):
+        store.workspace_create('alpha',hardware={'usb':1})
+    with pytest.raises(ValueError,match='exact device ID'):
+        store.workspace_create('alpha',usb_passthrough=True,usb_node='node-two')
+    with pytest.raises(ValueError,match='selected worker'):
+        store.workspace_create('alpha',usb_passthrough=True,usb_device_id='usb-drive-a')
+    with pytest.raises(ValueError,match='capacity and hardware'):
+        store.workspace_create('alpha',usb_passthrough=True,usb_node='node-one',usb_device_id='usb-drive-a')
+    first=ready(store,usb_passthrough=True,usb_node='node-two',usb_device_id='usb-drive-b')
+    assert first['node']=='node-two' and first['hardware']==[{'id':'usb-drive-b','kind':'usb'}]
+    assert next(d for d in store.hardware_inventory() if d['id']=='usb-drive-b')['leased_to']==first['id']
+    with pytest.raises(ValueError,match='capacity and hardware'):
+        store.workspace_create('alpha',usb_passthrough=True,usb_node='node-two',usb_device_id='usb-drive-b')
+    assert store.workspace_create('alpha',usb_passthrough=True,usb_node='node-two',usb_device_id='usb-drive-a')['hardware'][0]['id']=='usb-drive-a'
+    store.workspace_stop('alpha',first['id'])
+    with pytest.raises(ValueError,match='capacity and hardware'):
+        store.workspace_create('alpha',usb_passthrough=True,usb_node='node-two',usb_device_id='usb-drive-b')

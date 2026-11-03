@@ -35,6 +35,7 @@ func run(args []string) error {
 	code := flags.String("code", "", "single-use worker pairing code")
 	tokenFile := flags.String("token-file", "", "worker credential file (owner read-only)")
 	deviceFile := flags.String("devices", os.Getenv("PWM_DEVICE_MANIFEST"), "approved hardware manifest")
+	enableUSB := flags.Bool("enable-usb", os.Getenv("PWM_ENABLE_USB_PASSTHROUGH") == "1", "allow operator-approved USB passthrough (disabled by default)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -45,7 +46,9 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	capabilities, err := worker.Capabilities(devices)
+	runner := worker.NewRunner(devices)
+	runner.USBEnabled = *enableUSB
+	capabilities, err := worker.Capabilities(runner.AvailableDevices())
 	if err != nil {
 		return err
 	}
@@ -109,5 +112,5 @@ func run(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return c.Run(ctx, worker.NewRunner(devices))
+	return c.Run(ctx, runner)
 }

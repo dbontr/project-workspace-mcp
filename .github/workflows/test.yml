@@ -30,8 +30,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Build Go worker
-        run: go build -o ./project-workspace-worker ./cmd/project-workspace-worker
+      - name: Build Go services
+        run: |
+          go build -o ./project-workspace-worker ./cmd/project-workspace-worker
+          go build -o ./project-workspace-controller ./cmd/project-workspace-controller
       - name: Install package
         run: python -m pip install -e '.[dev]'
       - name: Run Linux Docker integration
@@ -39,9 +41,11 @@ jobs:
           RUN_DOCKER_INTEGRATION: "1"
           RUN_GO_INTEGRATION: "1"
           PWM_GO_WORKER: "${{ github.workspace }}/project-workspace-worker"
+          RUN_GO_CONTROLLER_TEST: "1"
+          PWM_GO_CONTROLLER: "${{ github.workspace }}/project-workspace-controller"
         run: |
           docker pull python:3.12-slim
-          python -m pytest -q tests/test_docker_integration.py tests/test_go_worker_e2e.py
+          python -m pytest -q tests/test_docker_integration.py tests/test_go_worker_e2e.py tests/test_go_controller_e2e.py
 
   go:
     runs-on: ubuntu-latest
@@ -50,9 +54,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Test and vet Go worker
+      - name: Test and vet Go services
         run: |
           go test ./...
           go vet ./...
           GOOS=linux GOARCH=amd64 go build ./cmd/project-workspace-worker
           GOOS=linux GOARCH=arm64 go build ./cmd/project-workspace-worker
+          CGO_ENABLED=1 go build ./cmd/project-workspace-controller

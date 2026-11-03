@@ -47,12 +47,15 @@ func LoadDevices(path string) ([]Device, error) {
 	}
 	ids := make(map[string]bool)
 	for _, d := range manifest.Devices {
-		if !deviceID.MatchString(d.ID) || (d.Kind != "gpu" && d.Kind != "npu" && d.Kind != "fpga") || ids[d.ID] {
+		if !deviceID.MatchString(d.ID) || (d.Kind != "gpu" && d.Kind != "npu" && d.Kind != "fpga" && d.Kind != "usb") || ids[d.ID] {
 			return nil, errors.New("invalid or duplicate device ID")
 		}
 		ids[d.ID] = true
 		if len(d.Model) > 128 || d.MemoryMB < 0 || d.MemoryMB > 10_000_000 {
 			return nil, errors.New("invalid device metadata")
+		}
+		if d.Kind == "usb" && (d.CDI != "" || len(d.Paths) != 1 || !usbPathAllowed(d.Paths[0])) {
+			return nil, errors.New("USB devices require a single stable USB path, not CDI")
 		}
 		if d.CDI != "" && !cdiName.MatchString(d.CDI) {
 			return nil, errors.New("invalid CDI device")
@@ -70,6 +73,11 @@ func LoadDevices(path string) ([]Device, error) {
 }
 
 func DeviceDockerArgs(claims []DeviceClaim, known []Device) ([]string, error) {
+	return DeviceDockerArgsAuthorized(claims, known, false)
+}
+
+// DeviceDockerArgsAuthorized only maps explicitly leased, operator-approved hardware.
+func DeviceDockerArgsAuthorized(claims []DeviceClaim, known []Device, allowUSB bool) ([]string, error) {
 	if len(claims) > 8 {
 		return nil, errors.New("too many hardware allocations")
 	}
@@ -85,6 +93,17 @@ func DeviceDockerArgs(claims []DeviceClaim, known []Device) ([]string, error) {
 			return nil, errors.New("hardware lease does not match local device policy")
 		}
 		used[claim.ID] = true
+		if d.Kind == "usb" {
+			if !allowUSB {
+				return nil, errors.New("USB passthrough is disabled")
+			}
+			mapped, group, err := usbDockerMapping(d.Paths[0])
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, "--device", mapped+":"+mapped+":rwm", "--group-add", fmt.Sprint(group))
+			continue
+		}
 		if d.CDI != "" {
 			args = append(args, "--device", d.CDI)
 		}

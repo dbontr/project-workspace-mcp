@@ -147,7 +147,7 @@ func (c *Client) Run(ctx context.Context, runner *Runner) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		capabilities, err := Capabilities(runner.Devices)
+		capabilities, err := Capabilities(runner.AvailableDevices())
 		if err != nil {
 			return err
 		}

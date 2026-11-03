@@ -9,7 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import Response, HTMLResponse, FileResponse
+from fastapi.responses import Response, HTMLResponse, FileResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
@@ -111,6 +111,9 @@ class WorkspaceRequest(BaseModel):
     project_id: str
     environment: str | None = None
     hardware: dict[str, int] = Field(default_factory=dict)
+    usb_passthrough: bool = False
+    usb_node: str | None = None
+    usb_device_id: str | None = None
     image: str = 'python:3.12-slim'
     cpu: float = 1
     memory_mb: int = 512
@@ -193,9 +196,12 @@ def list_github_repositories(project_id: str) -> list[str]:
 @mcp.tool()
 def workspace_create(project_id: str, image: str = 'python:3.12-slim',
                      cpu: float = 1, memory_mb: int = 512, duration_minutes: int = 120,
-                     hardware: dict[str, int] | None = None, environment: str | None = None) -> dict:
+                     hardware: dict[str, int] | None = None, environment: str | None = None,
+                     usb_passthrough: bool = False, usb_node: str | None = None,
+                     usb_device_id: str | None = None) -> dict:
     """Reserve an online Linux worker and request an isolated interactive container."""
-    return store.workspace_create(project_id, image, cpu, memory_mb, duration_minutes, hardware, environment)
+    return store.workspace_create(project_id, image, cpu, memory_mb, duration_minutes, hardware,
+                                  environment, usb_passthrough, usb_node, usb_device_id)
 
 
 @mcp.tool()
@@ -224,7 +230,7 @@ def workspace_destroy(project_id: str, workspace_id: str) -> dict:
 
 @mcp.tool()
 def list_hardware() -> list[dict]:
-    """Discover exclusive GPUs, NPUs, and FPGAs and their active workspace leases."""
+    """Discover exclusive GPU, NPU, FPGA, and opt-in USB device leases."""
     return store.hardware_inventory()
 
 
@@ -353,6 +359,12 @@ async def lifespan(app):
 app = FastAPI(title='Project Workspace MCP', lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware,
                    allowed_hosts=ALLOWED_HOSTS)
+
+
+@app.exception_handler(ValueError)
+async def rejected_request(request: Request, error: ValueError):
+    code = 409 if 'version conflict' in str(error).lower() else 400
+    return JSONResponse(status_code=code, content={'detail': str(error)})
 
 
 @app.get('/health')
@@ -497,7 +509,8 @@ def pair_node(value: Pairing):
 @app.post('/api/workspaces', dependencies=[Depends(admin)])
 def create_workspace_http(value: WorkspaceRequest):
     return store.workspace_create(value.project_id, value.image, value.cpu, value.memory_mb,
-                                  value.duration_minutes, value.hardware, value.environment)
+                                  value.duration_minutes, value.hardware, value.environment,
+                                  value.usb_passthrough, value.usb_node, value.usb_device_id)
 
 
 @app.get('/api/projects/{project_id}/workspaces', dependencies=[Depends(admin)])
