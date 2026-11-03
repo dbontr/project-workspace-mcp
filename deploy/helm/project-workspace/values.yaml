@@ -4,6 +4,7 @@ controller:
   enabled: true
   image: ghcr.io/dbontr/project-workspace-controller:main
   imagePullPolicy: Always
+  imagePullSecrets: []
   secretName: pwm-controller-credentials
   tlsSecretName: pwm-controller-tls
   publicURL: ""
@@ -25,6 +26,7 @@ worker:
   enabled: true
   image: ghcr.io/dbontr/project-workspace-worker:main
   imagePullPolicy: Always
+  imagePullSecrets: []
   name: research-agent
   projectID: research
   workloadNamespace: pwm-research
