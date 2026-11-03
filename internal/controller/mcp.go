@@ -154,13 +154,13 @@ func (t toolDefinition) schema() map[string]any {
 			prop["items"] = map[string]any{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]any{
-					"ordinal": map[string]any{"type": "integer"},
-					"page": map[string]any{"type": "integer"},
-					"section": map[string]any{"type": "string"},
+					"ordinal":    map[string]any{"type": "integer"},
+					"page":       map[string]any{"type": "integer"},
+					"section":    map[string]any{"type": "string"},
 					"line_start": map[string]any{"type": "integer"},
-					"line_end": map[string]any{"type": "integer"},
-					"text": map[string]any{"type": "string"},
-					"topics": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"line_end":   map[string]any{"type": "integer"},
+					"text":       map[string]any{"type": "string"},
+					"topics":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
 				"required": []string{"ordinal", "text"},
 			}
