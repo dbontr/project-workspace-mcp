@@ -633,6 +633,12 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	}
 	g := s.GitHub
 	switch name {
+	case "github_app_verify":
+		repositories, err := db.Repositories(project)
+		if err != nil {
+			return nil, err
+		}
+		return g.AppReadiness(repositories)
 	case "github_repository_api":
 		params, _ := a["params"].(map[string]any)
 		return g.RepositoryAPI(repository, get("method"), get("endpoint"), params, a["payload"])
