@@ -1,4 +1,7 @@
 {{- if .Values.controller.enabled }}
+{{- if and .Values.controller.backupInterval (or (not .Values.controller.offsite.repository) (not .Values.controller.offsite.passwordSecretName)) }}
+{{- fail "controller encrypted backups require controller.offsite.repository and controller.offsite.passwordSecretName" }}
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -52,6 +55,35 @@ spec:
         fsGroup: 65534
         seccompProfile:
           type: RuntimeDefault
+      {{- if .Values.controller.backupInterval }}
+      initContainers:
+        - name: restic-password
+          image: busybox:1.36
+          command:
+            - sh
+            - -ec
+            - |
+              umask 077
+              cat /input/password > /output/password
+              test -s /output/password
+              chmod 0600 /output/password
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: restic-password-input
+              mountPath: /input
+              readOnly: true
+            - name: restic-password
+              mountPath: /output
+      {{- end }}
       containers:
         - name: controller
           image: {{ .Values.controller.image | quote }}
@@ -94,8 +126,22 @@ spec:
             {{- if .Values.controller.backupInterval }}
             - name: PWM_RESTIC_BACKUP_INTERVAL
               value: {{ .Values.controller.backupInterval | quote }}
+            - name: PWM_RESTIC_REPOSITORY
+              value: {{ .Values.controller.offsite.repository | quote }}
+            - name: PWM_RESTIC_PASSWORD_FILE
+              value: /run/restic/password
             {{- end }}
+          {{- if and .Values.controller.backupInterval .Values.controller.offsite.backendSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.controller.offsite.backendSecretName }}
+          {{- end }}
           volumeMounts:
+            {{- if .Values.controller.backupInterval }}
+            - name: restic-password
+              mountPath: /run/restic
+              readOnly: true
+            {{- end }}
             - name: state
               mountPath: /data
             - name: tls
@@ -131,6 +177,19 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
       volumes:
+        {{- if .Values.controller.backupInterval }}
+        - name: restic-password-input
+          secret:
+            secretName: {{ .Values.controller.offsite.passwordSecretName }}
+            defaultMode: 292
+            items:
+              - key: password
+                path: password
+        - name: restic-password
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        {{- end }}
         - name: state
           persistentVolumeClaim:
             claimName: pwm-controller-state

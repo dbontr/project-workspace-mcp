@@ -69,3 +69,5 @@
 - [Pull an image from a private registry](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/) — Kubernetes. Used for: separate project-namespace OCI image pull credentials for workspace Pods and Jobs.
 - [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) — GitHub. Used for: publishing controller and worker OCI images with authenticated package access.
 - [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) — GitHub. Used for: gating OCI package publication on Kubernetes Helm integration tests.
+- [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) — Kubernetes. Used for: isolated controller-only backup password projection, init-container copies, and backend credential injection.
+- [Kubernetes init containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) — Kubernetes. Used for: preparing owner-only Restic credentials before controller startup.

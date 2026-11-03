@@ -14,6 +14,10 @@ controller:
   storageClass: ""
   githubPATSecretName: ""
   backupInterval: ""
+  offsite:
+    repository: ""
+    passwordSecretName: ""
+    backendSecretName: ""
   resources:
     requests:
       cpu: 250m

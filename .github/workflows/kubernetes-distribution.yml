@@ -25,12 +25,30 @@ jobs:
             -f deploy/kubernetes/Dockerfile.controller -t pwm-controller:ci .
           docker buildx build --platform linux/amd64 --provenance=false --load \
             -f deploy/kubernetes/Dockerfile.worker -t pwm-worker:ci .
+          docker run --rm --entrypoint restic pwm-controller:ci version
       - name: Start disposable Kubernetes cluster
         uses: helm/kind-action@v1.12.0
         with:
           version: v0.30.0
           node_image: kindest/node:v1.34.0
           kubectl_version: v1.34.1
+      - name: Validate Restic Helm configuration
+        run: |
+          helm template pwm-controller deploy/helm/project-workspace \
+            --set worker.enabled=false \
+            --set controller.backupInterval=24h \
+            --set controller.offsite.repository=s3:backup.example.invalid/tenant \
+            --set controller.offsite.passwordSecretName=pwm-restic-password \
+            --set controller.offsite.backendSecretName=pwm-restic-backend > /tmp/restic-helm.yaml
+          grep -q 'PWM_RESTIC_PASSWORD_FILE' /tmp/restic-helm.yaml
+          grep -q 'name: restic-password' /tmp/restic-helm.yaml
+          grep -q 'name: restic-password-input' /tmp/restic-helm.yaml
+          if helm template pwm-controller deploy/helm/project-workspace --set worker.enabled=false \
+             --set controller.backupInterval=24h >/tmp/restic-missing.yaml 2>/tmp/restic-error; then
+            echo "Backup chart accepted missing repository credentials" >&2
+            exit 1
+          fi
+          grep -q 'encrypted backups require' /tmp/restic-error
       - name: Load packaged application images
         run: |
           kind load docker-image pwm-controller:ci --name chart-testing

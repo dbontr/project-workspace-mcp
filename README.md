@@ -177,6 +177,49 @@ registry-backed Kubernetes builder; these operations are not emulated with
 privileged Docker access to the worker. The explicit Docker compatibility
 backend continues to provide them where authorized.
 
+### Encrypted controller backups on Kubernetes
+
+The controller image contains Restic. Scheduled backups require an initialized,
+independently hosted Restic repository and a protected encryption password.
+Create separate Secrets for the password and any storage-provider credentials.
+The password Secret must contain a `password` key. The optional backend
+Secret may contain provider-specific environment variables such as
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+
+```sh
+kubectl -n pwm-system create secret generic pwm-restic-password \
+  --from-file=password=/secure/restic-password
+kubectl -n pwm-system create secret generic pwm-restic-backend \
+  --from-env-file=/secure/restic-backend.env
+```
+
+Supply the following non-secret Helm values with the controller release:
+
+```yaml
+controller:
+  backupInterval: 24h
+  offsite:
+    repository: s3:s3.example.org/project-workspace
+    passwordSecretName: pwm-restic-password
+    backendSecretName: pwm-restic-backend
+```
+
+The password is copied by a non-root init container into a memory-backed
+volume with mode `0600`; the controller mounts only that protected copy.
+The password source Secret is not mounted into the main controller container.
+The chart rejects a configured backup interval without a repository and
+password Secret name. The controller validates that it can execute Restic
+before starting a scheduled backup process. A controller state snapshot
+contains SQLite and the durable controller artifact store, but **not**
+the project workspace PVCs that live in separate namespaces.
+
+Backups require enough free space to prepare an intermediate snapshot on the
+controller PVC. Initialize the encrypted repository before deploying the
+schedule. Reconstruct a fresh controller from an exact Restic snapshot and
+verify SQLite integrity and artifact checksums before describing the backup
+system as recovered. Schedule and periodic checks alone are not substitutes
+for a verified restore on an independent machine.
+
 ## Install and start
 
 ```sh
