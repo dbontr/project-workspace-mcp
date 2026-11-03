@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -47,8 +48,8 @@ func LoadKubernetesDevices(filename string) ([]KubernetesDevice, error) {
 		return nil, fmt.Errorf("invalid Kubernetes device manifest: %w", err)
 	}
 	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
-		return nil, errors.New("multiple JSON values in Kubernetes device manifest")
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, errors.New("Kubernetes device manifest must contain exactly one JSON object")
 	}
 	if len(input.Devices) > 64 {
 		return nil, errors.New("too many Kubernetes device slots")
