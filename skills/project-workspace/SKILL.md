@@ -1,6 +1,6 @@
 ---
 name: project-workspace
-description: Use an authorized, self-hosted Project Workspace MCP controller to work on durable projects through linked GitHub repositories, distributed Go/Linux workers, versioned software environments, exclusive GPU/NPU/FPGA and opt-in USB leases, interactive Docker workspaces, snapshots, and durable artifacts. Apply to multi-step coding, research, scientific computing, and hardware development when the user's Project Workspace MCP tools are connected.
+description: Use an authorized, self-hosted Project Workspace MCP controller to work on durable projects through linked GitHub repositories, distributed Go/Linux workers, versioned software environments, exclusive GPU/NPU/FPGA and opt-in USB leases, isolated Kubernetes Pod workspaces with PVCs and optional Docker compatibility, snapshots, and durable artifacts. Apply to multi-step coding, research, scientific computing, and hardware development when the user's Project Workspace MCP tools are connected.
 ---
 
 # Project Workspace
