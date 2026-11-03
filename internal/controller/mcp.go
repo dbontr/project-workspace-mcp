@@ -32,7 +32,8 @@ var tools = []toolDefinition{
 	{"task_claim", "Claim a work key with a fenced, expiring lease", []string{"project_id", "work_key"}, []string{"lease_seconds"}},
 	{"task_claim_renew", "Renew a live task lease by generation and secret token", []string{"project_id", "work_key", "lease_token", "generation"}, []string{"lease_seconds"}},
 	{"task_claim_finish", "Complete or release a task lease, validating result artifact ownership", []string{"project_id", "work_key", "lease_token", "generation", "status"}, []string{"artifact_ids"}},
-	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id"}},
+	{"resource_plan", "Rank eligible Docker workers and explain resource constraints without reserving anything", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id", "node_id", "min_gpu_memory_mb", "architecture"}},
+	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id", "node_id", "min_gpu_memory_mb", "architecture"}},
 	{"workspace_list", "List project workspaces", []string{"project_id"}, nil},
 	{"workspace_call", "Queue a command or file operation", []string{"project_id", "workspace_id", "action", "payload"}, nil},
 	{"workspace_operation", "Get a worker-confirmed operation result", []string{"project_id", "workspace_id", "operation_id"}, nil},
@@ -106,7 +107,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "duration_minutes", "expected_version", "expected_revision", "number", "generation", "lease_seconds":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "number", "generation", "lease_seconds":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
@@ -278,6 +279,12 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 			}
 		}
 		return db.FinishTaskClaim(project, get("work_key"), get("lease_token"), get("status"), asInt(a["generation"]), artifacts)
+	case "resource_plan":
+		var req WorkspaceRequest
+		if err := JSONRequest(a, &req); err != nil {
+			return nil, err
+		}
+		return db.PlanWorkspace(req)
 	case "workspace_create":
 		var req WorkspaceRequest
 		if e := JSONRequest(a, &req); e != nil {

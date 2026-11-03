@@ -168,6 +168,39 @@ curl -fsS -X POST "$BASE/api/workspaces" -H "Authorization: Bearer $TOKEN" \
 
 Workspace creation queues a `start` operation; it is not synchronous. Poll `GET /api/projects/research/workspaces` until the workspace is `ready`. Use `workspace_call` to run commands and edit files; poll `workspace_operation` for worker-confirmed results. `exit_code != 0` means a command failed even when the operation itself completed. Export important artifacts before stopping the workspace. Named volumes are retained for deliberate recovery and cleanup.
 
+## Resource feasibility and worker selection
+
+`resource_plan` and `POST /api/projects/PROJECT/resource-plan` inspect current
+controller heartbeats, reserved CPU/memory, exclusive device leases, approved
+OCI images, environment placement and worker architecture. They return a
+ranked list of eligible and rejected nodes with individual explanations.
+A plan does **not** reserve capacity. The local Go/Docker worker scheduler
+rechecks all admission conditions when creating the workspace.
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/resource-plan" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"cpu":4,"memory_mb":8192,"hardware":{"gpu":1},"min_gpu_memory_mb":8192}'
+```
+
+The planner prefers adequate non-accelerated nodes for CPU-only work and
+avoids occupying scarce GPUs or NPUs unnecessarily. A GPU memory requirement
+compares the operator-reported total VRAM per GPU; it is **not** a measurement
+of free VRAM inside a shared GPU. Whole-device lease exclusivity remains
+mandatory. Devices with missing VRAM information cannot satisfy a nonzero
+minimum. `architecture` may be `amd64` or `arm64`, and `node_id` may
+require an exact approved worker. After inspecting the plan, an authorized
+client may pass `node_id` and `min_gpu_memory_mb` to `workspace_create`.
+The controller then enforces the requested node and device constraints
+during actual allocation. The dashboard offers a resource preview before
+workspace creation.
+
+This planner covers the Go controller's registered Docker workers. It does
+not schedule Kubernetes, Slurm, a university cluster, Windows desktop
+applications, or macOS hosts, and it cannot establish software licensing
+or actual application execution solely from image metadata. External
+adapters and independent scheduling permissions require separate acceptance.
+
 ## GPU, NPU, FPGA, and USB access
 
 A node's operator supplies an allowlisted device manifest. The controller never accepts a host device path from an AI tool. Explicit leases reserve whole device identifiers for one workspace at a time. GPU access uses an administrator-configured CDI identifier; vendor FPGA/NPU hardware can use approved character devices and vendor runtime images.

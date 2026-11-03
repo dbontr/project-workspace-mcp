@@ -93,6 +93,20 @@ software from existing workspaces or deletes retained artifacts. Never
 download, redistribute, or run a proprietary installer merely because a
 program request cites a publisher URL.
 
+## Advisory resource planning
+
+Call `resource_plan` before a resource-intensive workspace. Supply CPU,
+memory, image or ready environment, architecture, GPU/NPU/FPGA counts,
+an exact USB device if requested, and `min_gpu_memory_mb` where relevant.
+Read all candidate exclusions; prefer a non-accelerated node for CPU-only
+jobs. A feasible plan is advisory, not a scheduler reservation. Pass an
+eligible `node_id` to `workspace_create` only when a specific node is
+required. The controller rechecks resources and device leases before
+allocation. Treat operator-advertised GPU VRAM as a total hardware property,
+not a live free-memory reading. Unknown application licenses, missing
+native desktop adapters, and external-cluster quotas cannot be satisfied
+by an ordinary Docker candidate.
+
 ## Shared image and software catalogs
 
 Before reserving a worker, call `pool_list_images` to discover images approved

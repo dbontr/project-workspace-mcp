@@ -12,6 +12,9 @@ type WorkspaceRequest struct {
 	Image           string         `json:"image"`
 	Environment     string         `json:"environment"`
 	ImagePoolID     string         `json:"image_pool_id"`
+	NodeID          string         `json:"node_id"`
+	Architecture    string         `json:"architecture"`
+	MinGPUMemoryMB  int            `json:"min_gpu_memory_mb"`
 	CPU             float64        `json:"cpu"`
 	MemoryMB        int            `json:"memory_mb"`
 	DurationMinutes int            `json:"duration_minutes"`
@@ -35,35 +38,58 @@ func (r *WorkspaceRequest) defaults() {
 		r.DurationMinutes = 120
 	}
 }
-func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error) {
-	req.defaults()
-	if !validImage.MatchString(req.Image) || req.CPU < 0.1 || req.CPU > 32 || req.MemoryMB < 64 || req.MemoryMB > 131072 || req.DurationMinutes < 1 || req.DurationMinutes > 1440 {
+func (r WorkspaceRequest) validatedHardware() (map[string]int, error) {
+	if !validImage.MatchString(r.Image) || r.CPU < 0.1 || r.CPU > 32 ||
+		r.MemoryMB < 64 || r.MemoryMB > 131072 ||
+		r.DurationMinutes < 1 || r.DurationMinutes > 1440 {
 		return nil, errors.New("invalid workspace limits")
 	}
-	hardware, e := validHardwareRequest(req.Hardware)
-	if e != nil {
-		return nil, e
+	hardware, err := validHardwareRequest(r.Hardware)
+	if err != nil {
+		return nil, err
 	}
-	if req.USBPassthrough {
-		if !validID.MatchString(req.USBNode) || !validDeviceID.MatchString(req.USBDeviceID) || hardware["usb"] > 1 {
+	if r.USBPassthrough {
+		if !validID.MatchString(r.USBNode) || !validDeviceID.MatchString(r.USBDeviceID) || hardware["usb"] > 1 {
 			return nil, errors.New("USB requires an exact node and device ID")
 		}
 		hardware["usb"] = 1
-	} else if hardware["usb"] > 0 || req.USBNode != "" || req.USBDeviceID != "" {
+	} else if hardware["usb"] > 0 || r.USBNode != "" || r.USBDeviceID != "" {
 		return nil, errors.New("USB passthrough must be explicitly enabled")
 	}
-	if req.Environment != "" && !validID.MatchString(req.Environment) {
+	if r.NodeID != "" && !validID.MatchString(r.NodeID) {
+		return nil, errors.New("invalid exact worker ID")
+	}
+	if r.NodeID != "" && r.USBPassthrough && r.NodeID != r.USBNode {
+		return nil, errors.New("USB worker conflicts with required node")
+	}
+	if r.Architecture != "" && r.Architecture != "amd64" && r.Architecture != "arm64" {
+		return nil, errors.New("invalid worker architecture")
+	}
+	if r.Environment != "" && !validID.MatchString(r.Environment) {
 		return nil, errors.New("invalid environment")
 	}
-	if req.ImagePoolID != "" && (!validID.MatchString(req.ImagePoolID) || req.Environment != "") {
+	if r.ImagePoolID != "" && (!validID.MatchString(r.ImagePoolID) || r.Environment != "") {
 		return nil, errors.New("invalid image pool selection")
+	}
+	if r.MinGPUMemoryMB < 0 || r.MinGPUMemoryMB > 1000000 ||
+		r.MinGPUMemoryMB > 0 && hardware["gpu"] == 0 {
+		return nil, errors.New("minimum GPU VRAM requires a GPU allocation")
+	}
+	return hardware, nil
+}
+
+func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error) {
+	req.defaults()
+	hardware, e := req.validatedHardware()
+	if e != nil {
+		return nil, e
 	}
 	var out map[string]any
 	err := db.transaction(func() error {
 		if e := requireProject(db, req.ProjectID); e != nil {
 			return e
 		}
-		preferred, arch := "", ""
+		preferred, arch := "", req.Architecture
 		if req.ImagePoolID != "" {
 			image, e := db.lockedOne("SELECT image,architecture FROM pool_images WHERE id=?", req.ImagePoolID)
 			if e != nil {
@@ -80,7 +106,12 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 				return errors.New("image has been disabled or retired")
 			}
 			req.Image = asString(image["image"])
-			arch = asString(image["architecture"])
+			if target := asString(image["architecture"]); target != "" {
+				if arch != "" && arch != target {
+					return errors.New("requested architecture conflicts with image")
+				}
+				arch = target
+			}
 		}
 		if req.Environment != "" {
 			p, e := db.lockedOne("SELECT * FROM environments WHERE project=? AND name=?", req.ProjectID, req.Environment)
@@ -92,7 +123,12 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 			}
 			req.Image = asString(p["image"])
 			preferred = asString(p["node"])
-			arch = asString(p["architecture"])
+			if target := asString(p["architecture"]); target != "" {
+				if arch != "" && arch != target {
+					return errors.New("requested architecture conflicts with environment")
+				}
+				arch = target
+			}
 		}
 		nodes, e := db.queryLocked("SELECT id,capabilities FROM nodes WHERE last_seen>? ORDER BY id", stamp()-90)
 		if e != nil {
@@ -102,11 +138,12 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 		var selected []map[string]any
 		for _, node := range nodes {
 			id := asString(node["id"])
-			if req.USBPassthrough && id != req.USBNode || preferred != "" && id != preferred {
+			if req.USBPassthrough && id != req.USBNode || preferred != "" && id != preferred || req.NodeID != "" && id != req.NodeID {
 				continue
 			}
 			caps := decodeObject(asString(node["capabilities"]))
-			if req.ImagePoolID != "" && !workerHasImage(caps, req.Image) {
+			if req.ImagePoolID != "" && !workerHasImage(caps, req.Image) ||
+				req.Environment == "" && caps["images"] != nil && !workerHasImage(caps, req.Image) {
 				continue
 			}
 			if !asBool(caps["docker"]) || asFloat(caps["cpu"]) < req.CPU || asFloat(caps["memory_mb"]) < float64(req.MemoryMB) {
@@ -147,6 +184,10 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 					continue
 				}
 				if asString(d["kind"]) == "usb" && req.USBPassthrough && asString(d["id"]) != req.USBDeviceID {
+					continue
+				}
+				if asString(d["kind"]) == "gpu" && req.MinGPUMemoryMB > 0 &&
+					asFloat(d["memory_mb"]) < float64(req.MinGPUMemoryMB) {
 					continue
 				}
 				possible = append(possible, d)
