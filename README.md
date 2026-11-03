@@ -221,6 +221,32 @@ project-workspace-worker serve --controller https://controller.example --node wo
 
 A pairing code is single-use and expires after ten minutes. Each worker has a distinct, revocable credential. The worker contacts the controller over outbound HTTPS and claims work with expiring fenced tokens. Intermittent network failures use bounded retries; failed cleanup never releases a leased device prematurely. Each worker continues reporting node health and capacity every 30 seconds while Docker jobs or workspace operations are running; rejected worker credentials cancel further execution. The node's reported online status is not proof that an individual job or operation has completed. Short-lived Docker jobs use controller-derived container names; when a worker command is interrupted or times out, the worker attempts bounded removal of that exact job container and confirms its absence. Host crashes may still require independent orphan reconciliation.
 
+### Worker credential revocation
+
+Administrators may revoke a registered worker at any time without deleting
+its workspace history or resetting exclusive hardware leases:
+
+```sh
+curl -fsS -X POST "$BASE/api/nodes/worker-one/revoke" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The equivalent MCP operation is `worker_revoke` with `node_id`; it is
+restricted to the controller administrator. It replaces the worker's stored
+credential hash and immediately rejects further authenticated requests using
+the old credential. The response reports counts of active workspaces,
+hardware leases, and pending operations, without exposing a replacement
+credential. Existing files, operations and device leases are retained for
+deliberate reconciliation; revocation is not a substitute for stopping or
+powering down an untrusted machine. A worker that is already executing work
+may not observe revocation until its next heartbeat or request.
+
+Pairing cannot silently re-enroll a revoked worker under an existing node
+name. An administrator must explicitly provision new credentials through the
+registered-node enrollment operation after reviewing the host and its
+outstanding resources. This avoids silently erasing unfinished operations or
+allowing a stolen pairing code to seize an existing worker identity.
+
 ## Projects, workspaces, and environments
 
 A project owns knowledge, linked GitHub repositories, artifacts, and execution history. An environment describes a versioned OCI image containing applications and dependencies. A workspace contains mutable project files. Hardware allocations are separate exclusive leases. These objects are not interchangeable.

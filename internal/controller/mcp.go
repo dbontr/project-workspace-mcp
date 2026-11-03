@@ -28,6 +28,7 @@ var tools = []toolDefinition{
 	{"knowledge_contribution", "Read a checksum-verified immutable project contribution", []string{"project_id", "contribution_id"}, nil},
 	{"knowledge_search_contributions", "Search project handoffs, decisions and findings", []string{"project_id", "query"}, nil},
 	{"list_compute_nodes", "List workers and availability", nil, nil},
+	{"worker_revoke", "Revoke a worker credential while retaining its active leases and recovery records; administrator only", []string{"node_id"}, nil},
 	{"submit_compute_job", "Queue a one-shot command", []string{"project_id", "command"}, []string{"image", "cpu", "memory_mb"}},
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
@@ -312,6 +313,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.ProjectContributionSearch(project, get("query"))
 	case "list_compute_nodes":
 		return db.Nodes()
+	case "worker_revoke":
+		return db.RevokeNode(get("node_id"))
 	case "submit_compute_job":
 		image := get("image")
 		if image == "" {

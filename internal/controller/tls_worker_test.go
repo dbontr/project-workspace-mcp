@@ -70,12 +70,28 @@ func TestTLSPairingSurvivesControllerRestartAndRevocation(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("restarted TLS controller lost the worker credential: HTTP %d", code)
 	}
-	if err := reopened.exec("DELETE FROM nodes WHERE id=?", "worker-one"); err != nil {
-		t.Fatal(err)
+	code, _ = call(t, tlsSecond, http.MethodPost,
+		"/api/nodes/worker-one/revoke", token, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("worker credential could revoke its own identity: HTTP %d", code)
+	}
+	code, revoked := call(t, tlsSecond, http.MethodPost,
+		"/api/nodes/worker-one/revoke", testOwner, nil)
+	wantOK(t, code, revoked)
+	if revoked["revoked"] != true || revoked["worker_id"] != "worker-one" {
+		t.Fatalf("administrator revocation did not confirm the worker: %v", revoked)
 	}
 	code, _ = call(t, tlsSecond, http.MethodPost,
 		"/api/worker/worker-one/heartbeat", token, heartbeat)
 	if code != http.StatusUnauthorized {
 		t.Fatalf("revoked worker credential still accepted: HTTP %d", code)
+	}
+	code, nextPairing := call(t, tlsSecond, http.MethodPost, "/api/pairing", testOwner, nil)
+	wantOK(t, code, nextPairing)
+	code, _ = call(t, tlsSecond, http.MethodPost, "/api/pair", "", map[string]any{
+		"name": "worker-one", "pairing_code": nextPairing["pairing_code"], "capabilities": capabilities,
+	})
+	if code == http.StatusOK {
+		t.Fatal("revoked worker silently regained access under its existing name")
 	}
 }
