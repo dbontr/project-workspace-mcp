@@ -85,6 +85,7 @@ var tools = []toolDefinition{
 	{"workspace_prune_volume", "Prune the stopped workspace's labeled Docker volume after verifying its checkpoint; requires project owner permission and explicit confirmation", []string{"project_id", "workspace_id", "snapshot_id", "confirm"}, nil},
 	{"workspace_restore", "Restore a workspace snapshot", []string{"project_id", "workspace_id", "snapshot_id"}, nil},
 	{"github_repository_api", "Call a repository-scoped GitHub endpoint", []string{"project_id", "repository", "method", "endpoint"}, []string{"params", "payload"}},
+	{"github_app_readiness", "Check the configured GitHub App installation and declared permissions for project-linked repositories without exposing credentials", []string{"project_id"}, nil},
 	{"github_repository", "Read repository metadata", []string{"project_id", "repository"}, nil},
 	{"github_app_verify", "Verify configured GitHub App access and declared publication permissions on linked project repositories without exposing credentials", []string{"project_id"}, nil},
 	{"github_read_file", "Read a file at a GitHub revision", []string{"project_id", "repository", "path", "ref"}, nil},
