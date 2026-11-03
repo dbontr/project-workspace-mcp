@@ -439,6 +439,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.CheckpointStopWorkspace(project, workspace)
 	case "workspace_checkpoint_stop_status":
 		return db.CheckpointStopStatus(project, workspace)
+	case "workspace_prune_volume":
+		return db.PruneWorkspaceVolume(project, workspace, get("snapshot_id"), a["confirm"] == true)
 	case "workspace_destroy":
 		return db.StopWorkspace(project, workspace)
 	case "list_hardware":
