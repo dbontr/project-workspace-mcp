@@ -89,6 +89,9 @@ jobs:
           systemd-analyze verify \
             "$RUNNER_TEMP/pwm-systemd/controller.service" \
             "$RUNNER_TEMP/pwm-systemd/worker.service"
+      - name: Verify worker heartbeat implementation format
+        run: |
+          test -z "$(gofmt -l internal/worker/agent.go internal/worker/agent_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
