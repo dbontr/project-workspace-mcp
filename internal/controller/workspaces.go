@@ -13,6 +13,7 @@ type WorkspaceRequest struct {
 	Environment     string         `json:"environment"`
 	ImagePoolID     string         `json:"image_pool_id"`
 	NodeID          string         `json:"node_id"`
+	Architecture    string         `json:"architecture"`
 	MinGPUMemoryMB  int            `json:"min_gpu_memory_mb"`
 	CPU             float64        `json:"cpu"`
 	MemoryMB        int            `json:"memory_mb"`
@@ -61,6 +62,9 @@ func (r WorkspaceRequest) validatedHardware() (map[string]int, error) {
 	if r.NodeID != "" && r.USBPassthrough && r.NodeID != r.USBNode {
 		return nil, errors.New("USB worker conflicts with required node")
 	}
+	if r.Architecture != "" && r.Architecture != "amd64" && r.Architecture != "arm64" {
+		return nil, errors.New("invalid worker architecture")
+	}
 	if r.Environment != "" && !validID.MatchString(r.Environment) {
 		return nil, errors.New("invalid environment")
 	}
@@ -85,7 +89,7 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 		if e := requireProject(db, req.ProjectID); e != nil {
 			return e
 		}
-		preferred, arch := "", ""
+		preferred, arch := "", req.Architecture
 		if req.ImagePoolID != "" {
 			image, e := db.lockedOne("SELECT image,architecture FROM pool_images WHERE id=?", req.ImagePoolID)
 			if e != nil {
@@ -102,7 +106,12 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 				return errors.New("image has been disabled or retired")
 			}
 			req.Image = asString(image["image"])
-			arch = asString(image["architecture"])
+			if target := asString(image["architecture"]); target != "" {
+				if arch != "" && arch != target {
+					return errors.New("requested architecture conflicts with image")
+				}
+				arch = target
+			}
 		}
 		if req.Environment != "" {
 			p, e := db.lockedOne("SELECT * FROM environments WHERE project=? AND name=?", req.ProjectID, req.Environment)
@@ -114,7 +123,12 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 			}
 			req.Image = asString(p["image"])
 			preferred = asString(p["node"])
-			arch = asString(p["architecture"])
+			if target := asString(p["architecture"]); target != "" {
+				if arch != "" && arch != target {
+					return errors.New("requested architecture conflicts with environment")
+				}
+				arch = target
+			}
 		}
 		nodes, e := db.queryLocked("SELECT id,capabilities FROM nodes WHERE last_seen>? ORDER BY id", stamp()-90)
 		if e != nil {
