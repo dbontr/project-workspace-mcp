@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -165,9 +166,11 @@ func TestResearchIndexPinnedGitAndCrossProjectAccess(t *testing.T) {
 	if _, err := db.SetProjectGrant("demo", "oidc:"+issuer+"#reader", "viewer", ""); err != nil {
 		t.Fatal(err)
 	}
-	code, value := call(t, httpServer, http.MethodGet, "/api/projects/demo/research/search?q=bounded", editor, nil)
-	wantOK(t, code, value)
-	code, _ = call(t, httpServer, http.MethodGet, "/api/projects/other/research/search?q=bounded", editor, nil)
+	code := researchGETStatus(t, httpServer, "/api/projects/demo/research/search?q=bounded", editor)
+	if code != http.StatusOK {
+		t.Fatalf("project viewer cannot search linked research: %d", code)
+	}
+	code = researchGETStatus(t, httpServer, "/api/projects/other/research/search?q=bounded", editor)
 	if code != http.StatusForbidden {
 		t.Fatal("ungranted project must not expose search")
 	}
@@ -177,8 +180,10 @@ func TestResearchIndexPinnedGitAndCrossProjectAccess(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatal("project viewer must not modify global shared-library index")
 	}
-	code, sourceValue := call(t, httpServer, http.MethodGet, "/api/projects/demo/research/sources", editor, nil)
-	wantOK(t, code, sourceValue)
+	code = researchGETStatus(t, httpServer, "/api/projects/demo/research/sources", editor)
+	if code != http.StatusOK {
+		t.Fatalf("project viewer cannot list linked sources: %d", code)
+	}
 }
 
 func TestResearchIndexBoundedLargeCorpus(t *testing.T) {
@@ -226,4 +231,19 @@ func TestResearchIndexBoundedLargeCorpus(t *testing.T) {
 	if _, err := db.SearchResearch("demo", "", 10); err == nil {
 		t.Fatal("unbounded empty query must be rejected")
 	}
+}
+
+func researchGETStatus(t *testing.T, server *httptest.Server, path, token string) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	response, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	return response.StatusCode
 }
