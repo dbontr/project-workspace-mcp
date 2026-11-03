@@ -147,8 +147,23 @@ func (t toolDefinition) schema() map[string]any {
 	properties := map[string]any{}
 	for _, key := range append(append([]string{}, t.Required...), t.Optional...) {
 		prop := map[string]any{"type": kindFor(key)}
-		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" || key == "passages" {
+		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" {
 			prop["items"] = map[string]any{"type": "string"}
+		}
+		if key == "passages" {
+			prop["items"] = map[string]any{
+				"type": "object", "additionalProperties": false,
+				"properties": map[string]any{
+					"ordinal": map[string]any{"type": "integer"},
+					"page": map[string]any{"type": "integer"},
+					"section": map[string]any{"type": "string"},
+					"line_start": map[string]any{"type": "integer"},
+					"line_end": map[string]any{"type": "integer"},
+					"text": map[string]any{"type": "string"},
+					"topics": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+				"required": []string{"ordinal", "text"},
+			}
 		}
 		properties[key] = prop
 	}
