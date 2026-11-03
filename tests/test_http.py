@@ -63,6 +63,9 @@ def test_mcp_initialize_and_tool_discovery_require_admin_credential(monkeypatch,
         assert authorized.status_code == 200, authorized.text
         response = authorized.json()
         assert 'result' in response and 'serverInfo' in response['result']
+        invalid_origin = client.post('/mcp/', json=initialize,
+                                     headers={**headers, 'Origin': 'https://untrusted.invalid'})
+        assert invalid_origin.status_code == 403
         discovered = client.post('/mcp/', json={
             'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list', 'params': {},
         }, headers=headers)

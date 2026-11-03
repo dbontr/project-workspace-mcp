@@ -23,7 +23,7 @@ project-workspace controller
 
 `init` saves a random administrator token under `~/.config/project-workspace/admin.token` with owner-only permissions. The controller listens at `http://127.0.0.1:8000` and stores SQLite state under `~/.local/share/project-workspace/`. The MCP path is `/mcp/`. Open `http://127.0.0.1:8000/dashboard` for a minimal browser dashboard.
 
-For remote clients, deploy an authenticated TLS terminator and configure `PWM_ALLOWED_HOSTS` for the external hostname. **Do not publish the controller or worker API over unauthenticated public HTTP.** Remote MCP host clients may require an OAuth-enabled gateway, which this release does not provide.
+For remote clients, deploy an authenticated TLS terminator and configure `PWM_ALLOWED_HOSTS` for the external hostname and `PWM_ALLOWED_ORIGINS` for approved browser origins. These values are enforced independently by FastAPI and the MCP SDK. **Do not publish the controller or worker API over unauthenticated public HTTP.** Remote MCP host clients may require an OAuth-enabled gateway, which this release does not provide.
 
 ## Pair a Linux worker
 

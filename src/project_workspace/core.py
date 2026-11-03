@@ -143,9 +143,14 @@ class Store:
         with self.lock,self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute("UPDATE jobs SET status='expired',updated=? WHERE status='leased' AND lease_until<?",(time.time(),time.time()))
-            running=db.execute("SELECT count(*) AS count FROM jobs WHERE node=? AND status='leased'",(node,)).fetchone()['count']
-            if running>=max(1,int(capacity.get('max_jobs',1))): return None
-            job=db.execute("SELECT * FROM jobs WHERE status='queued' AND cpu<=? AND memory_mb<=? ORDER BY created LIMIT 1",(capacity.get('cpu',0),capacity.get('memory_mb',0))).fetchone() if isinstance(capacity,dict) else None
+            if not isinstance(capacity,dict) or not capacity.get('docker'):
+                return None
+            occupied=db.execute("SELECT count(*) n,coalesce(sum(cpu),0) c,coalesce(sum(memory_mb),0) m FROM jobs WHERE node=? AND status='leased'",(node,)).fetchone()
+            if occupied['n']>=max(1,int(capacity.get('max_jobs',1))): return None
+            reserved=db.execute("SELECT coalesce(sum(cpu),0) c,coalesce(sum(memory_mb),0) m FROM workspaces WHERE node=? AND status IN ('starting','ready','stopping','failed')",(node,)).fetchone()
+            free_cpu=max(0,capacity.get('cpu',0)-occupied['c']-reserved['c'])
+            free_memory=max(0,capacity.get('memory_mb',0)-occupied['m']-reserved['m'])
+            job=db.execute("SELECT * FROM jobs WHERE status='queued' AND cpu<=? AND memory_mb<=? ORDER BY created,id LIMIT 1",(free_cpu,free_memory)).fetchone()
             if not job:return None
             token=secrets.token_urlsafe(32)
             db.execute("UPDATE jobs SET status='leased',node=?,token_hash=?,lease_until=?,updated=? WHERE id=?",(node,hashlib.sha256(token.encode()).hexdigest(),time.time()+420,time.time(),job['id']))

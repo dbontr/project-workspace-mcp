@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import Response, HTMLResponse
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import PlainTextResponse
@@ -21,8 +22,26 @@ ADMIN = os.getenv('PWM_ADMIN_TOKEN', '')
 if len(ADMIN) < 32:
     raise RuntimeError('PWM_ADMIN_TOKEN must contain at least 32 characters')
 
+# The SDK validates Host and Origin independently of FastAPI's trusted hosts.
+# Permit the configured public hostname, with and without an explicit port.
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('PWM_ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if h.strip()]
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv('PWM_ALLOWED_ORIGINS',
+                     'http://127.0.0.1,http://localhost').split(',') if o.strip()]
+
+def with_optional_port(entries):
+    result = []
+    for entry in entries:
+        result.append(entry)
+        if not entry.endswith(':*') and not entry.rsplit(':', 1)[-1].isdigit():
+            result.append(entry + ':*')
+    return list(dict.fromkeys(result))
+
 # A root path inside the /mcp mount yields the public /mcp/ endpoint.
-mcp = FastMCP('Project Workspace', stateless_http=True, json_response=True, streamable_http_path='/')
+mcp = FastMCP('Project Workspace', stateless_http=True, json_response=True,
+              streamable_http_path='/', transport_security=TransportSecuritySettings(
+                  enable_dns_rebinding_protection=True,
+                  allowed_hosts=with_optional_port(ALLOWED_HOSTS),
+                  allowed_origins=with_optional_port(ALLOWED_ORIGINS)))
 
 
 def github(project_id: str, repository: str) -> GitHubBroker:
@@ -264,7 +283,7 @@ async def lifespan(app):
 
 app = FastAPI(title='Project Workspace MCP', lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware,
-                   allowed_hosts=os.getenv('PWM_ALLOWED_HOSTS', '127.0.0.1,localhost').split(','))
+                   allowed_hosts=ALLOWED_HOSTS)
 
 
 @app.get('/health')
