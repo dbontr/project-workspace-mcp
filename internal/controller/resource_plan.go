@@ -27,7 +27,7 @@ func (db *Database) PlanWorkspace(req WorkspaceRequest) (map[string]any, error) 
 			return err
 		}
 		image := req.Image
-		arch, preferred := "", ""
+		arch, preferred := req.Architecture, ""
 		if req.ImagePoolID != "" {
 			pool, err := db.lockedOne("SELECT image,architecture FROM pool_images WHERE id=?", req.ImagePoolID)
 			if err != nil {
@@ -37,7 +37,12 @@ func (db *Database) PlanWorkspace(req WorkspaceRequest) (map[string]any, error) 
 				return errors.New("image pool entry not found")
 			}
 			image = asString(pool["image"])
-			arch = asString(pool["architecture"])
+			if target := asString(pool["architecture"]); target != "" {
+				if arch != "" && arch != target {
+					blockers = append(blockers, "requested architecture conflicts with image")
+				}
+				arch = target
+			}
 			status, _, err := db.poolStateLocked("image", req.ImagePoolID)
 			if err != nil {
 				return err
@@ -58,7 +63,12 @@ func (db *Database) PlanWorkspace(req WorkspaceRequest) (map[string]any, error) 
 				blockers = append(blockers, "environment image is not ready")
 			}
 			image = asString(env["image"])
-			arch = asString(env["architecture"])
+			if target := asString(env["architecture"]); target != "" {
+				if arch != "" && arch != target {
+					blockers = append(blockers, "requested architecture conflicts with environment")
+				}
+				arch = target
+			}
 			preferred = asString(env["node"])
 		}
 		chosenImage = image
