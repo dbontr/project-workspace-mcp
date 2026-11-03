@@ -3,6 +3,8 @@ package worker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -190,6 +192,40 @@ func (k *Kubernetes) create(ctx context.Context, resource map[string]any) error 
 	return err
 }
 
+// ensureOwnedCreate permits an interrupted start operation to be retried without
+// overwriting an existing Pod or claim. The canonical specification fingerprint
+// must match; Kubernetes adds default fields to live Pod specs.
+func (k *Kubernetes) ensureOwnedCreate(ctx context.Context, resource map[string]any, kind, name, id, ownerKind string) error {
+	spec, ok := resource["spec"].(map[string]any)
+	if !ok {
+		return errors.New("Kubernetes resource has no specification")
+	}
+	data, err := json.Marshal(spec)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(data)
+	fingerprint := hex.EncodeToString(hash[:])
+	meta := kubeObject(resource, "metadata")
+	meta["annotations"] = map[string]string{"pwm.dev/spec-sha256": fingerprint}
+	if err := k.create(ctx, resource); err == nil {
+		return nil
+	} else {
+		live, lookupErr := k.get(ctx, kind, name)
+		if lookupErr != nil {
+			return fmt.Errorf("create Kubernetes %s %s: %w (lookup: %v)", kind, name, err, lookupErr)
+		}
+		if !k.owns(live, id, ownerKind) {
+			return fmt.Errorf("existing Kubernetes %s is not owned by this workspace", kind)
+		}
+		annotations := kubeObject(kubeObject(live, "metadata"), "annotations")
+		if annotations["pwm.dev/spec-sha256"] != fingerprint {
+			return fmt.Errorf("existing Kubernetes %s specification does not match the requested workspace", kind)
+		}
+		return nil
+	}
+}
+
 func (k *Kubernetes) get(ctx context.Context, kind, name string) (map[string]any, error) {
 	out, err := k.checked(ctx, nil, "get", kind, name, "-o", "json")
 	if err != nil {
@@ -322,10 +358,11 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 	if err != nil {
 		return nil, err
 	}
-	if err := k.create(ctx, k.claim(id)); err != nil {
+	if err := k.ensureOwnedCreate(ctx, k.claim(id), "pvc", kubeClaimName(id), id, "volume"); err != nil {
 		return nil, fmt.Errorf("create workspace PVC: %w", err)
 	}
-	if err := k.create(ctx, k.workspacePod(id, image, cpu, int(memory), display, width, height, devices)); err != nil {
+	if err := k.ensureOwnedCreate(ctx, k.workspacePod(id, image, cpu, int(memory), display, width, height, devices),
+		"pod", kubePodName(id), id, "workspace"); err != nil {
 		return nil, fmt.Errorf("create workspace Pod: %w", err)
 	}
 	if _, err := k.checked(ctx, nil, "wait", "--for=condition=Ready", "pod/"+kubePodName(id), "--timeout=180s"); err != nil {
@@ -376,9 +413,28 @@ func (k *Kubernetes) hardwareResources(p map[string]any) (map[string]string, err
 	return resources, nil
 }
 
-func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
+// requireWorkspace guards each Kubernetes exec path against a Pod whose
+// name matches a workspace ID but whose ownership labels do not.
+func (k *Kubernetes) requireWorkspace(ctx context.Context, id string) error {
 	if !workspaceID.MatchString(id) {
-		return nil, errors.New("invalid workspace ID")
+		return errors.New("invalid workspace ID")
+	}
+	pod, err := k.get(ctx, "pod", kubePodName(id))
+	if err != nil {
+		return fmt.Errorf("inspect workspace Pod: %w", err)
+	}
+	if !k.owns(pod, id, "workspace") {
+		return errors.New("workspace Pod does not belong to this worker and project")
+	}
+	if kubeObject(pod, "metadata")["deletionTimestamp"] != nil {
+		return errors.New("workspace Pod is terminating")
+	}
+	return nil
+}
+
+func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
+	if err := k.requireWorkspace(ctx, id); err != nil {
+		return nil, err
 	}
 	command := append([]string{"exec", "pod/" + kubePodName(id), "-c", "workspace", "--"}, args...)
 	return k.checked(ctx, nil, command...)
@@ -387,6 +443,9 @@ func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byt
 func (k *Kubernetes) Command(ctx context.Context, id, command string, input io.Reader) (map[string]any, error) {
 	if !workspaceID.MatchString(id) || strings.TrimSpace(command) == "" || len(command) > 16000 {
 		return nil, errors.New("invalid workspace command")
+	}
+	if err := k.requireWorkspace(ctx, id); err != nil {
+		return nil, err
 	}
 	args := []string{"exec"}
 	if input != nil {
@@ -408,7 +467,14 @@ func (k *Kubernetes) Stop(ctx context.Context, id string) (map[string]any, error
 	}
 	pod, err := k.get(ctx, "pod", kubePodName(id))
 	if err != nil {
-		return nil, fmt.Errorf("inspect workspace Pod before termination: %w", err)
+		if !strings.Contains(err.Error(), "(NotFound)") {
+			return nil, fmt.Errorf("inspect workspace Pod before termination: %w", err)
+		}
+		claim, claimErr := k.get(ctx, "pvc", kubeClaimName(id))
+		if claimErr != nil || !k.owns(claim, id, "volume") {
+			return nil, errors.New("workspace Pod is absent and retained claim could not be verified")
+		}
+		return map[string]any{"status": "stopped", "claim": kubeClaimName(id)}, nil
 	}
 	if !k.owns(pod, id, "workspace") {
 		return nil, errors.New("workspace Pod does not match controller ownership")
