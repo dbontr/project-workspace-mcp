@@ -314,7 +314,7 @@ func TestWorkerHeartbeatContinuesDuringJobExecution(t *testing.T) {
 			w.Write([]byte(`{"operation":null}`))
 		case "/api/worker/worker-one/claim":
 			if claimed.CompareAndSwap(false, true) {
-				w.Write([]byte(`{"job":{"id":"test-job","command":"echo test","image":"debian:bookworm-slim","cpu":1,"memory_mb":128,"lease_token":"test-lease"}}`))
+				w.Write([]byte(`{"job":{"id":"cccccccccccccccccccccccccccccccc","command":"echo test","image":"debian:bookworm-slim","cpu":1,"memory_mb":128,"lease_token":"test-lease"}}`))
 			} else {
 				w.Write([]byte(`{"job":null}`))
 			}
@@ -385,5 +385,68 @@ func TestBackgroundHeartbeatRevocationStopsWorker(t *testing.T) {
 	}
 	if n := heartbeats.Load(); n < 2 {
 		t.Fatalf("background heartbeat did not execute: %d", n)
+	}
+}
+
+func TestInterruptedJobContainerCleanup(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "docker.log")
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(logFile) + "\n" +
+		"if [ \"$1\" = run ]; then exec sleep 4; fi\n" +
+		"if [ \"$1\" = rm ] || [ \"$1\" = ps ]; then exit 0; fi\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	jobID := strings.Repeat("a", 32)
+	status, result := NewRunner(nil).ExecuteJob(ctx, Job{
+		ID: jobID, Image: "debian:bookworm-slim", CPU: 1, MemoryMB: 128, Command: "echo test",
+	})
+	if status != "failed" || !strings.Contains(result, "deadline exceeded") {
+		t.Fatalf("cancelled job result: status=%s result=%s", status, result)
+	}
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logged := string(data)
+	for _, part := range []string{
+		"run --rm --name pwm-job-" + jobID + " --label project-workspace=job",
+		"rm -f pwm-job-" + jobID,
+		"ps -a --filter name=^/pwm-job-" + jobID + "$ --format {{.Names}}",
+	} {
+		if !strings.Contains(logged, part) {
+			t.Fatalf("Docker operation %q missing from trace:\n%s", part, logged)
+		}
+	}
+}
+
+func TestJobContainerIdentityAndCleanupVerification(t *testing.T) {
+	if status, result := NewRunner(nil).ExecuteJob(context.Background(), Job{
+		ID: "bad/name", Image: "debian:bookworm-slim",
+	}); status != "failed" || result != "invalid job ID" {
+		t.Fatalf("accepted unsafe Docker job name: %s %s", status, result)
+	}
+
+	dir := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = run ]; then exec sleep 4; fi\n" +
+		"if [ \"$1\" = ps ]; then printf '%s\\n' pwm-job-" + strings.Repeat("b", 32) + "; fi\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	status, result := NewRunner(nil).ExecuteJob(ctx, Job{
+		ID: strings.Repeat("b", 32), Image: "debian:bookworm-slim",
+		CPU: 1, MemoryMB: 128, Command: "echo test",
+	})
+	if status != "failed" || !strings.Contains(result, "container remains") {
+		t.Fatalf("failed to report orphaned job container: %s %s", status, result)
 	}
 }

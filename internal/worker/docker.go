@@ -754,11 +754,37 @@ func (r *Runner) importArchive(ctx context.Context, op Operation, c *Client) (ma
 	return map[string]any{"repository": p.Repository, "revision": p.Revision, "files_bytes": total}, nil
 }
 
+// cleanupInterruptedJob confirms that a cancelled Docker CLI did not leave a
+// short-lived job container running. The exact container name is controller
+// derived; cleanup never targets unrelated containers or named volumes.
+func (r *Runner) cleanupInterruptedJob(container string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, _, _, _ = r.docker(ctx, 20*time.Second, nil, "rm", "-f", container)
+	output, stderr, status, err := r.docker(ctx, 10*time.Second, nil, "ps", "-a",
+		"--filter", "name=^/"+container+"$", "--format", "{{.Names}}")
+	if err != nil {
+		return fmt.Errorf("cannot verify cancelled job cleanup: %w", err)
+	}
+	if status != 0 {
+		return fmt.Errorf("cannot verify cancelled job cleanup: %s", strings.TrimSpace(string(stderr)))
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		return errors.New("cancelled job container remains after cleanup")
+	}
+	return nil
+}
+
 func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
+	if !workspaceID.MatchString(job.ID) {
+		return "failed", "invalid job ID"
+	}
 	if !r.Images[job.Image] {
 		return "failed", "unapproved container image"
 	}
-	args := []string{"run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
+	container := "pwm-job-" + job.ID
+	args := []string{"run", "--rm", "--name", container, "--label", "project-workspace=job",
+		"--network", "none", "--read-only", "--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges", "--pids-limit", "128",
 		"--cpus", strconv.FormatFloat(job.CPU, 'f', 2, 64),
 		"--memory", fmt.Sprintf("%dm", job.MemoryMB),
@@ -766,6 +792,16 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--user", "65534:65534",
 		job.Image, "sh", "-c", job.Command}
 	out, stderr, status, err := r.docker(ctx, 5*time.Minute, nil, args...)
+	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+		reason := err
+		if ctx.Err() != nil {
+			reason = ctx.Err()
+		}
+		if cleanupErr := r.cleanupInterruptedJob(container); cleanupErr != nil {
+			return "failed", fmt.Sprintf("%v; %v", reason, cleanupErr)
+		}
+		return "failed", reason.Error()
+	}
 	if err != nil {
 		return "failed", err.Error()
 	}
