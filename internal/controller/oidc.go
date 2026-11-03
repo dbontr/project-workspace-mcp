@@ -27,9 +27,10 @@ type OIDCVerifier struct {
 	JWKSURL  string
 	Client   *http.Client
 
-	mu       sync.Mutex
-	keys     map[string]*rsa.PublicKey
-	validTil time.Time
+	mu        sync.Mutex
+	keys      map[string]*rsa.PublicKey
+	validTil  time.Time
+	lastFetch time.Time
 }
 
 func configuredOIDC() (*OIDCVerifier, error) {
@@ -58,12 +59,18 @@ func configuredOIDC() (*OIDCVerifier, error) {
 func (v *OIDCVerifier) key(kid string) (*rsa.PublicKey, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if v.keys != nil && time.Now().Before(v.validTil) {
+	now := time.Now()
+	if v.keys != nil && now.Before(v.validTil) {
 		if key := v.keys[kid]; key != nil {
 			return key, nil
 		}
-		return nil, errors.New("OIDC signing key not found")
 	}
+	// A previously unknown key ID may indicate issuer key rotation. Limit
+	// refresh attempts across all unknown IDs to avoid network request floods.
+	if !v.lastFetch.IsZero() && now.Sub(v.lastFetch) < 15*time.Second {
+		return nil, errors.New("OIDC signing key not found or key service temporarily unavailable")
+	}
+	v.lastFetch = now
 	client := v.Client
 	if client == nil {
 		return nil, errors.New("OIDC HTTP client not configured")
@@ -170,11 +177,17 @@ func (v *OIDCVerifier) Verify(token string) (string, error) {
 		subject == "" || len(subject) > 512 || strings.ContainsAny(subject, "\x00\r\n") {
 		return "", errors.New("invalid JWT issuer, audience, subject, or lifetime")
 	}
-	if nbf, ok := claims["nbf"].(float64); ok && nbf > now+30 {
-		return "", errors.New("JWT is not yet valid")
+	if raw, exists := claims["nbf"]; exists {
+		nbf, ok := raw.(float64)
+		if !ok || nbf > now+30 {
+			return "", errors.New("JWT has invalid not-before claim")
+		}
 	}
-	if iat, ok := claims["iat"].(float64); ok && iat > now+30 {
-		return "", errors.New("JWT issued in the future")
+	if raw, exists := claims["iat"]; exists {
+		iat, ok := raw.(float64)
+		if !ok || iat > now+30 {
+			return "", errors.New("JWT has invalid issued-at claim")
+		}
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
