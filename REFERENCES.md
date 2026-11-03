@@ -46,3 +46,6 @@
 - [FFmpeg X11 input device](https://ffmpeg.org/ffmpeg-devices.html#x11grab) — FFmpeg. Used for: bounded X11 framebuffer capture and PNG encoding inside isolated workspaces.
 - [Xvfb virtual framebuffer X server](https://www.x.org/releases/X11R7.6/doc/man/man1/Xvfb.1.xhtml) — X.Org. Used for: workspace-local virtual X displays without host desktop access.
 - [Docker exec reference](https://docs.docker.com/reference/cli/docker/container/exec/) — Docker. Used for: detached virtual display processes and commands inside the existing workspace container.
+- [Docker volume create](https://docs.docker.com/reference/cli/docker/volume/create/) — Docker. Used for: independently labeled workspace volume ownership.
+- [Docker volume inspect](https://docs.docker.com/reference/cli/docker/volume/inspect/) — Docker. Used for: ownership verification before retained-volume cleanup.
+- [Docker volume remove](https://docs.docker.com/reference/cli/docker/volume/rm/) — Docker. Used for: non-forced removal and verification of stopped workspace volumes.
