@@ -150,7 +150,7 @@ func TestOIDCMCPAuthorizationAndIsolation(t *testing.T) {
 	if _, err := db.SetProjectGrant("demo", principal, "owner", "viewer"); err != nil {
 		t.Fatal(err)
 	}
-	if mcpCall("read_project_note", "demo") {
-		t.Fatal("MCP owner should pass access guard, even if a note is absent")
+	if mcpCall("workspace_list", "demo") {
+		t.Fatal("project member should be allowed to list their workspace records")
 	}
 }
