@@ -10,7 +10,8 @@ func (s *Server) handlePool(w http.ResponseWriter, r *http.Request, p []string) 
 		case "images":
 			switch r.Method {
 			case "GET":
-				send(w, s.DB.ImagePool())
+				v, err := s.DB.ImagePool()
+				send(w, v, err)
 			case "POST":
 				var in struct {
 					ID           string `json:"id"`
@@ -22,7 +23,8 @@ func (s *Server) handlePool(w http.ResponseWriter, r *http.Request, p []string) 
 					fail(w, 400, err.Error())
 					return true
 				}
-				send(w, s.DB.RegisterPoolImage(in.ID, in.Image, in.Description, in.Architecture))
+				v, err := s.DB.RegisterPoolImage(in.ID, in.Image, in.Description, in.Architecture)
+				send(w, v, err)
 			default:
 				fail(w, 405, "method not allowed")
 			}
@@ -30,7 +32,8 @@ func (s *Server) handlePool(w http.ResponseWriter, r *http.Request, p []string) 
 		case "software":
 			switch r.Method {
 			case "GET":
-				send(w, s.DB.SoftwarePool())
+				v, err := s.DB.SoftwarePool()
+				send(w, v, err)
 			case "POST":
 				var in struct {
 					ID          string   `json:"id"`
@@ -42,7 +45,8 @@ func (s *Server) handlePool(w http.ResponseWriter, r *http.Request, p []string) 
 					fail(w, 400, err.Error())
 					return true
 				}
-				send(w, s.DB.RegisterPoolSoftware(in.ID, in.ImageID, in.Description, in.Packages))
+				v, err := s.DB.RegisterPoolSoftware(in.ID, in.ImageID, in.Description, in.Packages)
+				send(w, v, err)
 			default:
 				fail(w, 405, "method not allowed")
 			}
@@ -65,7 +69,8 @@ func (s *Server) handlePool(w http.ResponseWriter, r *http.Request, p []string) 
 			fail(w, 400, err.Error())
 			return true
 		}
-		send(w, s.DB.EnvironmentFromPool(p[2], in.Name, in.ImageID, in.SoftwareIDs, in.ExpectedVersion))
+		v, err := s.DB.EnvironmentFromPool(p[2], in.Name, in.ImageID, in.SoftwareIDs, in.ExpectedVersion)
+		send(w, v, err)
 		return true
 	}
 	return false
