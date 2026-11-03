@@ -51,7 +51,7 @@ spec:
       containers:
         - name: controller
           image: {{ .Values.controller.image | quote }}
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
           args: ["controller", "--listen", "0.0.0.0:8443"]
           ports:
             - containerPort: 8443
