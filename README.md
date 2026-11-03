@@ -93,6 +93,37 @@ go vet ./...
 
 GitHub Actions runs Go unit and protocol tests, cross-architecture builds, and an optional Docker controller/worker integration. The latter requires Docker and a `python:3.12-slim` test image **inside the container only**; no Python interpreter runs on the controller or worker host.
 
+## Offline recovery snapshots
+
+Stop the controller and all processes that write to its data directory before
+backing up or restoring it. The snapshot includes a transactionally consistent
+SQLite copy, referenced project artifacts, and referenced content-addressed
+library objects. It verifies SHA-256 hashes, detects missing files, and refuses
+backups while resumable library uploads remain pending. Unreferenced files and
+unfinished uploads are not part of the snapshot.
+
+```sh
+project-workspace-controller backup /mnt/off-host/project-workspace-snapshot
+```
+
+The destination must not exist. Store the completed snapshot on independent
+storage, with restricted access and encryption appropriate to the sensitivity
+of project data. A backup left on the same disk is not an off-host backup.
+Run recovery on a separate machine or clean data directory:
+
+```sh
+PWM_DB=/srv/project-workspace/state.db \
+  project-workspace-controller restore /mnt/off-host/project-workspace-snapshot
+```
+
+Restore verifies every listed file before writing and refuses to overwrite an
+existing database or artifact directory. It does not restore active processes,
+worker leases, external GitHub repositories, or external hardware. Reconfigure
+controller credentials separately and confirm that workers can be paired again.
+Run a full restore exercise on another host before treating backups as reliable.
+The commands are offline maintenance operations, not an automatic backup
+scheduler or an online multi-controller failover mechanism.
+
 ## Operating limits
 
 This is a single-owner system intended for trusted machines. It does not provide production OAuth, fine-grained multi-user project grants, VM-grade hostile-tenant isolation, automatic off-host database backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.
