@@ -195,6 +195,16 @@ func (r *Runner) Start(ctx context.Context, id string, p map[string]any) (map[st
 	if cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 {
 		return nil, errors.New("invalid resource allocation")
 	}
+	display := p["display"] == true
+	width, height := getFloat(p, "display_width"), getFloat(p, "display_height")
+	if display {
+		if width != float64(int(width)) || height != float64(int(height)) ||
+			!validDisplaySize(int(width), int(height)) {
+			return nil, errors.New("invalid virtual display size")
+		}
+	} else if width != 0 || height != 0 {
+		return nil, errors.New("virtual display dimensions require display opt-in")
+	}
 	var selected []DeviceClaim
 	if p["devices"] != nil {
 		encoded, _ := json.Marshal(p["devices"])
@@ -227,6 +237,12 @@ func (r *Runner) Start(ctx context.Context, id string, p map[string]any) (map[st
 		"--memory", fmt.Sprintf("%dm", int(memory)), "--memory-swap", fmt.Sprintf("%dm", int(memory)),
 		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m"}
 	args = append(args, flags...)
+	if display {
+		args = append(args, "--env", "DISPLAY=:99", "--env", "HOME=/workspace",
+			"--env", "XDG_CONFIG_HOME=/workspace/.config",
+			"--env", "XDG_CACHE_HOME=/workspace/.cache",
+			"--env", "XDG_RUNTIME_DIR=/tmp")
+	}
 	args = append(args, "--user", "65534:65534", "--workdir", "/workspace", "--mount", volume,
 		image, "sh", "-c", "while :; do sleep 3600; done")
 	if _, err := r.checked(ctx, 10*time.Minute, nil, args...); err != nil {
@@ -236,6 +252,15 @@ func (r *Runner) Start(ctx context.Context, id string, p map[string]any) (map[st
 		"touch /workspace/.pwm-writecheck && rm /workspace/.pwm-writecheck"); err != nil {
 		_, _, _, _ = r.docker(ctx, 30*time.Second, nil, "rm", "-f", n)
 		return nil, err
+	}
+	if display {
+		if err := r.startVirtualDisplay(ctx, n, int(width), int(height)); err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			_, _, _, _ = r.docker(cleanupCtx, 15*time.Second, nil, "rm", "-f", n)
+			cancel()
+			return nil, fmt.Errorf("virtual display startup failed: %w", err)
+		}
+		return map[string]any{"status": "ready", "container": n, "display": ":99", "width": width, "height": height}, nil
 	}
 	return map[string]any{"status": "ready", "container": n}, nil
 }
@@ -583,6 +608,8 @@ func (r *Runner) Handle(ctx context.Context, op Operation, c *Client) (map[strin
 		return r.saveOutput(ctx, op, c, path.Base(p), nil, "exec", n, "cat", "--", p)
 	case "snapshot":
 		return r.saveOutput(ctx, op, c, "workspace.tar.gz", nil, "exec", n, "tar", "-czf", "-", "-C", "/workspace", ".")
+	case "capture_display":
+		return r.captureDisplay(ctx, op, c)
 	case "restore_snapshot":
 		return r.restore(ctx, op, c)
 	case "build_image":
