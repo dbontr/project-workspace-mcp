@@ -32,6 +32,16 @@ var tools = []toolDefinition{
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
 	{"list_github_repositories", "List linked repositories", []string{"project_id"}, nil},
+	{"task_create", "Create a standalone owner-scoped task independent of research projects", []string{"title"}, []string{"description", "tags"}},
+	{"task_list", "Search the authenticated owner's standalone tasks", nil, []string{"query"}},
+	{"task_details", "Read the owner's standalone task metadata", []string{"task_id"}, nil},
+	{"task_update", "Update owner task metadata with a version guard", []string{"task_id", "title", "status", "expected_version"}, []string{"description", "tags"}},
+	{"task_files", "List all immutable task file revisions", []string{"task_id"}, nil},
+	{"task_file_info", "Inspect a task file revision, latest by default", []string{"task_id", "name"}, []string{"revision"}},
+	{"task_save_text", "Save a new immutable task text-file revision up to 512 KiB", []string{"task_id", "name", "body", "expected_revision"}, nil},
+	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
+	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
+	{"task_export_project", "Promote an immutable task file into an editor-authorized project artifact", []string{"task_id", "name", "project_id"}, []string{"revision"}},
 	{"task_claim_list", "List cooperative project task claims without lease tokens", []string{"project_id"}, nil},
 	{"task_claim_status", "Inspect a project's work-key claim and durable completion", []string{"project_id", "work_key"}, nil},
 	{"task_claim", "Claim a work key with a fenced, expiring lease", []string{"project_id", "work_key"}, []string{"lease_seconds"}},
@@ -112,11 +122,11 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "number", "generation", "lease_seconds", "limit":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "revision", "number", "generation", "lease_seconds", "limit":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
-	case "packages", "software_ids", "artifact_ids":
+	case "packages", "software_ids", "artifact_ids", "tags":
 		return "array"
 	case "hardware", "payload", "params", "changes":
 		return "object"
@@ -127,7 +137,7 @@ func (t toolDefinition) schema() map[string]any {
 	properties := map[string]any{}
 	for _, key := range append(append([]string{}, t.Required...), t.Optional...) {
 		prop := map[string]any{"type": kindFor(key)}
-		if key == "software_ids" || key == "packages" || key == "artifact_ids" {
+		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" {
 			prop["items"] = map[string]any{"type": "string"}
 		}
 		properties[key] = prop
@@ -282,6 +292,38 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.LinkRepositoryWithRole(project, get("repository"), get("role"), get("default_ref"))
 	case "list_github_repositories":
 		return db.Repositories(project)
+	case "task_create":
+		var tags []string
+		if a["tags"] != nil {
+			if err := JSONRequest(a["tags"], &tags); err != nil {
+				return nil, err
+			}
+		}
+		return db.CreatePersonalTask(who.Principal, get("title"), get("description"), tags)
+	case "task_list":
+		return db.PersonalTasks(who.Principal, get("query"))
+	case "task_details":
+		return db.PersonalTaskInfo(who.Principal, get("task_id"))
+	case "task_update":
+		var tags []string
+		if a["tags"] != nil {
+			if err := JSONRequest(a["tags"], &tags); err != nil {
+				return nil, err
+			}
+		}
+		return db.UpdatePersonalTask(who.Principal, get("task_id"), get("title"), get("description"), get("status"), tags, asInt(a["expected_version"]))
+	case "task_files":
+		return db.PersonalTaskFiles(who.Principal, get("task_id"))
+	case "task_file_info":
+		return db.PersonalTaskFile(who.Principal, get("task_id"), get("name"), asInt(a["revision"]))
+	case "task_save_text":
+		return db.SavePersonalTaskText(who.Principal, get("task_id"), get("name"), get("body"), asInt(a["expected_revision"]))
+	case "task_send_base64":
+		return db.SavePersonalTaskBase64(who.Principal, get("task_id"), get("name"), get("sha256"), get("data_base64"), asInt(a["expected_revision"]))
+	case "task_read_base64":
+		return db.PersonalTaskFileBase64(who.Principal, get("task_id"), get("name"), asInt(a["revision"]))
+	case "task_export_project":
+		return db.PromotePersonalTaskFile(who.Principal, get("task_id"), get("name"), asInt(a["revision"]), project)
 	case "task_claim_list":
 		return db.ListTaskClaims(project)
 	case "task_claim_status":
