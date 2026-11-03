@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS library_sources(library TEXT NOT NULL,repository TEXT
 CREATE TABLE IF NOT EXISTS project_libraries(project TEXT NOT NULL,library TEXT NOT NULL,linked REAL NOT NULL,PRIMARY KEY(project,library),FOREIGN KEY(project) REFERENCES projects(id),FOREIGN KEY(library) REFERENCES libraries(id));
 CREATE TABLE IF NOT EXISTS library_objects(library TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,kind TEXT NOT NULL,created REAL NOT NULL,PRIMARY KEY(library,name),FOREIGN KEY(library) REFERENCES libraries(id));
 CREATE TABLE IF NOT EXISTS library_uploads(id TEXT PRIMARY KEY,library TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,kind TEXT NOT NULL,received INTEGER NOT NULL,created REAL NOT NULL,expires REAL NOT NULL,FOREIGN KEY(library) REFERENCES libraries(id));
+CREATE TABLE IF NOT EXISTS pool_images(id TEXT PRIMARY KEY,image TEXT NOT NULL,architecture TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS pool_software(id TEXT PRIMARY KEY,image_id TEXT NOT NULL,packages TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',created REAL NOT NULL,FOREIGN KEY(image_id) REFERENCES pool_images(id));
 `
 
 var (
