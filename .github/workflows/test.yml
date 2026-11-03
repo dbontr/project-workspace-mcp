@@ -112,8 +112,8 @@ jobs:
           test -z "$(gofmt -l internal/controller/worker_revocation.go internal/controller/worker_revocation_test.go internal/controller/tls_worker_test.go)"
       - name: Check Kubernetes executor formatting
         run: |
-          gofmt -d internal/worker/kubernetes.go internal/worker/kubernetes_operations.go internal/worker/kubernetes_test.go internal/worker/kubernetes_integration_test.go internal/controller/kubernetes_test.go
-          test -z "$(gofmt -l internal/worker/kubernetes.go internal/worker/kubernetes_operations.go internal/worker/kubernetes_test.go internal/worker/kubernetes_integration_test.go internal/controller/kubernetes_test.go)"
+          gofmt -d internal/worker/kubernetes.go internal/worker/kubernetes_devices.go internal/worker/kubernetes_operations.go internal/worker/kubernetes_test.go internal/worker/kubernetes_devices_test.go internal/worker/kubernetes_integration_test.go internal/controller/kubernetes_test.go
+          test -z "$(gofmt -l internal/worker/kubernetes.go internal/worker/kubernetes_devices.go internal/worker/kubernetes_operations.go internal/worker/kubernetes_test.go internal/worker/kubernetes_devices_test.go internal/worker/kubernetes_integration_test.go internal/controller/kubernetes_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
@@ -160,6 +160,8 @@ jobs:
           helm lint deploy/helm/project-workspace
           helm template pwm-system deploy/helm/project-workspace > /tmp/project-workspace.yaml
           test -s /tmp/project-workspace.yaml
+          helm template pwm-system deploy/helm/project-workspace --set worker.deviceManifestConfigMap=pwm-approved-devices > /tmp/project-workspace-devices.yaml
+          grep -q PWM_KUBE_DEVICE_MANIFEST /tmp/project-workspace-devices.yaml
       - name: Create disposable Kubernetes cluster
         uses: helm/kind-action@v1.12.0
         with:
