@@ -49,7 +49,7 @@ func configuredOIDC() (*OIDCVerifier, error) {
 		return nil, errors.New("OIDC JWKS must be an HTTPS URL")
 	}
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:       5 * time.Second,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return &OIDCVerifier{Issuer: issuer, Audience: audience, JWKSURL: jwks, Client: client}, nil
