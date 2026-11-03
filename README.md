@@ -1,224 +1,98 @@
 # Project Workspace MCP
 
-A self-hosted project workspace and distributed compute broker for MCP-compatible AI clients. The controller retains project knowledge, artifact history, GitHub access, resource reservations, environment definitions, and execution state. Paired worker agents provide isolated containers with filesystem, terminal, application-toolchain, and approved hardware access.
+A self-hosted, project-aware distributed computing system for MCP clients. Its Go controller retains projects, repository associations, knowledge, durable artifacts, environment definitions, hardware leases, jobs, and execution history. Linux Go workers run isolated Docker workspaces on allocated compute nodes. The controller and worker require **no Python interpreter or Python application server**. Python, Vivado, C++, and other applications can be installed within approved workspace images.
 
-**Architecture:** The currently deployed controller is Python (FastAPI, SQLite, and the MCP Python SDK). The preferred Linux worker is written in **Go** and builds as a standalone binary. Python is an optional language *inside* workspaces, not a dependency of the Go worker. The Go controller gateway owns project and versioned-note operations; it forwards all remaining worker, scheduler, GitHub, and MCP endpoints to the loopback Python controller. Full Go-only operation is not yet supported. A single host can serve both roles, and Kubernetes is not required.
+The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Project Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
 
-This is an alpha implementation for trusted, owner-operated infrastructure. It is **not** a hosted multi-tenant execution service, full Codex replacement, or verified installation of Vivado. The complete acceptance requirements are tracked in this repository's issues.
+## Requirements
 
-## Controller installation
+- Go 1.23 or later at build time, and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation.
+- Linux and Docker on each execution worker. The controller can run on supported hosts that provide SQLite and a C compiler at build time.
+- A trusted MCP client. The HTTP MCP endpoint implements stateless Streamable HTTP with the 2025-06-18 protocol, including `initialize`, `tools/list`, and `tools/call`.
+- An HTTPS ingress for remote connections; the controller listens on loopback by default. Authentication currently uses a single owner credential, not OAuth or project-specific multi-user authorization.
 
-Requires Python 3.11 or later. On a machine that will retain project knowledge and artifacts:
+## Install and start
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .
-project-workspace init
-project-workspace controller
+./scripts/install.sh
+~/.local/bin/project-workspace-controller init
+~/.local/bin/project-workspace-controller controller
 ```
 
-The controller listens on `http://127.0.0.1:8000` by default. The MCP endpoint is `/mcp/`, the operator dashboard is `/dashboard`, and persistent state is under `~/.local/share/project-workspace/`. `init` creates an administrator token in `~/.config/project-workspace/admin.token` with owner-only file permissions. No model inference API key is required; the connected AI client supplies reasoning.
-
-For remote access, terminate TLS, configure the controller's `PWM_ALLOWED_HOSTS` and `PWM_ALLOWED_ORIGINS`, and enforce authentication before public exposure. The controller currently uses one static administrator token, **not OAuth or multi-user project authorization**. Do not hand that token to untrusted clients. Hosted ChatGPT connections may require an OAuth-aware gateway.
-
-## Go controller gateway
-
-The Go controller can own project creation, note reads and writes, and note search while the Python service continues to own MCP, worker scheduling, and GitHub integration. Both use the same SQLite database schema and SQLite transactions. Start the existing Python controller on loopback first, then use the Go controller as the local gateway:
+To build without the script:
 
 ```sh
-# Requires Go 1.23+, a C compiler, pkg-config, and SQLite development headers at build time.
 CGO_ENABLED=1 go build -o project-workspace-controller ./cmd/project-workspace-controller
-export PWM_ADMIN_TOKEN="$(cat ~/.config/project-workspace/admin.token)"
-./project-workspace-controller --listen 127.0.0.1:8080 \
-  --upstream http://127.0.0.1:8000
-```
-
-The gateway listens on loopback by default. Connect a local HTTP client to port 8080. Use a separately authenticated TLS terminator for remote clients; do not publish either server directly. The Go gateway handles `GET/POST /api/projects`, `GET/POST /api/projects/{project}/notes/{name}`, and `GET /api/projects/{project}/search?q=...`. Other routes, including `/mcp/`, remain forwarded to the Python backend. The Go gateway is a **migration boundary**, not a replacement for the compute scheduler or an OAuth implementation. The worker requires only the publicly configured gateway URL and its worker credential.
-
-## Build and pair the Go worker
-
-Requires Linux, Go 1.23+ at build time, and Docker on each execution node. The resulting worker binary does not require Go or Python to remain installed.
-
-```sh
 go build -o project-workspace-worker ./cmd/project-workspace-worker
-./project-workspace-worker doctor
+./project-workspace-controller init
+./project-workspace-controller controller
 ```
 
-On the controller, create a one-time pairing code:
+`init` generates an owner-only credential at `~/.config/project-workspace/admin.token`. The server listens at `http://127.0.0.1:8000` and stores its data in `~/.local/share/project-workspace/state.db` unless `PWM_DB` overrides the path. MCP is at `/mcp/`; the local operator dashboard is `/dashboard`. Use `PWM_ADMIN_TOKEN` to supply a credential from a secrets manager without a token file. Never share this credential with an untrusted client. For a reverse proxy, set `PWM_ALLOWED_HOSTS` and `PWM_ALLOWED_ORIGINS` to the intended public host and browser origins. `PWM_ALLOW_REMOTE_LISTEN=1` permits binding away from loopback only when the operator provides a protected TLS ingress.
+
+The server's configuration variables include `PWM_GITHUB_TOKEN`, `PWM_GITHUB_GENERIC_WRITES=1` (opt-in repository mutations), and `PWM_MAX_ARTIFACT_BYTES` (default 2 GiB).
+
+## Pair a compute node
+
+On the controller:
 
 ```sh
-project-workspace pair
+project-workspace-controller pair
 ```
 
-On a worker machine, replace the URL, node ID, and code:
+On a trusted Linux worker:
 
 ```sh
-./project-workspace-worker join --controller https://controller.example --node worker-one --code PAIRING_CODE
-./project-workspace-worker serve --controller https://controller.example --node worker-one
+project-workspace-worker doctor
+project-workspace-worker join --controller https://controller.example --node worker-one --code PAIRING_CODE
+project-workspace-worker serve --controller https://controller.example --node worker-one
 ```
 
-Pairing writes a worker credential to the user's configuration directory with mode `0600`. Worker credentials are distinct from the administrator token. The agent makes outbound HTTPS requests to the controller, reports capacity, claims bounded operations, renews long operation leases, and reports verified results. A loopback HTTP controller is accepted for local integration testing only. Transient controller connection failures are retried with bounded exponential backoff; permanent authentication failures stop the agent. An operation whose completion acknowledgment was lost remains subject to its lease and requires reconciliation rather than blind reexecution. The Python CLI's `worker` command remains available for existing deployments, but the Go agent is the preferred path.
+A pairing code is single-use and expires after ten minutes. Each worker has a distinct, revocable credential. The worker contacts the controller over outbound HTTPS and claims work with expiring fenced tokens. Intermittent network failures use bounded retries; failed cleanup never releases a leased device prematurely.
 
-## USB passthrough (optional)
+## Projects, workspaces, and environments
 
-USB access has two independent **off-by-default** switches. The operator starts a Linux Go worker with `--enable-usb` (or `PWM_ENABLE_USB_PASSTHROUGH=1`); the user must also enable USB passthrough for a particular workspace and select the **exact advertised device and worker**. Ordinary jobs receive no USB device access. Disabling the operator switch prevents USB inventory advertisement and future USB container allocations, but does not retroactively revoke a device from a running container; stop its workspace and verify cleanup first.
+A project owns knowledge, linked GitHub repositories, artifacts, and execution history. An environment describes a versioned OCI image containing applications and dependencies. A workspace contains mutable project files. Hardware allocations are separate exclusive leases. These objects are not interchangeable.
 
-When enabled, the Go worker discovers eligible whole USB mass-storage disks by stable `/dev/disk/by-id/usb-*` names. It checks their actual USB sysfs identity, rejects partitions, and refuses disks with mounted partitions or active mapped-device descendants. A connected USB disk may need to be unmounted by the operator before it is eligible. USB serial adapters and USB/JTAG devices require an explicit approved entry in the worker device manifest, such as `{"id":"usb-jtag-a","kind":"usb","paths":["/dev/serial/by-id/usb-Adapter"]}`. Do not use raw `/dev/sdX` or arbitrary `/dev` mappings. Workers re-evaluate availability on heartbeat and before container startup.
+The default workspace image is `debian:bookworm-slim`, with the worker's `PWM_ALLOWED_IMAGES` controlling approved images. Use a Python image or an administrator-built Vivado image explicitly when needed. Define a named environment with a Dockerfile or a previously approved base image, run `environment_build`, and wait for the operation to succeed. The `environment_export` and `environment_import` tools transfer saved images; `workspace_snapshot` and `workspace_restore` save and restore files independently. Neither operation snapshots running process memory.
 
-To enable raw device access on a trusted worker:
-
-```sh
-./project-workspace-worker serve --controller https://controller.example \
-  --node worker-one --enable-usb
-```
-
-Inspect `GET /api/hardware` for the device `node` and `id`, and choose that device in the **Create workspace** dashboard form. Alternatively create a workspace through MCP `workspace_create` or REST:
-
-```json
-{
-  "project_id": "research",
-  "cpu": 1,
-  "memory_mb": 2048,
-  "usb_passthrough": true,
-  "usb_node": "worker-one",
-  "usb_device_id": "usb-REPLACE-WITH-ADVERTISED-ID",
-  "hardware": {"usb": 1}
-}
-```
-
-### Transfer an OS image to a workspace
-
-An OS image can be larger than the normal 128 KiB workspace text-write limit. The controller provides an authenticated, streamed binary artifact upload and the Go worker can then import that artifact into its workspace. The image is not placed in a Docker layer. Configure `PWM_MAX_ARTIFACT_BYTES` on the controller **and worker** to a value sufficient for the image (the default is 2 GiB), and provision equivalent disk capacity on both systems.
-
-```sh
-IMAGE=path/to/operating-system.img
-SHA256=$(sha256sum "$IMAGE" | awk '{print $1}')
-curl --fail-with-body -X PUT "$BASE/api/projects/research/artifacts/upload" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Artifact-Name: operating-system.img" \
-  -H "X-Content-Sha256: $SHA256" \
-  -H 'Content-Type: application/octet-stream' \
-  --data-binary @"$IMAGE"
-```
-
-Use the returned `id` to queue the import into a ready workspace:
-
-```sh
-curl --fail-with-body -X POST \
-  "$BASE/api/projects/research/workspaces/WORKSPACE_ID/artifacts/import" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"artifact_id":"ARTIFACT_ID","path":"images/operating-system.img"}'
-```
-
-Check the operation result and verify the checksum inside the workspace before imaging any device. This API does not issue a flash command automatically; selecting a physical target and initiating a destructive write remain separate, explicit actions. File import refuses to overwrite an existing workspace file.
-
-The controller reserves that single device exclusively until the worker confirms container cleanup. A missing or busy selected USB device causes an error; it cannot silently choose another drive. The container maps only the selected device, not all host USB ports. A workspace with a block-device lease can run an OS imaging tool against its mapped device if it has write access. **Flashing is destructive**: identify the intended target on the host and inside the container before writing an image, and never select a host system disk. Docker device pass-through and group permissions are not strong protection against malicious workloads, nor can they make unplug/replug during a flash safe. Physical-drive imaging has not yet passed hardware acceptance tests.
-
-## Projects, environments, and workspace snapshots
-
-An **environment** defines which applications and libraries exist in a container image. A **workspace** owns files and runtime state. The **hardware lease** reserves physical devices independently. Saving one does not automatically save the others.
-
-An administrator may define a versioned environment using either an approved, already-installed image, or a Dockerfile. A Dockerfile is built on the selected worker, with an immutable versioned tag. Build recipes are explicit project data; they cannot alter a running container's read-only root filesystem.
+To create a project and workspace over REST:
 
 ```sh
 TOKEN=$(cat ~/.config/project-workspace/admin.token)
 BASE=http://127.0.0.1:8000
-curl -fsS -X POST "$BASE/api/projects" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"id":"research","title":"Research"}'
-
-# Create an ordinary workspace first; its worker can build a named environment.
-curl -fsS -X POST "$BASE/api/workspaces" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"project_id":"research","cpu":2,"memory_mb":4096}'
-
-# Save an environment recipe. A build is a distinct, asynchronous operation.
-curl -fsS -X POST "$BASE/api/projects/research/environments" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"scientific-python","base_image":"python:3.12-slim", \
-       "dockerfile":"FROM python:3.12-slim\nRUN python --version\n", \
-       "expected_version":0}'
-
-curl -fsS -X POST "$BASE/api/projects/research/environments/scientific-python/build/WORKSPACE_ID" \
-  -H "Authorization: Bearer $TOKEN"
+curl -fsS -X POST "$BASE/api/projects" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"id":"research","title":"Research"}'
+curl -fsS -X POST "$BASE/api/workspaces" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"project_id":"research","cpu":2,"memory_mb":4096}'
 ```
 
-Poll `GET /api/projects/research/workspaces/WORKSPACE_ID/operations/OPERATION_ID` for success, then create a workspace with `"environment":"scientific-python"`. The scheduler selects the node that holds the built image; it rejects a stale, failed, or unbuilt environment. Define a revised environment with the current `expected_version` to create another image version. Existing workspaces continue using their original image.
+Workspace creation queues a `start` operation; it is not synchronous. Poll `GET /api/projects/research/workspaces` until the workspace is `ready`. Use `workspace_call` to run commands and edit files; poll `workspace_operation` for worker-confirmed results. `exit_code != 0` means a command failed even when the operation itself completed. Export important artifacts before stopping the workspace. Named volumes are retained for deliberate recovery and cleanup.
 
-The default Docker build has network access disabled. To install packages from a public index, the trusted worker administrator may set `PWM_BUILD_NETWORK=1`. For proprietary installers or other local files, configure an approved worker-local `PWM_BUILD_CONTEXT_ROOT` and put the installer files in a named child directory. Set `"context":"directory-name"` when defining the environment; worker code resolves and verifies that directory. The Dockerfile may use `COPY` for files in that approved context. Neither the path nor installation files are transferred from the AI client automatically. Do not place licenses, passwords, or tokens in images, Dockerfiles, or the build context.
+## GPU, NPU, FPGA, and USB access
 
-### Save, export, and restore
+A node's operator supplies an allowlisted device manifest. The controller never accepts a host device path from an AI tool. Explicit leases reserve whole device identifiers for one workspace at a time. GPU access uses an administrator-configured CDI identifier; vendor FPGA/NPU hardware can use approved character devices and vendor runtime images.
 
-- `workspace_snapshot` creates a compressed, SHA-256 checked archive of workspace files and uploads it to the controller using a fenced, streamed worker transfer. List snapshots and restore a chosen revision into a different workspace in the same project. Snapshots preserve files, not a running process or its memory.
-- `environment_export` saves the built Docker image as a separate durable archive. `environment_import` loads an authorized image export into another approved worker, after checking project and environment versions. Images may be many gigabytes; set `PWM_MAX_ARTIFACT_BYTES` and provision sufficient durable storage and bandwidth.
-- `workspace_call` can run commands, read and write files, list directories, search text, and export files. Large binary inputs use the authenticated streaming artifact-upload endpoint and `workspace_import_artifact`. Only a worker can upload an operation's result, and its short-lived lease token is checked again before the controller commits the artifact.
-- Stop a workspace with `workspace_destroy` or the REST `/stop` route. The worker removes the container but retains the named Docker volume for explicit recovery. The controller releases its GPU/NPU/FPGA reservations **only after the worker confirms cleanup**. Failed cleanup can be retried. Export vital files before deleting volumes.
+USB access is **off by default**. The node operator enables it using `project-workspace-worker serve --enable-usb`, and the workspace must separately request `usb_passthrough=true`, `usb_node=<exact worker>`, and `usb_device_id=<exact device>`. The worker validates stable USB disk aliases, detects mounted or mapped storage, and rejects unsafe device paths. A hardware lease remains active until confirmed cleanup. The AI must not choose an arbitrary disk or infer authorization to erase one. Flashing an OS image is destructive: the intended USB device must be independently verified before issuing any write command.
 
-Docker image archives and filesystem snapshots are separate because mounted volumes are excluded from `docker commit` and `docker image save`. The controller database and artifact directory still need an independently tested off-host backup; the feature above is not a controller backup system.
+Large OS images can be streamed to `PUT /api/projects/PROJECT/artifacts/upload` with `X-Artifact-Name`, `X-Content-SHA256`, and the owner bearer credential. Use `POST /api/projects/PROJECT/workspaces/WORKSPACE/artifacts/import` to stage the verified artifact in a workspace. The artifact path is relative to the workspace, and imports refuse unintended overwrites.
 
-## Reserve GPUs, NPUs, and FPGAs
+## GitHub and persistent knowledge
 
-A worker's hardware is an explicit, operator-approved inventory. The controller does not infer that every discovered device is safe to pass through to arbitrary code. Create a local manifest such as:
+Associate each GitHub repository with its project using `link_github_repository`. GitHub credentials stay exclusively on the controller; workers receive immutable archives rather than repository tokens. MCP tools support repository information, issue and PR lists, GitHub file reads, checkout by immutable revision, and revision-guarded draft PR publication. Extended repository REST actions are disabled for writes until the administrator explicitly enables `PWM_GITHUB_GENERIC_WRITES=1`.
 
-```json
-{
-  "devices": [
-    {
-      "id": "nvidia-gpu-a",
-      "kind": "gpu",
-      "model": "RTX GPU",
-      "cdi": "nvidia.com/gpu=GPU-REPLACE-WITH-LOCAL-UUID"
-    },
-    {
-      "id": "fpga-board-a",
-      "kind": "fpga",
-      "model": "PCIe FPGA",
-      "paths": ["/dev/REPLACE-WITH-APPROVED-FPGA-DEVICE"]
-    },
-    {
-      "id": "npu-a",
-      "kind": "npu",
-      "paths": ["/dev/accel/accel0"]
-    }
-  ]
-}
-```
-
-The examples are **configuration patterns, not detected devices**. Replace the identifiers with actual host-local paths or CDI names after inspecting the hardware. Unavailable paths cause allocation startup to fail; the system never silently falls back to full host privileges. Start the worker with `--devices /etc/project-workspace/devices.json`, or set `PWM_DEVICE_MANIFEST`. The manifest is read by the worker and never supplied by an AI client.
-
-To request an exclusive reservation:
-
-```sh
-curl -fsS -X POST "$BASE/api/workspaces" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"project_id":"research","cpu":4,"memory_mb":8192, \
-       "hardware":{"gpu":1,"fpga":1},"duration_minutes":120}'
-```
-
-The controller chooses an online worker that has adequate free CPU/RAM and the requested number of unleased, approved devices. USB reservations additionally require the exact worker, device ID, and enabled workspace toggle. Each whole device ID is reserved transactionally; a failed or disconnected worker does not free its hardware until cleanup is confirmed. Check `/api/hardware` or the MCP `list_hardware` tool to inspect leases. On GPU nodes, install and configure NVIDIA Container Toolkit/CDI first. FPGA and NPU mappings depend on their device drivers, firmware, and vendor runtime. USB/JTAG passthrough may change device paths after reconnection; a host-local hardware-server adapter is preferable for fragile boards.
-
-**Vivado:** AMD Vivado and Vitis are proprietary and may require licensed installation media, tool-specific environment variables, supported x86-64 operating systems, and device drivers. This project does not redistribute or silently install them. Build or import an administrator-approved image from your licensed software, then define an environment with `"architecture":"amd64"`. For an already installed image, leave `dockerfile` empty and provide the approved base image name. Use the explicit FPGA device manifest only when a physical board is required; synthesis itself normally needs no board checkout.
-
-## GitHub integration
-
-Set a fine-grained `PWM_GITHUB_TOKEN` on the controller, never on compute workers. Link each authorized repository to its project. The MCP tools support repository information, file reads, issues and PRs, immutable checkout archives, and revision-guarded draft PR publication from stored artifacts. `github_repository_api` exposes additional repository REST operations; generic writes are disabled unless `PWM_GITHUB_GENERIC_WRITES=1` is intentionally configured. Interactive GitHub App installation, separate user authorization, and unrestricted organization administration are not implemented.
-
-## Runtime security and operational limits
-
-Workspaces use Docker namespaces, disabled networking, a read-only container root filesystem, non-root execution, CPU/memory/PID limits, dropped Linux capabilities, and writable named volumes. Built images are approved by worker configuration and the controller's versioned environment record. Docker build recipes execute code and must be restricted to trusted administrators. GPU/CDI and FPGA passthrough expand the security boundary; **Docker is not sufficient isolation for mutually untrusted users**. Deploy a VM-backed worker for adversarial workloads.
-
-The controller is currently a single owner and a single SQLite database, not a cluster. The Go gateway only migrates project and note APIs and still requires the Python MCP/scheduler backend. Device leases survive controller restarts but a dead worker may retain containers and device access. The next production milestone includes active reconciliation, user OAuth, multi-machine TLS acceptance, off-host backups, and tested controller restoration.
+Project notes use `expected_version` to reject conflicting writes. Search, artifacts, and snapshots are project-scoped. The controller retains the established SQLite table layout so existing records can be opened without a separate conversion script.
 
 ## Verification
 
 ```sh
-pip install -e '.[dev]'
-python -m pytest -q
 go test ./...
+go test -race ./internal/controller ./internal/worker
 go vet ./...
-go build -o project-workspace-worker ./cmd/project-workspace-worker
-CGO_ENABLED=1 go build -o project-workspace-controller ./cmd/project-workspace-controller
 ```
 
-GitHub Actions runs Python 3.11 and 3.13 checks, Go unit tests and cross-builds, a Linux Docker lifecycle test, and an authenticated Go-worker-to-controller integration test. The latter exercises actual hardware lease metadata, files and commands, snapshots, image builds, image export/import, and cleanup on a test runner. Real FPGA/NPU/USB passthrough, licensed Vivado behavior, cross-physical-host deployment, and production security require independent acceptance on authorized hardware. The Go gateway has a cross-language SQLite compatibility test, but the remaining controller endpoints still use Python.
+GitHub Actions runs Go unit and protocol tests, cross-architecture builds, and an optional Docker controller/worker integration. The latter requires Docker and a `python:3.12-slim` test image **inside the container only**; no Python interpreter runs on the controller or worker host.
+
+## Operating limits
+
+This is a single-owner system intended for trusted machines. It does not provide production OAuth, fine-grained multi-user project grants, VM-grade hostile-tenant isolation, automatic off-host database backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.

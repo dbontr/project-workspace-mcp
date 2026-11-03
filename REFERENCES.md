@@ -1,21 +1,13 @@
 # References
 
-- [Model Context Protocol specification](https://modelcontextprotocol.io/specification/2025-06-18) — MCP maintainers; 2025-06-18. Used for: MCP tool semantics and Streamable HTTP transport.
-- [MCP Python SDK v1](https://py.sdk.modelcontextprotocol.io/v1/) — MCP maintainers; v1 maintenance line. Used for: FastMCP server, session management, and mounted transport.
-- [GitHub REST API — Git trees](https://docs.github.com/en/rest/git/trees) — GitHub. Used for: revision-guarded tree, blob, commit, branch, and draft pull request publication.
-- [GitHub REST API — Repository contents](https://docs.github.com/en/rest/repos/contents) — GitHub. Used for: repository contents and archive checkout.
-- [Docker run command](https://docs.docker.com/reference/cli/docker/container/run/) — Docker. Used for: resource limits and isolated worker containers.
-- [Docker build context](https://docs.docker.com/build/concepts/context/) — Docker. Used for: differentiating standard input Dockerfiles from filesystem build contexts.
-- [SQLite documentation](https://www.sqlite.org/docs.html) — SQLite. Used for: transactional state, WAL, and artifact metadata.
-- [FastAPI](https://fastapi.tiangolo.com/) — FastAPI. Used for: HTTP API validation and authenticated controller routes.
-- [HTTPX](https://www.python-httpx.org/) — Encode. Used for: worker polling and GitHub REST requests.
-- [Go language specification](https://go.dev/ref/spec) — Go team. Used for: portable, standard-library-only Linux worker agent.
-- [NVIDIA Container Toolkit CDI support](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html) — NVIDIA. Used for: explicit GPU device naming and container runtime prerequisites.
-- [Docker container commit](https://docs.docker.com/reference/cli/docker/container/commit/) — Docker. Used for: distinguishing image layers from mounted workspace volumes.
+- [Model Context Protocol specification, 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18) — MCP maintainers. Used for: Streamable HTTP transport, JSON-RPC initialization, and tool calls.
+- [SQLite C interface](https://www.sqlite.org/cintro.html) — SQLite. Used for: durable transactional project state, prepared statements, and WAL.
+- [Go language specification](https://go.dev/ref/spec) — Go team. Used for: Go controller and worker implementation.
+- [Go net/http documentation](https://pkg.go.dev/net/http) — Go team. Used for: authenticated controller HTTP service and worker transport.
+- [GitHub REST API, Git objects](https://docs.github.com/en/rest/git) — GitHub. Used for: revision-guarded commits, blobs, branches, and draft PRs.
+- [GitHub REST API, repository contents](https://docs.github.com/en/rest/repos/contents) — GitHub. Used for: file retrieval and immutable checkout archives.
+- [Docker container run](https://docs.docker.com/reference/cli/docker/container/run/) — Docker. Used for: isolated workspaces and quotas.
+- [Docker build context](https://docs.docker.com/build/concepts/context/) — Docker. Used for: administrator-controlled build inputs.
 - [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) — Docker. Used for: portable environment archives.
-- [AMD Vivado 2025.2 supported operating systems](https://docs.amd.com/r/2025.2-English/ug973-vivado-release-notes-install-license/Supported-Operating-Systems) — AMD. Used for: supported architecture, host requirements, and documented toolchain limitations.
-- [AMD Vivado installer information](https://www.amd.com/en/support/adaptive-socs-and-fpgas/installer-info-general.html) — AMD. Used for: proprietary installer and license handling requirements.
-- [Linux sysfs](https://www.kernel.org/doc/html/latest/filesystems/sysfs.html) — Linux kernel documentation. Used for: checking device USB-bus ancestry from major/minor identity.
-- [lsblk(8)](https://man7.org/linux/man-pages/man8/lsblk.8.html) — util-linux. Used for: verifying whole USB disks and refusing mounted or mapped storage before passthrough.
-- [SQLite C API](https://www.sqlite.org/c3ref/intro.html) — SQLite. Used for: shared transactional project storage from the Go controller.
-- [cgo command](https://pkg.go.dev/cmd/cgo) — Go project. Used for: linking the controller to the system SQLite library without introducing another persistent database.
+- [NVIDIA Container Toolkit CDI](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html) — NVIDIA. Used for: approved GPU device identifiers.
+- [AMD Vivado supported platforms](https://docs.amd.com/r/2025.2-English/ug973-vivado-release-notes-install-license/Supported-Operating-Systems) — AMD. Used for: vendor toolchain host and license constraints.

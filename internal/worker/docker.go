@@ -38,7 +38,7 @@ func NewRunner(devices []Device) *Runner {
 	images := map[string]bool{}
 	allowed := os.Getenv("PWM_ALLOWED_IMAGES")
 	if allowed == "" {
-		allowed = "python:3.12-slim"
+		allowed = "debian:bookworm-slim"
 	}
 	for _, x := range strings.Split(allowed, ",") {
 		if strings.TrimSpace(x) != "" {

@@ -244,7 +244,7 @@ func TestUSBPassthroughRequiresBothExplicitOptIns(t *testing.T) {
 	if len(runner.AvailableDevices()) != 0 {
 		t.Fatal("advertised USB while disabled")
 	}
-	payload := map[string]any{"image": "python:3.12-slim", "cpu": 1.0, "memory_mb": 512.0, "devices": []DeviceClaim{{ID: "usb-stick", Kind: "usb"}}, "usb_passthrough": false}
+	payload := map[string]any{"image": "debian:bookworm-slim", "cpu": 1.0, "memory_mb": 512.0, "devices": []DeviceClaim{{ID: "usb-stick", Kind: "usb"}}, "usb_passthrough": false}
 	if _, err := runner.Start(context.Background(), strings.Repeat("0", 32), payload); err == nil || !strings.Contains(err.Error(), "USB passthrough") {
 		t.Fatalf("accepted disabled USB workspace: %v", err)
 	}

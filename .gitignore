@@ -1,9 +1,10 @@
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-*.egg-info/
-data/
+# Build and local state
 *.db
 *.db-*
 .env
+/artifacts/
+/data/
+/project-workspace-controller
+/project-workspace-worker
+*.test
+*.out

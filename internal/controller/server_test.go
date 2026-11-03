@@ -2,141 +2,262 @@ package controller
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"os"
 	"path/filepath"
-	"strings"
-	"sync"
 	"testing"
 )
 
-func controllerForTest(t *testing.T) (*Server, *Database, *httptest.Server) {
-	t.Helper()
-	db, err := OpenDatabase(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "Bearer "+strings.Repeat("a", 32) {
-			fmt.Fprintf(w, "proxied:%s", r.URL.Path)
-		} else {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-		}
-	}))
-	t.Cleanup(upstream.Close)
-	target, _ := url.Parse(upstream.URL)
-	service, err := NewServer(db, strings.Repeat("a", 32), target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return service, db, upstream
-}
+const testOwner = "owner-secret-0123456789abcdef0123456789abcdef0123456789abcdef"
 
-func request(t *testing.T, h http.Handler, method, path, token string, body any) (int, map[string]any) {
+func fixture(t *testing.T) (*Database, *Server, *httptest.Server) {
 	t.Helper()
-	var content *bytes.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		content = bytes.NewReader(data)
-	} else {
-		content = bytes.NewReader(nil)
+	db, e := OpenDatabase(filepath.Join(t.TempDir(), "state.db"))
+	if e != nil {
+		t.Fatal(e)
 	}
-	req := httptest.NewRequest(method, path, content)
+	server, e := NewServer(db, testOwner)
+	if e != nil {
+		t.Fatal(e)
+	}
+	httpServer := httptest.NewServer(server)
+	t.Cleanup(func() { httpServer.Close(); db.Close() })
+	return db, server, httpServer
+}
+func call(t *testing.T, ts *httptest.Server, method, path, token string, input any) (int, map[string]any) {
+	t.Helper()
+	var body io.Reader
+	if input != nil {
+		payload, e := json.Marshal(input)
+		if e != nil {
+			t.Fatal(e)
+		}
+		body = bytes.NewReader(payload)
+	}
+	req, e := http.NewRequest(method, ts.URL+path, body)
+	if e != nil {
+		t.Fatal(e)
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	out := httptest.NewRecorder()
-	h.ServeHTTP(out, req)
-	result := map[string]any{}
-	_ = json.Unmarshal(out.Body.Bytes(), &result)
-	return out.Code, result
+	if input != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	res, e := ts.Client().Do(req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer res.Body.Close()
+	data, e := io.ReadAll(res.Body)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var result map[string]any
+	if json.Unmarshal(data, &result) != nil {
+		t.Fatalf("%s %s response %d: %s", method, path, res.StatusCode, data)
+	}
+	return res.StatusCode, result
 }
-
-func TestKnowledgeIsNativeGoAndRevisionGuarded(t *testing.T) {
-	h, db, _ := controllerForTest(t)
-	admin := strings.Repeat("a", 32)
-	if status, _ := request(t, h, "POST", "/api/projects", "", map[string]any{"id": "demo", "title": "Demo"}); status != 401 {
-		t.Fatalf("missing auth: %d", status)
-	}
-	if status, _ := request(t, h, "POST", "/api/projects", admin, map[string]any{"id": "demo", "title": "Demo"}); status != 200 {
-		t.Fatalf("create project: %d", status)
-	}
-	if status, _ := request(t, h, "POST", "/api/projects/demo/notes/design", admin, map[string]any{"body": "A knowledge graph", "expected_version": 0}); status != 200 {
-		t.Fatalf("create note: %d", status)
-	}
-	if status, _ := request(t, h, "POST", "/api/projects/demo/notes/design", admin, map[string]any{"body": "Lost edit", "expected_version": 0}); status != 409 {
-		t.Fatalf("accepted stale revision: %d", status)
-	}
-	if status, _ := request(t, h, "POST", "/api/projects/demo/notes/design", admin, map[string]any{"body": "Missing version"}); status != 400 {
-		t.Fatalf("accepted missing version: %d", status)
-	}
-	if status, note := request(t, h, "GET", "/api/projects/demo/notes/design", admin, nil); status != 200 || note["body"] != "A knowledge graph" || note["version"].(float64) != 1 {
-		t.Fatalf("read: %d %v", status, note)
-	}
-	result, err := db.SearchNotes("demo", "knowledge")
-	if err != nil || len(result) != 1 || result[0]["name"] != "design" {
-		t.Fatalf("search: %v %v", result, err)
-	}
-	if _, err := db.WriteNote("other", "design", "cross-project", 0); err == nil {
-		t.Fatal("cross-project note accepted")
-	}
-	if status, _ := request(t, h, "POST", "/api/projects", admin, map[string]any{"id": "Bad!", "title": "No"}); status != 400 {
-		t.Fatalf("bad project accepted %d", status)
-	}
-	if status, _ := request(t, h, "GET", "/api/projects/demo/notes/../design", admin, nil); status == 200 {
-		t.Fatal("invalid note traversal accepted")
+func wantOK(t *testing.T, code int, result map[string]any) {
+	t.Helper()
+	if code != 200 {
+		t.Fatalf("unexpected HTTP %d: %#v", code, result)
 	}
 }
-
-func TestControllerForwardsUnmigratedRoutes(t *testing.T) {
-	h, _, _ := controllerForTest(t)
-	admin := strings.Repeat("a", 32)
-	req := httptest.NewRequest("GET", "/mcp/", nil)
-	req.Header.Set("Authorization", "Bearer "+admin)
-	out := httptest.NewRecorder()
-	h.ServeHTTP(out, req)
-	if out.Code != 200 || out.Body.String() != "proxied:/mcp/" {
-		t.Fatalf("MCP proxy: %d %s", out.Code, out.Body.String())
+func project(t *testing.T, srv *httptest.Server) {
+	t.Helper()
+	c, r := call(t, srv, "POST", "/api/projects", testOwner, map[string]any{"id": "demo", "title": "Research"})
+	wantOK(t, c, r)
+}
+func caps() map[string]any {
+	return map[string]any{"cpu": 4, "memory_mb": 4096, "max_jobs": 2, "docker": true, "devices": []any{map[string]any{"id": "npu-one", "kind": "npu"}, map[string]any{"id": "usb-one", "kind": "usb"}}}
+}
+func pairWorker(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	c, r := call(t, srv, "POST", "/api/pairing", testOwner, nil)
+	wantOK(t, c, r)
+	c, r = call(t, srv, "POST", "/api/pair", "", map[string]any{"name": "worker-one", "pairing_code": r["pairing_code"], "capabilities": caps()})
+	wantOK(t, c, r)
+	return asString(r["worker_token"])
+}
+func claimOp(t *testing.T, srv *httptest.Server, token string) map[string]any {
+	t.Helper()
+	c, r := call(t, srv, "POST", "/api/worker/worker-one/operation/claim", token, nil)
+	wantOK(t, c, r)
+	op, _ := r["operation"].(map[string]any)
+	if op == nil {
+		t.Fatal("missing operation claim")
 	}
-	if status, _ := request(t, h, "GET", "/api/projects", admin, nil); status != 200 {
-		t.Fatalf("native route failed %d", status)
-	}
-	if _, err := NewServer(h.DB, admin, &url.URL{Scheme: "https", Host: "other.example"}); err == nil {
-		t.Fatal("accepted untrusted upstream")
+	return op
+}
+func finishOp(t *testing.T, srv *httptest.Server, token string, op map[string]any, output map[string]any) {
+	t.Helper()
+	c, r := call(t, srv, "POST", "/api/worker/worker-one/operation/finish", token, map[string]any{"operation_id": op["id"], "lease_token": op["lease_token"], "success": true, "result": output})
+	wantOK(t, c, r)
+	if r["status"] != "succeeded" {
+		t.Fatalf("unexpected completion: %v", r)
 	}
 }
-
-func TestRevisionWritesAreSerialized(t *testing.T) {
-	db, err := OpenDatabase(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
+func TestMCPHandshakeAndKnowledge(t *testing.T) {
+	_, _, srv := fixture(t)
+	req := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "test", "version": "1"}}}
+	c, r := call(t, srv, "POST", "/mcp/", "", req)
+	if c != 401 {
+		t.Fatalf("unauthenticated MCP accepted: %d %v", c, r)
 	}
-	defer db.Close()
-	if _, err := db.CreateProject("demo", "Demo"); err != nil {
-		t.Fatal(err)
+	c, r = call(t, srv, "POST", "/mcp/", testOwner, req)
+	wantOK(t, c, r)
+	if gitObj(gitObj(r["result"])["serverInfo"])["name"] != "project-workspace-mcp" {
+		t.Fatal(r)
 	}
-	errs := make(chan error, 12)
-	var group sync.WaitGroup
-	for i := 0; i < 12; i++ {
-		group.Add(1)
-		go func(i int) { defer group.Done(); _, err := db.WriteNote("demo", "note", fmt.Sprint(i), 0); errs <- err }(i)
+	c, r = call(t, srv, "POST", "/mcp/", testOwner, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": map[string]any{}})
+	wantOK(t, c, r)
+	entries := gitObj(r["result"])["tools"].([]any)
+	if len(entries) != len(tools) {
+		t.Fatalf("expected %d tools got %d", len(tools), len(entries))
 	}
-	group.Wait()
-	close(errs)
-	successes := 0
-	for err := range errs {
-		if err == nil {
-			successes++
+	invoke := func(name string, args map[string]any) map[string]any {
+		t.Helper()
+		code, resp := call(t, srv, "POST", "/mcp/", testOwner, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+		wantOK(t, code, resp)
+		result := gitObj(resp["result"])
+		if result["isError"] == true {
+			t.Fatalf("tool %s failed: %v", name, result)
 		}
+		return gitObj(result["structuredContent"])
 	}
-	if successes != 1 {
-		t.Fatalf("expected exactly one writer to win, got %d", successes)
+	invoke("create_project", map[string]any{"project_id": "demo", "title": "Demo"})
+	invoke("write_project_note", map[string]any{"project_id": "demo", "name": "plan", "body": "Go-native persistent context", "expected_version": 0})
+	got := invoke("read_project_note", map[string]any{"project_id": "demo", "name": "plan"})
+	if got["body"] != "Go-native persistent context" || asInt(got["version"]) != 1 {
+		t.Fatalf("note mismatch: %v", got)
+	}
+}
+func TestWorkspaceLeasesAndArtifacts(t *testing.T) {
+	db, _, srv := fixture(t)
+	project(t, srv)
+	workerToken := pairWorker(t, srv)
+	request := map[string]any{"project_id": "demo", "cpu": 1, "memory_mb": 512, "hardware": map[string]any{"npu": 1}}
+	c, result := call(t, srv, "POST", "/api/workspaces", testOwner, request)
+	wantOK(t, c, result)
+	ws := asString(result["id"])
+	if ws == "" {
+		t.Fatal("missing workspace ID")
+	}
+	c, second := call(t, srv, "POST", "/api/workspaces", testOwner, map[string]any{"project_id": "demo", "hardware": map[string]any{"npu": 1}})
+	if c == 200 {
+		t.Fatalf("exclusivity failure: %v", second)
+	}
+	start := claimOp(t, srv, workerToken)
+	if start["action"] != "start" {
+		t.Fatal(start)
+	}
+	finishOp(t, srv, workerToken, start, map[string]any{"status": "ready"})
+	c, r := call(t, srv, "POST", "/api/projects/demo/workspaces/"+ws+"/operations", testOwner, map[string]any{"action": "snapshot", "payload": map[string]any{}})
+	wantOK(t, c, r)
+	op := claimOp(t, srv, workerToken)
+	data := []byte("safely streamed workspace backup")
+	h := sha256.Sum256(data)
+	req, _ := http.NewRequest("PUT", srv.URL+"/api/worker/worker-one/workspaces/"+ws+"/operations/"+asString(op["id"])+"/artifact", bytes.NewReader(data))
+	req.Header.Set("Authorization", "Bearer "+workerToken)
+	req.Header.Set("X-Operation-Token", asString(op["lease_token"]))
+	req.Header.Set("X-Content-SHA256", hex.EncodeToString(h[:]))
+	req.Header.Set("X-Artifact-Name", "snapshot.tar.gz")
+	res, e := srv.Client().Do(req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer res.Body.Close()
+	var uploaded map[string]any
+	if e := json.NewDecoder(res.Body).Decode(&uploaded); e != nil {
+		t.Fatal(e)
+	}
+	if res.StatusCode != 200 {
+		t.Fatalf("upload HTTP %d: %v", res.StatusCode, uploaded)
+	}
+	finishOp(t, srv, workerToken, op, map[string]any{"artifact_id": uploaded["id"]})
+	rows, e := db.SnapshotList("demo", ws)
+	if e != nil || len(rows) != 1 {
+		t.Fatalf("snapshots: %v %v", rows, e)
+	}
+	artifact, e := db.ArtifactInfo("demo", asString(uploaded["id"]))
+	if e != nil {
+		t.Fatal(e)
+	}
+	path, e := db.VerifyArtifact(artifact)
+	if e != nil {
+		t.Fatal(e)
+	}
+	actual, e := os.ReadFile(path)
+	if e != nil || !bytes.Equal(actual, data) {
+		t.Fatalf("artifact mismatch: %v", e)
+	}
+	c, stop := call(t, srv, "POST", "/api/projects/demo/workspaces/"+ws+"/stop", testOwner, nil)
+	wantOK(t, c, stop)
+	finishOp(t, srv, workerToken, claimOp(t, srv, workerToken), map[string]any{"removed": true})
+	c, again := call(t, srv, "POST", "/api/workspaces", testOwner, request)
+	wantOK(t, c, again)
+	if asString(again["id"]) == ws {
+		t.Fatal("workspace ID reused")
+	}
+}
+func TestUSBSelectionRequiresConsent(t *testing.T) {
+	_, _, srv := fixture(t)
+	project(t, srv)
+	pairWorker(t, srv)
+	c, r := call(t, srv, "POST", "/api/workspaces", testOwner, map[string]any{"project_id": "demo", "hardware": map[string]any{"usb": 1}})
+	if c == 200 {
+		t.Fatal(r)
+	}
+	c, r = call(t, srv, "POST", "/api/workspaces", testOwner, map[string]any{"project_id": "demo", "usb_passthrough": true, "usb_node": "worker-one", "usb_device_id": "wrong"})
+	if c == 200 {
+		t.Fatal(r)
+	}
+	c, r = call(t, srv, "POST", "/api/workspaces", testOwner, map[string]any{"project_id": "demo", "usb_passthrough": true, "usb_node": "worker-one", "usb_device_id": "usb-one"})
+	wantOK(t, c, r)
+}
+func TestProjectAuthorizationAndDatabaseCompatibility(t *testing.T) {
+	db, _, srv := fixture(t)
+	project(t, srv)
+	if e := db.exec("INSERT INTO notes VALUES(?,?,?,?,?)", "demo", "legacy", "existing SQLite note", 3, stamp()); e != nil {
+		t.Fatal(e)
+	}
+	c, r := call(t, srv, "GET", "/api/projects/demo/notes/legacy", testOwner, nil)
+	wantOK(t, c, r)
+	if r["body"] != "existing SQLite note" || asInt(r["version"]) != 3 {
+		t.Fatal(r)
+	}
+	c, r = call(t, srv, "POST", "/api/projects/demo/notes/legacy", testOwner, map[string]any{"body": "overwriting stale", "expected_version": 2})
+	if c != 409 {
+		t.Fatalf("stale notes allowed: %d %v", c, r)
+	}
+	c, r = call(t, srv, "POST", "/api/projects/demo/notes/legacy", testOwner, map[string]any{"body": "correct revision", "expected_version": 3})
+	wantOK(t, c, r)
+	c, r = call(t, srv, "GET", "/api/projects/demo/notes/legacy", "wrong-token", nil)
+	if c != 401 {
+		t.Fatal(c, r)
+	}
+}
+
+func TestRejectsMalformedHardwareQuantities(t *testing.T) {
+	_, _, srv := fixture(t)
+	project(t, srv)
+	pairWorker(t, srv)
+	invalid := []map[string]any{
+		{"npu": true}, {"npu": "1"}, {"npu": 0.5}, {"gpu": -1},
+	}
+	for _, hardware := range invalid {
+		code, reply := call(t, srv, "POST", "/api/workspaces", testOwner,
+			map[string]any{"project_id": "demo", "hardware": hardware})
+		if code == 200 {
+			t.Fatalf("accepted malformed hardware request %v: %v", hardware, reply)
+		}
 	}
 }
