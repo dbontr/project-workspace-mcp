@@ -58,6 +58,10 @@ jobs:
         run: |
           gofmt -d internal/controller/offsite_backup.go internal/controller/offsite_backup_test.go cmd/project-workspace-controller/main.go
           test -z "$(gofmt -l internal/controller/offsite_backup.go internal/controller/offsite_backup_test.go cmd/project-workspace-controller/main.go)"
+      - name: Format personal task claim components
+        run: |
+          gofmt -d internal/controller/personal_task_claims.go internal/controller/personal_task_claims_http.go internal/controller/personal_task_claims_test.go
+          test -z "$(gofmt -l internal/controller/personal_task_claims.go internal/controller/personal_task_claims_http.go internal/controller/personal_task_claims_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
