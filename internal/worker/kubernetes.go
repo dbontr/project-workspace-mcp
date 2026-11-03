@@ -343,8 +343,8 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 		return nil, errors.New("invalid Kubernetes worker or workspace ID")
 	}
 	image := getString(p, "image")
-	if !r.Images[image] && !imageName.MatchString(image) {
-		return nil, errors.New("image not approved")
+	if !r.Images[image] {
+		return nil, errors.New("Kubernetes Pod image is not in the approved OCI registry pool")
 	}
 	cpu, memory := getFloat(p, "cpu"), getFloat(p, "memory_mb")
 	if cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 || float64(int(memory)) != memory {
