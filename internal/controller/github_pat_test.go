@@ -118,7 +118,7 @@ func TestGitHubPATPublicationUsesAuthenticatedIdentity(t *testing.T) {
 			openedPR = true
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"html_url": "https://github.com/example/repo/pull/7",
-				"number": 7,
+				"number":   7,
 			})
 		default:
 			t.Errorf("unexpected GitHub API call: %s %s", r.Method, r.URL.Path)
