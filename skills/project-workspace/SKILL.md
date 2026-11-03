@@ -64,3 +64,18 @@ computed SHA-256, and `artifact_read_base64` for verified retrieval. Larger
 files require authenticated streamed REST transfer, followed by
 `workspace_import_artifact`. These tools do not themselves attach a file
 uploaded in the chat UI; that requires file-capable connector mediation.
+
+## Project-scoped OAuth access
+
+Discover whether an OIDC issuer is configured before assuming that any
+non-owner bearer token will be accepted. The OAuth authorization server issues
+and revokes credentials; this Go controller verifies those tokens and
+maintains per-project grants. Obtain the current caller's stable subject
+through `GET /api/whoami`. The controller owner can grant and revoke
+`viewer`, `editor`, and `owner` roles using the project's `/permissions`
+endpoint, with the previous role as an expected-state guard. Never send the
+static owner credential or external authorization tokens into workspaces.
+Worker credentials are separate. A successful token validation is not evidence
+of authorization to work in a particular project. Privileged GitHub writes
+remain owner-only, and OAuth does not bypass repository rules or hardware
+allocation safeguards.
