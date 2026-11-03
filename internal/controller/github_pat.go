@@ -16,7 +16,7 @@ var githubAccountLogin = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`)
 func configuredGitHubPAT() (string, error) {
 	location := os.Getenv("PWM_GITHUB_PAT_FILE")
 	if location == "" {
-		token := os.Getenv("PWM_GITHUB_TOKEN")
+		token := strings.TrimSuffix(os.Getenv("PWM_GITHUB_TOKEN"), "\n")
 		if strings.ContainsAny(token, "\x00\r\n\t ") {
 			return "", errors.New("invalid GitHub PAT environment value")
 		}
