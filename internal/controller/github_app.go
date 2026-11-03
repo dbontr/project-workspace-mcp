@@ -24,8 +24,9 @@ import (
 )
 
 type appCredential struct {
-	token   string
-	expires time.Time
+	token       string
+	expires     time.Time
+	permissions map[string]string
 }
 
 type GitHubApp struct {
@@ -204,8 +205,9 @@ func (a *GitHubApp) installationToken(g *GitHub, scope string) (string, error) {
 		return "", fmt.Errorf("GitHub App installation token HTTP %d", res.StatusCode)
 	}
 	var item struct {
-		Token     string `json:"token"`
-		ExpiresAt string `json:"expires_at"`
+		Token       string            `json:"token"`
+		ExpiresAt   string            `json:"expires_at"`
+		Permissions map[string]string `json:"permissions"`
 	}
 	if err := json.Unmarshal(resp, &item); err != nil {
 		return "", err
@@ -214,6 +216,6 @@ func (a *GitHubApp) installationToken(g *GitHub, scope string) (string, error) {
 	if err != nil || len(item.Token) < 20 || !expires.After(time.Now().Add(2*time.Minute)) {
 		return "", errors.New("invalid GitHub App installation credential response")
 	}
-	a.cached[scope] = appCredential{token: item.Token, expires: expires}
+	a.cached[scope] = appCredential{token: item.Token, expires: expires, permissions: item.Permissions}
 	return item.Token, nil
 }
