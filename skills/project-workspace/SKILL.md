@@ -19,3 +19,30 @@ Treat the project, not the machine or chat, as the unit of work. The installed S
 10. **Release safely.** Request `workspace_destroy` and verify confirmed termination. Hardware reservations remain held when cleanup fails or the worker disappears. Do not represent an expired lease as a safely released GPU or FPGA. Do not delete worker volumes before the required snapshot has been retained.
 
 The controller and worker are implemented in Go. Python is an optional application inside an approved workspace image, not a service dependency. The controller currently has one privileged administrator identity. Never put its token, GitHub credentials, or host SSH keys inside worker command payloads, project notes, snapshots, or image recipes. Docker is not a hostile-tenant security boundary. Report physical hardware integrations as unverified unless exercised on authorized devices.
+
+## GitHub development workflow
+
+Use GitHub's live issues, branches, pull requests, reviews, and check results
+as the authoritative record for development activity. Choose a linked
+repository; never assume that a project or shared library grants write access.
+Read the issue before updating it, and pass its expected state. Create work
+branches with `github_create_branch` under `pwm/` and record their source
+revision. Publish changes through a revision-guarded PR and attach the issue or
+PR to the linked GitHub Project when that project tracks the work.
+
+Use `github_mark_pull_request_ready` to advance a draft when appropriate, and
+`github_verify_pull_request` to read live check results. Never represent
+self-review as an independent approval: GitHub authors cannot approve their
+own PRs. To merge with `github_merge_pull_request`, confirm the exact head SHA,
+check that `ready_to_merge` is true, and provide `confirm=true`. The repository's
+review requirements and rulesets remain authoritative. If a merge succeeds,
+inspect its `cleanup` result; branch cleanup is not guaranteed by a merge.
+
+Only merged, unchanged, unprotected branches no longer referenced by any open
+PR may be deleted. Tool-created `pwm/` branches are eligible for automatic
+post-merge cleanup. To delete an older manually named branch, use
+`github_cleanup_merged_branch` with its merged PR, exact head SHA, and
+explicit confirmation. Do not delete branches from forks or shared work.
+When repository administrators want automatic cleanup for all merged branches,
+configure `github_set_branch_auto_delete` intentionally and report the
+provider-confirmed setting.

@@ -231,3 +231,63 @@ You can keep private source repositories and public planning boards separate,
 but do not publish confidential research in Project items. Owner-token access
 is still required for all library operations; a production multi-user
 permission system is not yet implemented.
+
+## GitHub issues, branches, and pull-request lifecycle
+
+Each project can link multiple GitHub repositories. All GitHub operations act on
+an explicitly linked repository; repository credentials remain on the Go
+controller. GitHub Projects V2 remains the planning authority. Issues, commits,
+reviews, checks, merges, and branch refs remain authoritative on GitHub.
+
+The MCP tools provide these operations without enabling unrestricted GitHub REST
+writes:
+
+- `github_get_issue`, `github_create_issue`, `github_update_issue`, and
+  `github_comment_issue` manage issues and their discussions. Updates require
+  `expected_state` to detect stale issue status.
+- `github_list_branches` and `github_create_branch` work with branches. The
+  controller creates only `pwm/`-prefixed branches from a verified Git revision.
+- `github_get_pull_request`, `github_create_pull_request`, and
+  `github_update_pull_request` inspect and edit PRs with explicit head SHA checks.
+  Draft PRs can be marked ready with `github_mark_pull_request_ready`.
+- `github_verify_pull_request` reports the current PR head revision,
+  mergeability, check runs, and combined commit status. A PR with missing,
+  pending, or failing check runs is not considered verified for merging.
+- `github_merge_pull_request` requires `confirm=true` and `expected_head` set to
+  the exact 40-character commit SHA. It verifies checks, requests a GitHub
+  merge with that SHA, and confirms the resulting merged PR. GitHub enforces
+  branch protection, review requirements, and merge permissions. This allows
+  an agent to merge a PR it authored **when GitHub permits it**, but it cannot
+  approve its own PR as an independent reviewer.
+- A successful merge deletes the agent-managed `pwm/` head branch by default
+  if it remains unchanged, belongs to the same repository, is unprotected,
+  and is not referenced by any open PR. If cleanup fails, the merge result
+  still reports success together with the cleanup failure; do not retry the
+  merge. `github_cleanup_merged_branch` accepts an explicit merged PR number,
+  exact head SHA, and confirmation for older branches. It does not delete
+  unrelated or active branches without these checks.
+- `github_set_branch_auto_delete` configures GitHub's own
+  `delete_branch_on_merge` repository setting. It requires repository admin
+  permission and `confirm=true`. This is the preferred option for automatic
+  cleanup of **all** merged branches, including branches merged outside this
+  application; repository rules continue to apply.
+
+For example, with a project that has already linked `OWNER/REPO`:
+
+```sh
+# Inspect checks and the SHA the next merge request must preserve.
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/projects/research/github/pulls/42/verify?repository=OWNER/REPO"
+
+# Merge only after the verification result reports ready_to_merge=true.
+curl -fsS -X POST "$BASE/api/projects/research/github/pulls/42/merge?repository=OWNER/REPO" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"confirm":true,"expected_head":"REPLACE_WITH_40_CHARACTER_HEAD_SHA","merge_method":"squash","cleanup_branch":true}'
+```
+
+A single owner credential controls these operations; do not expose it to an
+untrusted MCP client. PR and branch updates have preflight revision checks,
+but GitHub does not offer atomic conditional deletion of a Git ref, so a small
+race remains between the final reference read and delete. Repository protection
+and rulesets are the final authority. For protected workflows, enable GitHub's
+native automatic branch deletion and require reviews or merge queues as needed.
