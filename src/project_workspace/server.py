@@ -1,12 +1,15 @@
 """Single-owner controller, REST operations, and Streamable HTTP MCP tools."""
 import os
+import hashlib
+import tempfile
+import re
 import secrets
 from contextlib import asynccontextmanager
 from importlib.resources import files
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import Response, HTMLResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import Response, HTMLResponse, FileResponse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
@@ -106,6 +109,8 @@ class Finish(BaseModel):
 
 class WorkspaceRequest(BaseModel):
     project_id: str
+    environment: str | None = None
+    hardware: dict[str, int] = Field(default_factory=dict)
     image: str = 'python:3.12-slim'
     cpu: float = 1
     memory_mb: int = 512
@@ -187,9 +192,10 @@ def list_github_repositories(project_id: str) -> list[str]:
 
 @mcp.tool()
 def workspace_create(project_id: str, image: str = 'python:3.12-slim',
-                     cpu: float = 1, memory_mb: int = 512, duration_minutes: int = 120) -> dict:
+                     cpu: float = 1, memory_mb: int = 512, duration_minutes: int = 120,
+                     hardware: dict[str, int] | None = None, environment: str | None = None) -> dict:
     """Reserve an online Linux worker and request an isolated interactive container."""
-    return store.workspace_create(project_id, image, cpu, memory_mb, duration_minutes)
+    return store.workspace_create(project_id, image, cpu, memory_mb, duration_minutes, hardware, environment)
 
 
 @mcp.tool()
@@ -214,6 +220,62 @@ def workspace_operation(project_id: str, workspace_id: str, operation_id: str) -
 def workspace_destroy(project_id: str, workspace_id: str) -> dict:
     """Stop an interactive workspace, retaining its named volume for recovery."""
     return store.workspace_stop(project_id, workspace_id)
+
+
+@mcp.tool()
+def list_hardware() -> list[dict]:
+    """Discover exclusive GPUs, NPUs, and FPGAs and their active workspace leases."""
+    return store.hardware_inventory()
+
+
+@mcp.tool()
+def environment_define(project_id: str, name: str, base_image: str, dockerfile: str = '',
+                       expected_version: int = 0, context: str = '', architecture: str = '') -> dict:
+    """Store a revisioned Docker environment recipe; no software is installed until built."""
+    return store.environment_define(project_id, name, base_image, dockerfile,
+                                    expected_version, context, architecture)
+
+
+@mcp.tool()
+def environment_list(project_id: str) -> list[dict]:
+    """List versioned workspace image definitions, their build status, and owning nodes."""
+    return store.environments(project_id)
+
+
+@mcp.tool()
+def environment_build(project_id: str, name: str, workspace_id: str) -> dict:
+    """Request a controlled image build on the selected workspace's worker."""
+    return store.environment_build(project_id, name, workspace_id)
+
+
+@mcp.tool()
+def environment_export(project_id: str, name: str, workspace_id: str) -> dict:
+    """Export a built environment image as a durable, downloadable OCI-compatible Docker archive."""
+    return store.environment_export(project_id,name,workspace_id)
+
+
+@mcp.tool()
+def environment_import(project_id: str, name: str, workspace_id: str, artifact_id: str) -> dict:
+    """Load a saved environment image on another worker, after project/revision checks."""
+    return store.environment_import(project_id,name,workspace_id,artifact_id)
+
+
+@mcp.tool()
+def workspace_snapshot(project_id: str, workspace_id: str) -> dict:
+    """Queue a durable snapshot of workspace files; an image is saved independently."""
+    return store.workspace_call(project_id, workspace_id, 'snapshot', {})
+
+
+@mcp.tool()
+def workspace_snapshot_list(project_id: str, workspace_id: str) -> list[dict]:
+    """Find independently retained workspace file snapshots."""
+    return store.workspace_snapshots(project_id, workspace_id)
+
+
+@mcp.tool()
+def workspace_restore(project_id: str, workspace_id: str, snapshot_id: str) -> dict:
+    """Restore a project snapshot into a ready workspace after checking project authority."""
+    return store.workspace_restore(project_id, workspace_id, snapshot_id)
 
 
 @mcp.tool()
@@ -347,10 +409,69 @@ def artifact_list_http(project_id: str):
 
 @app.get('/api/projects/{project_id}/artifacts/{artifact_id}', dependencies=[Depends(admin)])
 def artifact_http(project_id: str, artifact_id: str):
-    meta, content = store.artifact_get(project_id, artifact_id)
-    return Response(content, media_type='application/octet-stream',
-                    headers={'Content-Disposition': 'attachment; filename="' + meta['name'] + '"',
-                             'X-Content-SHA256': meta['sha256']})
+    meta, path = store.artifact_info(project_id, artifact_id)
+    return FileResponse(path, media_type='application/octet-stream', filename=meta['name'],
+                        headers={'X-Content-SHA256': meta['sha256']})
+
+
+@app.get('/api/hardware', dependencies=[Depends(admin)])
+def hardware_http():
+    return store.hardware_inventory()
+
+
+@app.get('/api/projects/{project_id}/environments', dependencies=[Depends(admin)])
+def environment_list_http(project_id: str):
+    return store.environments(project_id)
+
+
+class EnvironmentDefinition(BaseModel):
+    name: str
+    base_image: str
+    dockerfile: str = ''
+    expected_version: int = 0
+    context: str = ''
+    architecture: str = ''
+
+
+@app.post('/api/projects/{project_id}/environments', dependencies=[Depends(admin)])
+def environment_define_http(project_id: str, value: EnvironmentDefinition):
+    return store.environment_define(project_id, value.name, value.base_image,
+                                    value.dockerfile, value.expected_version, value.context,
+                                    value.architecture)
+
+
+@app.post('/api/projects/{project_id}/environments/{name}/build/{workspace_id}',
+          dependencies=[Depends(admin)])
+def environment_build_http(project_id: str, name: str, workspace_id: str):
+    return store.environment_build(project_id, name, workspace_id)
+
+
+@app.post('/api/projects/{project_id}/environments/{name}/export/{workspace_id}',
+          dependencies=[Depends(admin)])
+def environment_export_http(project_id: str,name: str,workspace_id: str):
+    return store.environment_export(project_id,name,workspace_id)
+
+
+class EnvironmentImport(BaseModel):
+    artifact_id: str
+
+
+@app.post('/api/projects/{project_id}/environments/{name}/import/{workspace_id}',
+          dependencies=[Depends(admin)])
+def environment_import_http(project_id: str,name: str,workspace_id: str,value: EnvironmentImport):
+    return store.environment_import(project_id,name,workspace_id,value.artifact_id)
+
+
+@app.get('/api/projects/{project_id}/workspaces/{workspace_id}/snapshots',
+         dependencies=[Depends(admin)])
+def workspace_snapshots_http(project_id: str, workspace_id: str):
+    return store.workspace_snapshots(project_id, workspace_id)
+
+
+@app.post('/api/projects/{project_id}/workspaces/{workspace_id}/snapshots/{snapshot_id}/restore',
+          dependencies=[Depends(admin)])
+def workspace_restore_http(project_id: str, workspace_id: str, snapshot_id: str):
+    return store.workspace_restore(project_id, workspace_id, snapshot_id)
 
 
 @app.get('/api/nodes', dependencies=[Depends(admin)])
@@ -376,7 +497,7 @@ def pair_node(value: Pairing):
 @app.post('/api/workspaces', dependencies=[Depends(admin)])
 def create_workspace_http(value: WorkspaceRequest):
     return store.workspace_create(value.project_id, value.image, value.cpu, value.memory_mb,
-                                  value.duration_minutes)
+                                  value.duration_minutes, value.hardware, value.environment)
 
 
 @app.get('/api/projects/{project_id}/workspaces', dependencies=[Depends(admin)])
@@ -424,14 +545,58 @@ def finish(node_id: str, value: Finish, authorization: str = Header(default=''))
 def worker_artifact_http(node_id: str, workspace_id: str, artifact_id: str,
                          authorization: str = Header(default='')):
     worker_auth(node_id, authorization)
-    _, content = store.worker_artifact(node_id, workspace_id, artifact_id)
-    return Response(content, media_type='application/octet-stream')
+    meta, path = store.worker_artifact_info(node_id, workspace_id, artifact_id)
+    return FileResponse(path, media_type='application/octet-stream',
+                        headers={'X-Content-SHA256':meta['sha256']})
 
 
 @app.post('/api/worker/{node_id}/operation/claim')
 def operation_claim_http(node_id: str, authorization: str = Header(default='')):
     worker_auth(node_id, authorization)
     return {'operation': store.operation_claim(node_id)}
+
+
+@app.post('/api/worker/{node_id}/operation/renew')
+def operation_renew_http(node_id: str, value: dict, authorization: str = Header(default='')):
+    worker_auth(node_id, authorization)
+    return store.operation_renew(node_id, value['operation_id'], value['lease_token'])
+
+
+@app.put('/api/worker/{node_id}/workspaces/{workspace_id}/operations/{operation_id}/artifact')
+async def worker_upload_http(node_id: str, workspace_id: str, operation_id: str,
+                             request: Request, authorization: str = Header(default=''),
+                             x_operation_token: str = Header(default=''),
+                             x_artifact_name: str = Header(default=''),
+                             x_content_sha256: str = Header(default='')):
+    worker_auth(node_id, authorization)
+    store.upload_authorize(node_id, workspace_id, operation_id, x_operation_token)
+    if not re.fullmatch(r'[0-9a-f]{64}', x_content_sha256):
+        raise HTTPException(400, 'Missing SHA-256 content digest')
+    max_bytes = int(os.getenv('PWM_MAX_ARTIFACT_BYTES', str(2 * 1024**3)))
+    if max_bytes < 1 or max_bytes > 100 * 1024**3:
+        raise HTTPException(500, 'Invalid artifact storage limit')
+    directory = Path(store.path).parent / 'artifacts'
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, path = tempfile.mkstemp(prefix='.upload-', dir=directory)
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with os.fdopen(fd, 'wb') as target:
+            async for block in request.stream():
+                size += len(block)
+                if size > max_bytes:
+                    raise HTTPException(413, 'Artifact exceeds configured size limit')
+                target.write(block)
+                digest.update(block)
+            target.flush()
+            os.fsync(target.fileno())
+        if digest.hexdigest() != x_content_sha256:
+            raise HTTPException(400, 'Artifact digest mismatch')
+        return store.upload_commit(node_id, workspace_id, operation_id,
+                                   x_operation_token, x_artifact_name,
+                                   path, size, digest.hexdigest())
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 @app.post('/api/worker/{node_id}/operation/finish')

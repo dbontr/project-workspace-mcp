@@ -12,10 +12,14 @@ import time
 import uuid
 from pathlib import Path
 
+from .hardware import validate_devices
+from .resources import ResourceStoreMixin
+from .uploads import UploadStoreMixin
+
 ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 
 
-class Store:
+class Store(ResourceStoreMixin, UploadStoreMixin):
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -42,6 +46,27 @@ class Store:
                 token_hash TEXT,lease_until REAL,result TEXT,created REAL NOT NULL,updated REAL NOT NULL,
                 FOREIGN KEY(workspace) REFERENCES workspaces(id));
             CREATE INDEX IF NOT EXISTS idx_operations_node ON operations(node,status,created);
+            CREATE TABLE IF NOT EXISTS hardware_leases(
+                workspace TEXT NOT NULL,node TEXT NOT NULL,device_id TEXT NOT NULL,kind TEXT NOT NULL,
+                acquired REAL NOT NULL,released REAL,
+                PRIMARY KEY(workspace,node,device_id), FOREIGN KEY(workspace) REFERENCES workspaces(id));
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_device_leases_active
+                ON hardware_leases(node,device_id) WHERE released IS NULL;
+            CREATE TABLE IF NOT EXISTS environments(
+                project TEXT NOT NULL,name TEXT NOT NULL,version INTEGER NOT NULL,
+                base_image TEXT NOT NULL,dockerfile TEXT NOT NULL,image TEXT NOT NULL,
+                context_name TEXT NOT NULL DEFAULT '',architecture TEXT NOT NULL DEFAULT '',
+                node TEXT,status TEXT NOT NULL,image_id TEXT,created REAL NOT NULL,updated REAL NOT NULL,
+                PRIMARY KEY(project,name),FOREIGN KEY(project) REFERENCES projects(id));
+            CREATE TABLE IF NOT EXISTS environment_exports(
+                artifact TEXT PRIMARY KEY,project TEXT NOT NULL,name TEXT NOT NULL,
+                version INTEGER NOT NULL,created REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS workspace_snapshots(
+                id TEXT PRIMARY KEY,workspace TEXT NOT NULL,artifact TEXT NOT NULL,
+                created REAL NOT NULL,FOREIGN KEY(workspace) REFERENCES workspaces(id));
+            CREATE TABLE IF NOT EXISTS operation_artifacts(
+                operation TEXT NOT NULL, artifact TEXT NOT NULL,
+                PRIMARY KEY(operation,artifact), FOREIGN KEY(operation) REFERENCES operations(id));
             CREATE TABLE IF NOT EXISTS artifact_grants(workspace TEXT NOT NULL,artifact TEXT NOT NULL,
                 PRIMARY KEY(workspace,artifact));
             CREATE TABLE IF NOT EXISTS workspace_repositories(workspace TEXT NOT NULL,repository TEXT NOT NULL,
@@ -170,6 +195,7 @@ class Store:
     def _validate_capacity(capacity):
         if not isinstance(capacity, dict):
             raise ValueError('Invalid node capabilities')
+        validate_devices(capacity)
         for key in ('cpu', 'memory_mb', 'max_jobs'):
             value = capacity.get(key)
             if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 < value <= 1_000_000:
@@ -195,29 +221,6 @@ class Store:
             db.execute('INSERT INTO nodes VALUES(?,?,?,?)',(node,hashlib.sha256(token.encode()).hexdigest(),json.dumps(capabilities),time.time()))
         return {'node_id':node,'worker_token':token}
 
-    def workspace_create(self, project, image='python:3.12-slim', cpu=1, memory_mb=512, duration_minutes=120):
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9./:_@-]{1,200}',image): raise ValueError('Invalid image')
-        if not 0.1<=cpu<=32 or not 64<=memory_mb<=131072 or not 1<=duration_minutes<=1440:
-            raise ValueError('Workspace limits exceeded')
-        now=time.time()
-        with self.lock, self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
-            if not db.execute('SELECT 1 FROM projects WHERE id=?',(project,)).fetchone(): raise ValueError('Unknown project')
-            candidates=db.execute('SELECT id,capabilities FROM nodes WHERE last_seen>? ORDER BY id',(now-90,)).fetchall()
-            node=None
-            for row in candidates:
-                caps=json.loads(row['capabilities'])
-                if not caps.get('docker') or caps.get('cpu',0)<cpu or caps.get('memory_mb',0)<memory_mb: continue
-                reserved=db.execute("SELECT coalesce(sum(cpu),0) c,coalesce(sum(memory_mb),0) m FROM workspaces WHERE node=? AND status IN ('starting','ready','stopping','failed')",(row['id'],)).fetchone()
-                tasks=db.execute("SELECT coalesce(sum(cpu),0) c,coalesce(sum(memory_mb),0) m FROM jobs WHERE node=? AND status='leased'",(row['id'],)).fetchone()
-                if reserved['c']+tasks['c']+cpu<=caps['cpu'] and reserved['m']+tasks['m']+memory_mb<=caps['memory_mb']:
-                    node=row['id'];break
-            if not node: raise ValueError('No online worker with available capacity')
-            wid=uuid.uuid4().hex
-            db.execute('INSERT INTO workspaces VALUES(?,?,?,?,?,?,?,?,?,?)', (wid,project,node,image,cpu,memory_mb,'starting',now+duration_minutes*60,now,now))
-            self._enqueue(db,wid,node,'start',{'image':image,'cpu':cpu,'memory_mb':memory_mb})
-            return {'id':wid,'project':project,'node':node,'status':'starting','expires':now+duration_minutes*60}
-
     def workspaces(self, project):
         with self.connect() as db:
             return [dict(r) for r in db.execute('SELECT * FROM workspaces WHERE project=? ORDER BY created DESC',(project,))]
@@ -235,7 +238,7 @@ class Store:
         return op_id
 
     def workspace_call(self, project, wid, action, payload):
-        allowed={'command','read_file','write_file','list_directory','search','export_file'}
+        allowed={'command','read_file','write_file','list_directory','search','export_file','snapshot'}
         if action not in allowed or not isinstance(payload,dict): raise ValueError('Unsupported workspace operation')
         if len(json.dumps(payload).encode())>262144: raise ValueError('Operation payload too large')
         with self.lock,self.connect() as db:
@@ -251,8 +254,8 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             row=db.execute('SELECT * FROM workspaces WHERE id=? AND project=?',(wid,project)).fetchone()
             if not row: raise ValueError('Workspace not found')
-            if row['status'] in ('stopping','stopped','failed','expired'): return {'status':row['status']}
-            if row['status']!='ready': raise ValueError('Workspace is not ready')
+            if row['status'] in ('stopping','stopped','expired'): return {'status':row['status']}
+            if row['status'] not in ('ready','failed'): raise ValueError('Workspace cannot be stopped')
             db.execute("UPDATE workspaces SET status='stopping',updated=? WHERE id=?",(time.time(),wid))
             db.execute("UPDATE operations SET status='cancelled',updated=? WHERE workspace=? AND status='queued'",(time.time(),wid))
             return {'status':'stopping','operation_id':self._enqueue(db,wid,row['node'],'stop',{})}
@@ -303,7 +306,7 @@ class Store:
                 payload=json.loads(op['payload'])
                 db.execute('INSERT INTO workspace_repositories VALUES(?,?,?) ON CONFLICT(workspace,repository) DO UPDATE SET revision=excluded.revision',
                            (ws['id'],payload['repository'],payload['revision']))
-            if op['action']=='export_file' and success:
+            if op['action'] in ('export_file','snapshot') and success and 'base64' in output:
                 encoded=output.get('base64')
                 if not isinstance(encoded,str):raise ValueError('Missing artifact payload')
                 try:data=base64.b64decode(encoded,validate=True)
@@ -311,13 +314,60 @@ class Store:
                 if len(data)>1_048_576:raise ValueError('Artifact exceeds 1 MiB limit')
                 artifact=self._artifact_write(db,ws['project'],output.get('name','output'),data,op_id)
                 output={'artifact':artifact}
-            status='succeeded' if success else 'failed'
+            if op['action'] in ('export_file','snapshot','export_image') and success and 'artifact_id' in output:
+                linked=db.execute('SELECT 1 FROM operation_artifacts WHERE operation=? AND artifact=?',
+                                  (op_id,output['artifact_id'])).fetchone()
+                if not linked:raise ValueError('Unverified operation artifact')
+                artifact=db.execute('SELECT id,name,sha256,size FROM artifacts WHERE id=? AND project=?',
+                                    (output['artifact_id'],ws['project'])).fetchone()
+                if not artifact:raise ValueError('Missing uploaded artifact')
+                output={'artifact':dict(artifact)}
+            if op['action']=='export_image' and success:
+                payload=json.loads(op['payload'])
+                profile=db.execute('SELECT * FROM environments WHERE project=? AND name=?',
+                                   (ws['project'],payload['name'])).fetchone()
+                if not profile or profile['version']!=payload['version']:
+                    raise ValueError('Environment revision changed during export')
+                if 'artifact' not in output:raise ValueError('Image export needs a durable artifact')
+                db.execute('INSERT INTO environment_exports VALUES(?,?,?,?,?)',
+                           (output['artifact']['id'],ws['project'],payload['name'],
+                            payload['version'],time.time()))
+            if op['action']=='load_image' and success:
+                payload=json.loads(op['payload'])
+                profile=db.execute('SELECT * FROM environments WHERE project=? AND name=?',
+                                   (ws['project'],payload['name'])).fetchone()
+                if not profile or profile['version']!=payload['version']:
+                    raise ValueError('Environment revision changed during import')
+                if output.get('image')!=profile['image'] or not output.get('image_id'):
+                    raise ValueError('Loaded image identity mismatch')
+                db.execute("UPDATE environments SET status='ready',node=?,image_id=?,updated=? WHERE project=? AND name=?",
+                           (ws['node'],output['image_id'],time.time(),ws['project'],payload['name']))
+            if op['action']=='snapshot' and success:
+                if 'artifact' not in output:raise ValueError('Snapshot needs a durable artifact')
+                db.execute('INSERT INTO workspace_snapshots VALUES(?,?,?,?)',
+                           (uuid.uuid4().hex,ws['id'],output['artifact']['id'],time.time()))
+            if op['action']=='build_image':
+                payload=json.loads(op['payload'])
+                profile=db.execute('SELECT * FROM environments WHERE project=? AND name=?',
+                                   (ws['project'],payload['name'])).fetchone()
+                if profile and profile['version']==payload['version'] and profile['node']==ws['node']:
+                    if success and output.get('image')==profile['image'] and output.get('image_id'):
+                        db.execute("UPDATE environments SET status='ready',image_id=?,updated=? WHERE project=? AND name=?",
+                                   (output['image_id'],time.time(),ws['project'],payload['name']))
+                    else:
+                        success=False
+                        db.execute("UPDATE environments SET status='failed',updated=? WHERE project=? AND name=?",
+                                   (time.time(),ws['project'],payload['name']))
+            status='succeeded' if success else 'failed' 
             db.execute('UPDATE operations SET status=?,result=?,updated=?,token_hash=NULL WHERE id=?',
                        (status,json.dumps(output),time.time(),op_id))
             if op['action']=='start':
                 db.execute('UPDATE workspaces SET status=?,updated=? WHERE id=?',('ready' if success else 'failed',time.time(),ws['id']))
             elif op['action']=='stop':
                 db.execute('UPDATE workspaces SET status=?,updated=? WHERE id=?',('stopped' if success else 'failed',time.time(),ws['id']))
+                if success:
+                    db.execute('UPDATE hardware_leases SET released=? WHERE workspace=? AND released IS NULL',
+                               (time.time(),ws['id']))
             return {'id':op_id,'status':status,'result':output}
 
     def _artifact_write(self,db,project,name,data,source):
@@ -343,6 +393,13 @@ class Store:
     def artifacts(self,project):
         with self.connect() as db:
             return [dict(r) for r in db.execute('SELECT * FROM artifacts WHERE project=? ORDER BY created DESC',(project,))]
+
+    def artifact_info(self,project,artifact_id):
+        with self.connect() as db:
+            row=db.execute('SELECT * FROM artifacts WHERE id=? AND project=?',
+                           (artifact_id,project)).fetchone()
+            if not row:raise ValueError('Artifact not found')
+            return dict(row),Path(self.path).parent/'artifacts'/artifact_id
 
     def artifact_get(self,project,artifact_id):
         with self.connect() as db:
@@ -379,6 +436,14 @@ class Store:
             db.execute('INSERT INTO artifact_grants VALUES(?,?) ON CONFLICT DO NOTHING',(wid,artifact_id))
             return {'operation_id':self._enqueue(db,wid,ws['node'],'import_archive',
                     {'artifact_id':artifact_id,'repository':repository,'revision':revision}), 'status':'queued'}
+
+    def worker_artifact_info(self,node,wid,artifact_id):
+        with self.connect() as db:
+            row=db.execute("SELECT w.project FROM workspaces w JOIN artifact_grants a "
+                           "ON a.workspace=w.id WHERE w.id=? AND w.node=? AND a.artifact=?",
+                           (wid,node,artifact_id)).fetchone()
+            if not row:raise ValueError('Worker is not authorized to fetch this artifact')
+            return self.artifact_info(row['project'],artifact_id)
 
     def worker_artifact(self,node,wid,artifact_id):
         with self.connect() as db:
