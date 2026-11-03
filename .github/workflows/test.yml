@@ -74,6 +74,21 @@ jobs:
         run: |
           gofmt -d internal/controller/checkpoint_stop.go internal/controller/checkpoint_stop_test.go internal/controller/workspaces.go internal/controller/state.go
           test -z "$(gofmt -l internal/controller/checkpoint_stop.go internal/controller/checkpoint_stop_test.go internal/controller/workspaces.go internal/controller/state.go)"
+      - name: Verify systemd packaging and worker CLI formatting
+        run: |
+          sh -n scripts/install-systemd.sh
+          test -z "$(gofmt -l cmd/project-workspace-worker/main.go cmd/project-workspace-worker/main_test.go)"
+          mkdir -p "$RUNNER_TEMP/pwm-systemd"
+          sed 's#/usr/local/bin/project-workspace-controller#/usr/bin/true#' \
+            scripts/systemd/project-workspace-controller.service \
+            > "$RUNNER_TEMP/pwm-systemd/controller.service"
+          sed -e 's#/usr/local/bin/project-workspace-worker#/usr/bin/true#' \
+              -e 's#docker.service#network.target#g' \
+            scripts/systemd/project-workspace-worker.service \
+            > "$RUNNER_TEMP/pwm-systemd/worker.service"
+          systemd-analyze verify \
+            "$RUNNER_TEMP/pwm-systemd/controller.service" \
+            "$RUNNER_TEMP/pwm-systemd/worker.service"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
