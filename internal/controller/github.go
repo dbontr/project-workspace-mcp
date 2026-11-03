@@ -19,15 +19,13 @@ type GitHub struct {
 	API           string
 	Client        *http.Client
 	GenericWrites bool
+	App           *GitHubApp
 }
 
 func NewGitHub(token string) *GitHub {
 	return &GitHub{Token: token, API: "https://api.github.com", Client: &http.Client{Timeout: 35 * time.Second}, GenericWrites: false}
 }
 func (g *GitHub) request(method, path string, query map[string]any, body any) (any, error) {
-	if g.Token == "" {
-		return nil, errors.New("GitHub credential is not configured")
-	}
 	base, e := url.Parse(g.API)
 	if e != nil {
 		return nil, e
@@ -38,6 +36,10 @@ func (g *GitHub) request(method, path string, query map[string]any, body any) (a
 	}
 	if base.Host != target.Host {
 		return nil, errors.New("GitHub host changed")
+	}
+	token, e := g.credential(path)
+	if e != nil {
+		return nil, e
 	}
 	values := target.Query()
 	for key, val := range query {
@@ -56,7 +58,7 @@ func (g *GitHub) request(method, path string, query map[string]any, body any) (a
 	if e != nil {
 		return nil, e
 	}
-	req.Header.Set("Authorization", "Bearer "+g.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "project-workspace-mcp")
