@@ -1,5 +1,7 @@
 """GitHub repository broker. Provider credentials stay on the controller."""
 import base64
+import json
+import os
 import re
 import uuid
 
@@ -15,7 +17,7 @@ class GitHubBroker:
         self.token = token
         self.client = client or httpx.Client(base_url='https://api.github.com', timeout=35)
 
-    def _request(self, method, url, *, body=None):
+    def _request(self, method, url, *, body=None, params=None):
         if not self.token:
             raise ValueError('PWM_GITHUB_TOKEN is not configured')
         response = self.client.request(method, url, headers={
@@ -23,10 +25,10 @@ class GitHubBroker:
             'Accept': 'application/vnd.github+json',
             'X-GitHub-Api-Version': '2022-11-28',
             'User-Agent': 'project-workspace-mcp',
-        }, json=body)
+        }, json=body, params=params)
         if response.status_code >= 400:
             raise ValueError('GitHub API returned ' + str(response.status_code) + ': ' + response.text[:400])
-        return response.json()
+        return response.json() if response.content else None
 
     @staticmethod
     def _repo(full_name):
@@ -39,6 +41,33 @@ class GitHubBroker:
         if not isinstance(path,str) or not PATH.fullmatch(path) or any(part in ('.', '..') for part in path.split('/')):
             raise ValueError('Invalid repository file path')
         return path
+
+    def api_request(self, full_name, method, endpoint, params=None, payload=None):
+        """Perform a bounded GitHub REST request under one project-linked repository."""
+        self._repo(full_name)
+        if method not in ('GET', 'POST', 'PUT', 'PATCH', 'DELETE'):
+            raise ValueError('Unsupported GitHub method')
+        if (not isinstance(endpoint, str) or len(endpoint) > 512 or
+                not re.fullmatch(r'[A-Za-z0-9_.@+-]+(?:/[A-Za-z0-9_.@+-]+)*', endpoint) or
+                any(segment in ('.', '..') for segment in endpoint.split('/'))):
+            raise ValueError('Invalid repository API endpoint')
+        if not isinstance(params, (dict, type(None))) or len(params or {}) > 16:
+            raise ValueError('Invalid GitHub query parameters')
+        if not isinstance(payload, (dict, list, type(None))) or len(json.dumps(payload).encode()) > 256_000:
+            raise ValueError('GitHub request body exceeds limit')
+        if params is not None and any(not isinstance(key,str) or
+                                      not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,63}', key) or
+                                      not isinstance(value,(str,int,bool)) or
+                                      len(str(value)) > 1024
+                                      for key,value in params.items()):
+            raise ValueError('Invalid GitHub query parameters')
+        if method == 'GET' and payload is not None:
+            raise ValueError('GET requests cannot contain a body')
+        if method != 'GET' and os.getenv('PWM_GITHUB_GENERIC_WRITES') != '1':
+            raise ValueError('Generic GitHub mutations require PWM_GITHUB_GENERIC_WRITES=1')
+        # All routes remain under the linked repository; account and org APIs are excluded.
+        return self._request(method, self._repo(full_name) + '/' + endpoint,
+                             body=payload, params=params)
 
     def repo(self, full_name):
         result=self._request('GET', self._repo(full_name))

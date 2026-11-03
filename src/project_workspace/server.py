@@ -217,6 +217,13 @@ def workspace_destroy(project_id: str, workspace_id: str) -> dict:
 
 
 @mcp.tool()
+def github_repository_api(project_id: str, repository: str, method: str, endpoint: str,
+                          params: dict | None = None, payload: dict | list | None = None):
+    """Call a GitHub REST endpoint under a linked repository; generic writes require an administrator setting."""
+    return github(project_id, repository).api_request(repository, method, endpoint, params, payload)
+
+
+@mcp.tool()
 def github_repository(project_id: str, repository: str) -> dict:
     """Read GitHub repository information for a project-linked repository."""
     return github(project_id, repository).repo(repository)

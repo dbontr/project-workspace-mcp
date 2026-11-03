@@ -64,3 +64,25 @@ def test_draft_pr_publishes_separate_branch_without_force_push():
     result=broker_for(handler).publish('example/repo','main','a'*40,{'src/one.txt':b'edited'},'Fix tests')
     assert result['draft'] and result['number']==2
     assert not any(method=='PATCH' for method,_ in sent)
+
+
+def test_generic_github_repository_reads_and_opt_in_writes(monkeypatch):
+    observed=[]
+    def handler(request):
+        observed.append((request.method,request.url.path,request.url.params))
+        assert request.url.path.startswith('/repos/example/repo/')
+        if request.method=='DELETE':
+            return httpx.Response(204)
+        return httpx.Response(200,json={'ok':True})
+    broker=broker_for(handler)
+    assert broker.api_request('example/repo','GET','pulls/12/reviews',{'per_page':20})=={'ok':True}
+    assert str(observed[0][2]['per_page'])=='20'
+    for route in ('/users/a','../../users/a','issues/../secrets','issues?state=all',
+                  'issues/%2e%2e/secrets','', 'https://example.com/x'):
+        with pytest.raises(ValueError,match='Invalid repository API endpoint'):
+            broker.api_request('example/repo','GET',route)
+    with pytest.raises(ValueError,match='require'):
+        broker.api_request('example/repo','DELETE','git/refs/heads/topic')
+    monkeypatch.setenv('PWM_GITHUB_GENERIC_WRITES','1')
+    assert broker.api_request('example/repo','DELETE','git/refs/heads/topic') is None
+    assert observed[-1][0]=='DELETE'

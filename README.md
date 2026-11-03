@@ -66,7 +66,7 @@ curl -fsS -X POST "$BASE/api/workspaces" \
   -d '{"project_id":"demo","cpu":1,"memory_mb":512,"duration_minutes":120}'
 ```
 
-The create response contains a `workspace_id` and `starting` state. Wait for the worker to report `ready` in `GET /api/projects/demo/workspaces`. Queue a command:
+The create response contains an `id` and a `starting` status. Wait for the worker to report `ready` in `GET /api/projects/demo/workspaces`. Queue a command:
 
 ```sh
 curl -fsS -X POST "$BASE/api/projects/demo/workspaces/WORKSPACE_ID/operations" \
@@ -85,10 +85,11 @@ Set `PWM_GITHUB_TOKEN` on the controller using a fine-grained personal access to
 Link repositories to a project with `link_github_repository`. The MCP tools then support:
 
 - `github_repository`, `github_read_file`, `github_list_issues`, `github_list_pull_requests`, `github_create_issue`.
+- `github_repository_api`: calls arbitrary REST API paths within a linked repository. Reads are enabled by default; writes require explicit administrator configuration `PWM_GITHUB_GENERIC_WRITES=1`. This is a powerful account operation surface; use it only with trusted MCP clients. It cannot reach GitHub account or organization endpoints.
 - `github_checkout_repository`: resolves a ref to an immutable commit, downloads an archive to the controller, and stages sanitized files into `/workspace/repos/OWNER__REPO` through a worker operation. GitHub tokens do not enter the workspace. Archive download is limited to 12 MiB and expanded content to 32 MiB; submodules and symlinks are not imported.
 - `github_publish_artifacts`: creates a new GitHub branch and a draft pull request from selected controller artifacts. It requires an exact expected base commit SHA and will reject a stale base instead of rewriting it. A draft pull request is publication for review, not a merge.
 
-Repository access remains bounded by both the GitHub token and the project's linked repository list. The broker is not a generic unrestricted GitHub account proxy; advanced actions such as reviews, releases, and organization administration are not implemented.
+Repository access remains bounded by both the GitHub token and the project's linked repository list. The generic repository API can reach review, release, and workflow endpoints when the supplied token permits them. It does not implement interactive GitHub App installation, account- and organization-level APIs, or per-action user approval.
 
 ## Security and storage
 
@@ -105,7 +106,7 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
-The unit suite checks project isolation, concurrency versions, worker pairing, lease fencing, capacity reservations, artifact integrity, path validation, and GitHub revision guards. It uses mocks for GitHub and Docker. Live MCP client authentication, Docker execution, GPU jobs, multi-host networking, GitHub publication, TLS/OAuth, and restoration remain deployment acceptance requirements.
+The unit suite checks project isolation, concurrency versions, worker pairing, lease fencing, capacity reservations, artifact integrity, path validation, and GitHub revision guards. GitHub operations use mocks in unit tests. GitHub Actions also runs a real Linux Docker lifecycle test. GPU jobs, true multi-host networking, live GitHub publication, TLS/OAuth, and restoration remain deployment acceptance requirements.
 
 ## Development boundaries
 
