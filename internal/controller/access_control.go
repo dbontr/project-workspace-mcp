@@ -86,7 +86,10 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 	}
 	if name == "task_list" || name == "task_create" || name == "task_details" ||
 		name == "task_update" || name == "task_files" || name == "task_file_info" ||
-		name == "task_save_text" || name == "task_send_base64" || name == "task_read_base64" {
+		name == "task_save_text" || name == "task_send_base64" || name == "task_read_base64" ||
+		name == "personal_task_claim_list" || name == "personal_task_claim_status" ||
+		name == "personal_task_claim" || name == "personal_task_claim_renew" ||
+		name == "personal_task_claim_finish" {
 		return true
 	}
 	if name == "task_export_project" {
