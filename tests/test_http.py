@@ -13,7 +13,7 @@ def test_admin_and_worker_credentials_are_separate(monkeypatch,tmp_path):
     monkeypatch.setenv('PWM_DB',str(tmp_path/'controller.db'))
     sys.modules.pop('project_workspace.server',None)
     server=importlib.import_module('project_workspace.server')
-    with TestClient(server.app) as client:
+    with TestClient(server.app, base_url="http://localhost") as client:
         assert client.get('/api/status').status_code==401
         admin_headers={'Authorization':'Bearer administrator-secret-'+'x'*48}
         created=client.post('/api/projects',headers=admin_headers,
