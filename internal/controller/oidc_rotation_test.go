@@ -102,9 +102,7 @@ func TestOIDCSigningKeyRotationAndRefreshLimit(t *testing.T) {
 }
 
 func TestOIDCRejectsNonNumericTimeClaims(t *testing.T) {
-	db, server, srv := fixture(t)
-	_ = db
-	_ = srv
+	_, server, _ := fixture(t)
 	key, issuer := testOIDCIssuer(t, server)
 	claims := map[string]any{
 		"iss": issuer, "aud": "project-workspace", "sub": "subject",
