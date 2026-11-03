@@ -36,8 +36,8 @@ jobs:
           test -z "$(gofmt -l internal/controller/task_claims.go internal/controller/task_claims_http.go internal/controller/task_claims_test.go)"
       - name: Format GitHub App authentication
         run: |
-          gofmt -d internal/controller/github_app.go internal/controller/github_app_test.go internal/controller/github.go internal/controller/repository_stream.go
-          test -z "$(gofmt -l internal/controller/github_app.go internal/controller/github_app_test.go internal/controller/github.go internal/controller/repository_stream.go)"
+          gofmt -d internal/controller/github_app.go internal/controller/github_app_test.go internal/controller/github_app_diagnostics.go internal/controller/github_app_diagnostics_test.go internal/controller/github.go internal/controller/repository_stream.go
+          test -z "$(gofmt -l internal/controller/github_app.go internal/controller/github_app_test.go internal/controller/github_app_diagnostics.go internal/controller/github_app_diagnostics_test.go internal/controller/github.go internal/controller/repository_stream.go)"
       - name: Format program catalog components
         run: |
           gofmt -d internal/controller/pool_management.go internal/controller/pool_management_test.go internal/controller/software_pool.go internal/controller/software_pool_http.go internal/controller/workspaces.go
