@@ -40,6 +40,10 @@ spec:
         app: pwm-controller
     spec:
       serviceAccountName: pwm-controller
+      {{- with .Values.controller.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       securityContext:
         runAsUser: 65534
@@ -51,7 +55,7 @@ spec:
       containers:
         - name: controller
           image: {{ .Values.controller.image | quote }}
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
           args: ["controller", "--listen", "0.0.0.0:8443"]
           ports:
             - containerPort: 8443

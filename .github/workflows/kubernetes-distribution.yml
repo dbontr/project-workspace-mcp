@@ -1,0 +1,69 @@
+name: Kubernetes distribution
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helm-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+      - name: Build controller and worker runtime images
+        run: |
+          docker buildx build --platform linux/amd64 --provenance=false --load \
+            -f deploy/kubernetes/Dockerfile.controller -t pwm-controller:ci .
+          docker buildx build --platform linux/amd64 --provenance=false --load \
+            -f deploy/kubernetes/Dockerfile.worker -t pwm-worker:ci .
+      - name: Start disposable Kubernetes cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          version: v0.30.0
+          node_image: kindest/node:v1.34.0
+          kubectl_version: v1.34.1
+      - name: Load packaged application images
+        run: |
+          kind load docker-image pwm-controller:ci --name chart-testing
+          kind load docker-image pwm-worker:ci --name chart-testing
+      - name: Verify Helm deployment and paired workspace lifecycle
+        run: bash scripts/ci-kubernetes-smoke.sh
+
+  publish:
+    needs: helm-smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Authenticate to GitHub Container Registry
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish controller and worker images
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "$REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          for component in controller worker; do
+            image="ghcr.io/$owner/project-workspace-$component"
+            docker buildx build --platform linux/amd64 --provenance=false --load \
+              -f "deploy/kubernetes/Dockerfile.$component" \
+              -t "$image:main" -t "$image:$GITHUB_SHA" .
+            docker push "$image:$GITHUB_SHA"
+            docker push "$image:main"
+          done

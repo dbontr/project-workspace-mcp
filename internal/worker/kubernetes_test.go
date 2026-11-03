@@ -154,3 +154,26 @@ func TestKubernetesJobManifestDoesNotMountControllerCredentials(t *testing.T) {
 		}
 	}
 }
+func TestKubernetesWorkloadsUseNamespaceImagePullSecrets(t *testing.T) {
+	k, _ := testKubernetes(t)
+	k.ImagePullSecret = "pwm-private-registry"
+	id := strings.Repeat("a", 32)
+	workspace := k.workspacePod(id, "registry.example/research:1", 1, 512, false, 0, 0, nil)
+	pulls := kubeObject(workspace, "spec")["imagePullSecrets"]
+	if len(pulls.([]any)) != 1 || pulls.([]any)[0].(map[string]string)["name"] != k.ImagePullSecret {
+		t.Fatalf("workspace image pull Secret not scoped to Pod: %v", pulls)
+	}
+	job := k.jobManifest(Job{ID: strings.Repeat("b", 32),
+		Image: "registry.example/research:1", Command: "echo ok", CPU: 1, MemoryMB: 512}, k.Worker)
+	template := kubeObject(kubeObject(job, "spec"), "template")
+	podSpec := kubeObject(template, "spec")
+	if len(podSpec["imagePullSecrets"].([]any)) != 1 {
+		t.Fatalf("batch Job cannot pull private images: %v", job)
+	}
+	for _, pod := range []map[string]any{workspace, job} {
+		serialized, err := json.Marshal(pod)
+		if err != nil || bytes.Contains(serialized, []byte("secretKeyRef")) {
+			t.Fatal("registry credentials were mounted as an application Secret")
+		}
+	}
+}

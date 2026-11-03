@@ -106,6 +106,10 @@ spec:
         pwm-project: {{ .Values.worker.projectID }}
     spec:
       serviceAccountName: pwm-worker-{{ .Values.worker.projectID }}
+      {{- with .Values.worker.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: true
       securityContext:
         runAsUser: 65534
@@ -117,7 +121,7 @@ spec:
       containers:
         - name: worker
           image: {{ .Values.worker.image | quote }}
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.worker.imagePullPolicy }}
           args:
             - serve
             - --backend=kubernetes
@@ -143,6 +147,10 @@ spec:
             {{- if .Values.worker.deviceManifestConfigMap }}
             - name: PWM_KUBE_DEVICE_MANIFEST
               value: /etc/pwm-devices/devices.json
+            {{- end }}
+            {{- if .Values.worker.workspaceImagePullSecret }}
+            - name: PWM_KUBE_IMAGE_PULL_SECRET
+              value: {{ .Values.worker.workspaceImagePullSecret | quote }}
             {{- end }}
             - name: PWM_KUBE_WORKSPACE_STORAGE
               value: {{ .Values.worker.workspaceStorage | quote }}

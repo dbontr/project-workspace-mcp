@@ -23,18 +23,19 @@ var kubernetesName = regexp.MustCompile("^[a-z][a-z0-9-]{0,62}$")
 // Kubernetes executes workspace Pods, persistent claims, and batch Jobs via
 // the Kubernetes API. A worker serves one dedicated project namespace.
 type Kubernetes struct {
-	Namespace    string
-	Project      string
-	Worker       string
-	Binary       string
-	ConfigPath   string
-	OwnsConfig   bool
-	Storage      string
-	StorageClass string
-	Devices      []KubernetesDevice
-	CPU          float64
-	MemoryMB     int
-	MaxJobs      int
+	Namespace       string
+	Project         string
+	Worker          string
+	Binary          string
+	ConfigPath      string
+	OwnsConfig      bool
+	Storage         string
+	StorageClass    string
+	ImagePullSecret string
+	Devices         []KubernetesDevice
+	CPU             float64
+	MemoryMB        int
+	MaxJobs         int
 }
 
 func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*Kubernetes, error) {
@@ -58,8 +59,13 @@ func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*K
 	if class != "" && !kubernetesName.MatchString(class) {
 		return nil, errors.New("invalid Kubernetes storage class")
 	}
+	pullSecret := os.Getenv("PWM_KUBE_IMAGE_PULL_SECRET")
+	if pullSecret != "" && !kubernetesName.MatchString(pullSecret) {
+		return nil, errors.New("invalid Kubernetes workload registry pull secret")
+	}
 	k := &Kubernetes{Namespace: namespace, Project: project, Binary: binary,
-		Storage: storage, StorageClass: class, CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
+		Storage: storage, StorageClass: class, ImagePullSecret: pullSecret,
+		CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
 	if err := k.configureServiceAccount(); err != nil {
 		return nil, err
 	}
@@ -298,7 +304,7 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 			map[string]string{"name": "XDG_CACHE_HOME", "value": "/workspace/.cache"},
 			map[string]string{"name": "XDG_RUNTIME_DIR", "value": "/tmp"})
 	}
-	return map[string]any{
+	result := map[string]any{
 		"apiVersion": "v1", "kind": "Pod",
 		"metadata": map[string]any{"name": kubePodName(id), "labels": k.labels(id, "workspace")},
 		"spec": map[string]any{
@@ -323,8 +329,12 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 			},
 		},
 	}
+	if k.ImagePullSecret != "" {
+		kubeObject(result, "spec")["imagePullSecrets"] =
+			[]any{map[string]string{"name": k.ImagePullSecret}}
+	}
+	return result
 }
-
 func (k *Kubernetes) claim(id string) map[string]any {
 	spec := map[string]any{
 		"accessModes": []string{"ReadWriteOnce"},
@@ -521,7 +531,7 @@ func (k *Kubernetes) PruneVolume(ctx context.Context, id string) (map[string]any
 
 func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 	name := kubeJobName(job.ID)
-	return map[string]any{
+	result := map[string]any{
 		"apiVersion": "batch/v1", "kind": "Job",
 		"metadata": map[string]any{"name": name, "labels": map[string]string{
 			"app.kubernetes.io/managed-by": "project-workspace", "pwm.dev/kind": "job",
@@ -543,8 +553,13 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 			}},
 		},
 	}
+	if k.ImagePullSecret != "" {
+		jobTemplate := kubeObject(kubeObject(result, "spec"), "template")
+		kubeObject(jobTemplate, "spec")["imagePullSecrets"] =
+			[]any{map[string]string{"name": k.ImagePullSecret}}
+	}
+	return result
 }
-
 func (k *Kubernetes) ExecuteJob(ctx context.Context, r *Runner, job Job) (string, string) {
 	if !workspaceID.MatchString(job.ID) || !r.Images[job.Image] || job.CPU < 0.1 ||
 		job.CPU > 32 || job.MemoryMB < 64 || job.MemoryMB > 131072 {
