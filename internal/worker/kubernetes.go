@@ -422,6 +422,24 @@ func (k *Kubernetes) hardwareResources(p map[string]any) (map[string]string, err
 	return resources, nil
 }
 
+// requireWorkspace checks project and worker ownership before any Pod exec.
+func (k *Kubernetes) requireWorkspace(ctx context.Context, id string) error {
+	if !workspaceID.MatchString(id) {
+		return errors.New("invalid workspace ID")
+	}
+	pod, err := k.get(ctx, "pod", kubePodName(id))
+	if err != nil {
+		return fmt.Errorf("inspect workspace Pod: %w", err)
+	}
+	if !k.owns(pod, id, "workspace") {
+		return errors.New("workspace Pod does not belong to this worker and project")
+	}
+	if kubeObject(pod, "metadata")["deletionTimestamp"] != nil {
+		return errors.New("workspace Pod is terminating")
+	}
+	return nil
+}
+
 func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
 	if err := k.requireWorkspace(ctx, id); err != nil {
 		return nil, err
