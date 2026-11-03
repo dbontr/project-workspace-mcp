@@ -337,7 +337,7 @@ func (g *GitHub) Publish(repo, branch, expected string, files map[string][]byte,
 	}
 	newCommit, e := g.request("POST", prefix+"/git/commits", nil, map[string]any{
 		"message": title, "tree": gitObj(next)["sha"], "parents": []string{expected},
-		"author": map[string]string{"name": identity.Name, "email": identity.Email},
+		"author":    map[string]string{"name": identity.Name, "email": identity.Email},
 		"committer": map[string]string{"name": identity.Name, "email": identity.Email},
 	})
 	if e != nil {
