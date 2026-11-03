@@ -16,7 +16,7 @@ func (g *GitHub) AppReadiness(repositories []string) (map[string]any, error) {
 		return map[string]any{
 			"app_configured": false, "ready": false,
 			"repository_count": len(repositories),
-			"detail": "configure a GitHub App installation and owner-only signing key",
+			"detail":           "configure a GitHub App installation and owner-only signing key",
 		}, nil
 	}
 	required := []struct {
@@ -35,10 +35,10 @@ func (g *GitHub) AppReadiness(repositories []string) (map[string]any, error) {
 			return nil, errors.New("invalid linked GitHub repository")
 		}
 		item := map[string]any{
-			"repository": repo,
-			"read_verified": false,
+			"repository":           repo,
+			"read_verified":        false,
 			"permissions_verified": false,
-			"missing_permissions": []string{},
+			"missing_permissions":  []string{},
 		}
 		info, err := g.Repo(repo)
 		if err != nil || gitObj(info)["full_name"] != repo {
@@ -82,10 +82,10 @@ func (g *GitHub) AppReadiness(repositories []string) (map[string]any, error) {
 		checks = append(checks, item)
 	}
 	return map[string]any{
-		"app_configured": true,
-		"ready": allReady,
+		"app_configured":   true,
+		"ready":            allReady,
 		"repository_count": len(repositories),
-		"repositories": checks,
-		"note": "Read access and declared installation permissions were checked; publication, CI, and merge require separate live acceptance",
+		"repositories":     checks,
+		"note":             "Read access and declared installation permissions were checked; publication, CI, and merge require separate live acceptance",
 	}, nil
 }
