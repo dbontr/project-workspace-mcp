@@ -34,6 +34,18 @@ After collecting and verifying outputs, call `task_claim_finish` with
 in GitHub, notes, logs, artifacts or a worker command. A task claim does
 not itself allocate compute or serialize unrelated repository writes.
 
+## GitHub App credential scope
+
+The controller may use a repository-scoped, short-lived GitHub App installation
+token instead of a static personal access token. The operator must configure
+the App, installation ID, and protected RSA key on the controller. An App
+installation does not make a repository eligible for use without its project
+link, and its permission set remains authoritative. The controller requests
+per-repository installation tokens for REST operations, while native Projects
+V2 GraphQL uses the installation's selected repository visibility. Do not
+place App signing keys, issued installation tokens or static PATs in worker
+environments, PR text, logs, or research notes.
+
 ## GitHub development workflow
 
 Use GitHub's live issues, branches, pull requests, reviews, and check results
