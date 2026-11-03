@@ -504,12 +504,84 @@ existing database or artifact directory. It does not restore active processes,
 worker leases, external GitHub repositories, or external hardware. Reconfigure
 controller credentials separately and confirm that workers can be paired again.
 Run a full restore exercise on another host before treating backups as reliable.
-The commands are offline maintenance operations, not an automatic backup
-scheduler or an online multi-controller failover mechanism.
+The basic offline snapshot commands are maintenance operations; the encrypted
+Restic path below can be scheduled in-process. Neither provides automatic
+multi-controller failover.
+
+## Encrypted off-host backup and disaster recovery
+
+The controller can export an integrity-checked offline snapshot to an
+operator-controlled Restic repository. Restic supplies encryption,
+deduplicated content-addressed backup storage, snapshot IDs and supported
+remote backends. This is an optional **controller-host** dependency: workers
+and the Go service never require a Python framework or receive backup keys.
+
+Install Restic on the controller and initialize a repository on **independent
+storage** (for example, SFTP or object storage) according to its official
+documentation. Store the encryption password in a regular 0600 file readable
+only by the controller service user. Configure these environment variables:
+
+```sh
+PWM_RESTIC_REPOSITORY=sftp:backup-user@backup-host:/srv/project-workspace
+PWM_RESTIC_PASSWORD_FILE=/etc/project-workspace/restic-password
+```
+
+The repository URI is illustrative. Provision the remote endpoint and its
+access restrictions separately. A local Restic repository is encrypted but
+does **not** establish off-host resilience.
+
+For a manually initiated backup, stop the authoritative controller and run:
+
+```sh
+project-workspace-controller backup-offsite
+```
+
+The command returns a Restic snapshot ID after the existing SQLite, artifact
+and library manifest has been uploaded and Restic's repository metadata
+check has succeeded. Record this ID in independent recovery documentation;
+an upload is not proof of independent-site availability.
+
+Alternatively, a running controller can take snapshots safely using its
+**own database instance**, without starting a second controller process:
+
+```sh
+PWM_RESTIC_BACKUP_INTERVAL=24h
+```
+
+Set this in the controller's environment alongside the repository and
+password-file configuration. Intervals shorter than one hour are rejected.
+The next snapshot runs after the interval; failures are logged without
+claiming success. Do not invoke the offline CLI in parallel with the live
+controller: separate processes do not share the in-memory artifact lock.
+The in-process scheduler does not provide automated retention policies or
+remote-site monitoring. Operators must secure the backup repository, manage
+its quota, and verify that the host is independently administered.
+
+On an **independent recovery host**, install the controller and Restic,
+configure the same repository and password-file access, then select an
+explicit snapshot ID:
+
+```sh
+PWM_DB=/srv/project-workspace/state.db \
+  project-workspace-controller restore-offsite SNAPSHOT_ID
+PWM_DB=/srv/project-workspace/state.db \
+  project-workspace-controller verify-offsite SNAPSHOT_ID
+```
+
+`restore-offsite` refuses to overwrite existing database or artifact data,
+verifies every manifest file and keeps past immutable task file revisions.
+`verify-offsite` reads all encrypted repository blobs and completes a
+disposable restore with SQLite integrity verification. Run the verification
+command on a machine with sufficient space for a full recovery. Verify
+authentication, repository access, worker pairing, task files and hardware
+leases separately after restoring a real deployment. The remote backup does
+not capture an executing process, an uncollected worker filesystem or
+GitHub's external state. Successful local CI recovery tests are **not** a
+substitute for a remote and independent-host acceptance exercise.
 
 ## Operating limits
 
-This is a trusted-machine system with optional OIDC bearer authentication and project grants. It does not provide its own OAuth authorization server, VM-grade hostile-tenant isolation, automatic off-host database backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.
+This is a trusted-machine system with optional OIDC bearer authentication and project grants. It does not provide its own OAuth authorization server, VM-grade hostile-tenant isolation, deployed and independently verified off-host backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.
 
 ## GitHub Projects planning and shared research libraries
 

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,7 +53,7 @@ func readToken(path string) (string, error) {
 }
 func command(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: project-workspace-controller init|controller|pair|backup|restore")
+		return errors.New("usage: project-workspace-controller init|controller|pair|backup|restore|backup-offsite|restore-offsite|verify-offsite")
 	}
 	dbPath, tokenFile := location()
 	switch args[0] {
@@ -89,6 +90,39 @@ func command(args []string) error {
 			return errors.New("usage: project-workspace-controller restore BACKUP_DIRECTORY")
 		}
 		return controller.RestoreBackup(args[1], dbPath)
+
+	case "backup-offsite":
+		if len(args) != 1 {
+			return errors.New("usage: project-workspace-controller backup-offsite")
+		}
+		db, err := controller.OpenDatabase(dbPath)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		// Stop the authoritative controller before using the offline CLI.
+		// A running controller uses the in-process interval scheduler instead.
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer cancel()
+		id, err := db.BackupOffsite(ctx, controller.ResticConfigFromEnv())
+		if err == nil {
+			fmt.Printf("Restic snapshot %s uploaded and repository checked\n", id)
+		}
+		return err
+	case "restore-offsite":
+		if len(args) != 2 {
+			return errors.New("usage: project-workspace-controller restore-offsite SNAPSHOT_ID")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer cancel()
+		return controller.RestoreOffsite(ctx, controller.ResticConfigFromEnv(), args[1], dbPath)
+	case "verify-offsite":
+		if len(args) != 2 {
+			return errors.New("usage: project-workspace-controller verify-offsite SNAPSHOT_ID")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer cancel()
+		return controller.VerifyOffsite(ctx, controller.ResticConfigFromEnv(), args[1])
 	case "pair", "controller":
 		flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		dbFile := flags.String("db", dbPath, "SQLite project database")
@@ -123,6 +157,38 @@ func command(args []string) error {
 		server := &http.Server{Addr: *addr, Handler: service, ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 1 << 16, IdleTimeout: 120 * time.Second}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		var offsite sync.WaitGroup
+		if intervalText := os.Getenv("PWM_RESTIC_BACKUP_INTERVAL"); args[0] == "controller" && intervalText != "" {
+			interval, err := time.ParseDuration(intervalText)
+			if err != nil || interval < time.Hour {
+				return errors.New("PWM_RESTIC_BACKUP_INTERVAL must be at least one hour")
+			}
+			config := controller.ResticConfigFromEnv()
+			if err := config.Validate(); err != nil {
+				return fmt.Errorf("offsite backup configuration: %w", err)
+			}
+			offsite.Add(1)
+			go func() {
+				defer offsite.Done()
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						backupCtx, cancel := context.WithTimeout(ctx, 12*time.Hour)
+						snapshot, err := db.BackupOffsite(backupCtx, config)
+						cancel()
+						if err != nil {
+							log.Printf("scheduled offsite backup failed: %v", err)
+						} else {
+							log.Printf("scheduled encrypted backup snapshot: %s", snapshot)
+						}
+					}
+				}
+			}()
+		}
 		go func() {
 			<-ctx.Done()
 			ctx, done := context.WithTimeout(context.Background(), 10*time.Second)
@@ -130,8 +196,11 @@ func command(args []string) error {
 			_ = server.Shutdown(ctx)
 		}()
 		log.Printf("Project Workspace MCP listening at %s", *addr)
-		if e := server.ListenAndServe(); e != nil && e != http.ErrServerClosed {
-			return e
+		serveErr := server.ListenAndServe()
+		stop()
+		offsite.Wait()
+		if serveErr != nil && serveErr != http.ErrServerClosed {
+			return serveErr
 		}
 		return nil
 	}
