@@ -12,6 +12,12 @@ jobs:
           go-version-file: go.mod
       - name: Go tests
         run: go test -count=1 ./...
+      - name: Race tests
+        run: go test -race -count=1 ./internal/controller ./internal/worker
+      - name: Backup command formatting
+        run: |
+          gofmt -d internal/controller/backup.go internal/controller/backup_test.go cmd/project-workspace-controller/main.go
+          test -z "$(gofmt -l internal/controller/backup.go internal/controller/backup_test.go cmd/project-workspace-controller/main.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
