@@ -92,8 +92,8 @@ func (g *GitHub) PATReadiness(repositories []string) (map[string]any, error) {
 	}
 	if g.Token == "" {
 		return map[string]any{
-			"pat_configured": false,
-			"ready": false,
+			"pat_configured":   false,
+			"ready":            false,
 			"repository_count": len(repositories),
 		}, nil
 	}
