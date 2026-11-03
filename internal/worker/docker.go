@@ -803,6 +803,11 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 		return "failed", reason.Error()
 	}
 	if err != nil {
+		// A failed Docker client can leave a job running in the daemon.
+		// Verify that its exact managed container has been removed.
+		if cleanupErr := r.cleanupInterruptedJob(container); cleanupErr != nil {
+			return "failed", fmt.Sprintf("%v; %v", err, cleanupErr)
+		}
 		return "failed", err.Error()
 	}
 	result := string(out) + "\n" + string(stderr)
