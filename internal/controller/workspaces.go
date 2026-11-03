@@ -382,7 +382,10 @@ func (db *Database) FinishOperation(node, id, token string, success bool, result
 			}
 			result = map[string]any{"artifact": meta}
 		}
-		if success && (action == "export_file" || action == "snapshot" || action == "export_image") && result["artifact_id"] != nil {
+		if action == "capture_display" && success && result["artifact_id"] == nil {
+			return errors.New("display capture requires an uploaded PNG artifact")
+		}
+		if success && (action == "export_file" || action == "snapshot" || action == "export_image" || action == "capture_display") && result["artifact_id"] != nil {
 			linked, e := db.lockedOne("SELECT 1 present FROM operation_artifacts WHERE operation=? AND artifact=?", id, result["artifact_id"])
 			if e != nil {
 				return e
@@ -397,7 +400,17 @@ func (db *Database) FinishOperation(node, id, token string, success bool, result
 			if artifact == nil {
 				return errors.New("missing uploaded artifact")
 			}
-			result = map[string]any{"artifact": artifact}
+			if action == "capture_display" {
+				width, height := asInt(result["width"]), asInt(result["height"])
+				if asString(artifact["name"]) != "display.png" ||
+					width < 320 || width > 3840 || height < 240 || height > 2160 ||
+					width*height > 8_000_000 || asFloat(artifact["size"]) > 8<<20 {
+					return errors.New("invalid display capture artifact")
+				}
+				result = map[string]any{"artifact": artifact, "width": width, "height": height, "mime_type": "image/png"}
+			} else {
+				result = map[string]any{"artifact": artifact}
+			}
 		}
 		if action == "import_archive" && success {
 			if e := db.execLocked("INSERT INTO workspace_repositories VALUES (?,?,?) ON CONFLICT(workspace,repository) DO UPDATE SET revision=excluded.revision", ws["id"], payload["repository"], payload["revision"]); e != nil {
