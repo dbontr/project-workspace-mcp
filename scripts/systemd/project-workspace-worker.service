@@ -1,5 +1,5 @@
 [Unit]
-Description=Project Workspace MCP Docker worker
+Description=Project Workspace MCP Docker compatibility worker
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service
