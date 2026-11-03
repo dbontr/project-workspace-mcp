@@ -25,7 +25,7 @@ func TestProjectContextAndImmutableContributions(t *testing.T) {
 	}
 	p := ContributionRequest{
 		Kind: "handoff", Title: "Proof engine handoff",
-		Body: "Verified release at revision 001; run the next theorem test",
+		Body:       "Verified release at revision 001; run the next theorem test",
 		Repository: "example/research", Revision: strings.Repeat("a", 40),
 		ArtifactID: asString(source["id"]),
 	}
