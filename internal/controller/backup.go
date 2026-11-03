@@ -133,7 +133,7 @@ func (db *Database) BackupTo(destination string) error {
 	// VACUUM INTO produces a consistent SQLite snapshot, including WAL changes.
 	snapshot := filepath.Join(temp, "state.db")
 	quoted := strings.ReplaceAll(snapshot, "'", "''")
-	if err := db.execLocked("VACUUM INTO '"+quoted+"'"); err != nil {
+	if err := db.execLocked("VACUUM INTO '" + quoted + "'"); err != nil {
 		return fmt.Errorf("SQLite snapshot: %w", err)
 	}
 	manifest := backupManifest{Version: 1}
