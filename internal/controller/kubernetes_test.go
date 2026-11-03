@@ -45,3 +45,45 @@ func TestKubernetesWorkersAreScopedToTheirProject(t *testing.T) {
 		t.Fatalf("job claim escaped namespace project: %v %v", job, err)
 	}
 }
+
+func TestKubernetesDeviceLeaseReachesPodStartPayload(t *testing.T) {
+	db, _, srv := fixture(t)
+	project(t, srv)
+	caps := kubeWorkerCaps("demo")
+	caps["devices"] = []any{
+		map[string]any{"id": "gpu-slot-0", "kind": "gpu", "memory_mb": 16384.0},
+		map[string]any{"id": "fpga-slot-0", "kind": "fpga"},
+	}
+	if _, err := db.RegisterNode("kube-hardware", caps); err != nil {
+		t.Fatal(err)
+	}
+	req := WorkspaceRequest{ProjectID: "demo", Image: "debian:bookworm-slim",
+		CPU: 1, MemoryMB: 1024, Hardware: map[string]any{"gpu": 1},
+		MinGPUMemoryMB: 12288}
+	plan, err := db.PlanWorkspace(req)
+	if err != nil || asInt(plan["eligible_count"]) != 1 {
+		t.Fatalf("GPU device-plugin profile was not eligible: %v %v", plan, err)
+	}
+	workspace, err := db.CreateWorkspace(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := db.queryOne("SELECT payload FROM operations WHERE workspace=? AND action='start'", workspace["id"])
+	if err != nil || row == nil {
+		t.Fatalf("workspace start payload missing: %v", err)
+	}
+	payload := decodeObject(asString(row["payload"]))
+	devices, ok := payload["devices"].([]any)
+	if !ok || len(devices) != 1 {
+		t.Fatalf("GPU hardware lease was not forwarded: %v", payload)
+	}
+	assigned := devices[0].(map[string]any)
+	if assigned["id"] != "gpu-slot-0" || assigned["kind"] != "gpu" {
+		t.Fatalf("incorrect Kubernetes device assignment: %v", assigned)
+	}
+	over := req
+	over.MinGPUMemoryMB = 24576
+	if _, err := db.CreateWorkspace(over); err == nil {
+		t.Fatal("workspace accepted a GPU with insufficient declared VRAM")
+	}
+}
