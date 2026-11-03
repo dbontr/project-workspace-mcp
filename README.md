@@ -9,7 +9,7 @@ The controller uses SQLite and the system SQLite library through Go's CGO interf
 - Go 1.23 or later at build time, and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation.
 - Linux and Docker on each execution worker. The controller can run on supported hosts that provide SQLite and a C compiler at build time.
 - A trusted MCP client. The HTTP MCP endpoint implements stateless Streamable HTTP with the 2025-06-18 protocol, including `initialize`, `tools/list`, and `tools/call`.
-- An HTTPS ingress for remote connections; the controller listens on loopback by default. Authentication currently uses a single owner credential, not OAuth or project-specific multi-user authorization.
+- An HTTPS ingress for remote connections; the controller listens on loopback by default. The owner credential is always available for administration. Optional OIDC bearer-token verification and per-project grants require an external identity provider.
 
 ## Install and start
 
@@ -31,6 +31,63 @@ go build -o project-workspace-worker ./cmd/project-workspace-worker
 `init` generates an owner-only credential at `~/.config/project-workspace/admin.token`. The server listens at `http://127.0.0.1:8000` and stores its data in `~/.local/share/project-workspace/state.db` unless `PWM_DB` overrides the path. MCP is at `/mcp/`; the local operator dashboard is `/dashboard`. Use `PWM_ADMIN_TOKEN` to supply a credential from a secrets manager without a token file. Never share this credential with an untrusted client. For a reverse proxy, set `PWM_ALLOWED_HOSTS` and `PWM_ALLOWED_ORIGINS` to the intended public host and browser origins. `PWM_ALLOW_REMOTE_LISTEN=1` permits binding away from loopback only when the operator provides a protected TLS ingress.
 
 The server's configuration variables include `PWM_GITHUB_TOKEN`, `PWM_GITHUB_GENERIC_WRITES=1` (opt-in repository mutations), and `PWM_MAX_ARTIFACT_BYTES` (default 2 GiB).
+
+## OAuth/OIDC identities and project permissions
+
+The controller can act as an OAuth 2.0 protected resource, validating signed
+RS256 JWT bearer tokens issued by a configured OIDC provider. The provider
+performs login, authorization, consent, token issuance, and revocation. This
+controller does not issue OAuth tokens or provide its own login page.
+
+Configure all three variables on the controller:
+
+```sh
+PWM_OIDC_ISSUER=https://identity.example.com
+PWM_OIDC_AUDIENCE=project-workspace
+PWM_OIDC_JWKS_URL=https://identity.example.com/.well-known/jwks.json
+PWM_PUBLIC_URL=https://workspace.example.com
+```
+
+Use the actual issuer, resource audience, and JWKS endpoint provided by your
+identity service; the example values are illustrative, not universal defaults.
+The public URL enables OAuth Protected Resource Metadata at
+`/.well-known/oauth-protected-resource`. Without all OIDC variables,
+authentication remains owner-token-only. Configure an HTTPS ingress and an
+OAuth client separately; providing the server configuration does not
+automatically connect ChatGPT or authorize any new users.
+
+On successful authentication, `GET /api/whoami` returns the stable principal
+`oidc:ISSUER#SUBJECT`. The administrator assigns a role in a specific
+project with a revision-guarded request:
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/permissions" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"principal":"oidc:https://identity.example.com#stable-user-subject","role":"viewer","expected_role":""}'
+```
+
+Roles are `viewer`, `editor`, and `owner`. A viewer can inspect permitted
+project records, notes, and artifacts. An editor can submit isolated compute
+work and manage files and environments. A project owner can administer that
+project's access grants; destructive USB allocations and privileged GitHub
+mutations remain restricted by additional checks. A grant does not imply
+access to any other project. Non-administrators see only their assigned
+projects in `GET /api/projects` and `list_projects`.
+
+Update a grant by supplying its current role as `expected_role`. Revoke it
+using `"role":"revoke"` and the exact prior role. This immediately removes
+project access even if the external identity token has not expired. The
+controller checks token issuer, audience, signature, expiration, and
+not-before time; JWKS keys refresh every five minutes. Unavailable key
+services fail closed. Access decisions are recorded in the SQLite ledger,
+which the administrator can inspect through `GET /api/access-audit`.
+
+The controller's owner token can administer all projects and should remain
+only in a trusted secret store. The worker's separate pairing credentials
+and project hardware leases are not OAuth bearer tokens. A production
+deployment requires a real issuer, live token validation and rejection tests,
+an authorization-code client flow, and provider revocation acceptance before
+untrusted access is enabled.
 
 ## Pair a compute node
 
@@ -184,7 +241,7 @@ scheduler or an online multi-controller failover mechanism.
 
 ## Operating limits
 
-This is a single-owner system intended for trusted machines. It does not provide production OAuth, fine-grained multi-user project grants, VM-grade hostile-tenant isolation, automatic off-host database backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.
+This is a trusted-machine system with optional OIDC bearer authentication and project grants. It does not provide its own OAuth authorization server, VM-grade hostile-tenant isolation, automatic off-host database backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.
 
 ## GitHub Projects planning and shared research libraries
 
