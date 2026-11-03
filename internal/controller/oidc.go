@@ -62,6 +62,7 @@ func (v *OIDCVerifier) key(kid string) (*rsa.PublicKey, error) {
 		if key := v.keys[kid]; key != nil {
 			return key, nil
 		}
+		return nil, errors.New("OIDC signing key not found")
 	}
 	client := v.Client
 	if client == nil {
@@ -100,7 +101,7 @@ func (v *OIDCVerifier) key(kid string) (*rsa.PublicKey, error) {
 		}
 		n, nErr := base64.RawURLEncoding.DecodeString(entry.N)
 		e, eErr := base64.RawURLEncoding.DecodeString(entry.E)
-		if nErr != nil || eErr != nil || len(n) < 256 || len(e) == 0 || len(e) > 4 {
+		if nErr != nil || eErr != nil || len(n) < 256 || len(n) > 512 || len(e) == 0 || len(e) > 4 {
 			continue
 		}
 		exponent := new(big.Int).SetBytes(e)
