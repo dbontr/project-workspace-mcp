@@ -43,3 +43,6 @@
 - [systemd service execution settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) — systemd maintainers. Used for: service credentials, restricted state directories, environment files, and filesystem hardening.
 - [Docker Engine Linux post-installation](https://docs.docker.com/engine/install/linux-postinstall/) — Docker. Used for: systemd Docker startup and the root-equivalent trust boundary of the docker group.
 - [Docker container listing filters](https://docs.docker.com/reference/cli/docker/container/ls/) — Docker. Used for: worker-scoped managed-job inventory and crash reconciliation.
+- [FFmpeg X11 input device](https://ffmpeg.org/ffmpeg-devices.html#x11grab) — FFmpeg. Used for: bounded X11 framebuffer capture and PNG encoding inside isolated workspaces.
+- [Xvfb virtual framebuffer X server](https://www.x.org/releases/X11R7.6/doc/man/man1/Xvfb.1.xhtml) — X.Org. Used for: workspace-local virtual X displays without host desktop access.
+- [Docker exec reference](https://docs.docker.com/reference/cli/docker/container/exec/) — Docker. Used for: detached virtual display processes and commands inside the existing workspace container.
