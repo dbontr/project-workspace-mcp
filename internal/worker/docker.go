@@ -25,13 +25,13 @@ import (
 )
 
 type Runner struct {
-	WorkerID     string
+	WorkerID           string
 	ReconcileOnConnect bool
-	Devices      []Device
-	USBEnabled   bool
-	Images       map[string]bool
-	BuildNetwork bool
-	MaxArtifact  int64
+	Devices            []Device
+	USBEnabled         bool
+	Images             map[string]bool
+	BuildNetwork       bool
+	MaxArtifact        int64
 }
 
 var workspaceID = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -1618,11 +1618,11 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 		"--cpus", strconv.FormatFloat(job.CPU, 'f', 2, 64),
 		"--memory", fmt.Sprintf("%dm", job.MemoryMB),
 		"--memory-swap", fmt.Sprintf("%dm", job.MemoryMB),
-		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--user", "65534:65534",
-		job.Image, "sh", "-c", job.Command}
+		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--user", "65534:65534"}
 	if r.WorkerID != "" {
-		args = append(args[:len(args)-4], append([]string{"--label", "project-workspace-worker=" + r.WorkerID}, args[len(args)-4:]...)...)
+		args = append(args, "--label", "project-workspace-worker="+r.WorkerID)
 	}
+	args = append(args, job.Image, "sh", "-c", job.Command)
 	out, stderr, status, err := r.docker(ctx, 5*time.Minute, nil, args...)
 	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
 		reason := err
