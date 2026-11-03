@@ -25,11 +25,13 @@ import (
 )
 
 type Runner struct {
-	Devices      []Device
-	USBEnabled   bool
-	Images       map[string]bool
-	BuildNetwork bool
-	MaxArtifact  int64
+	WorkerID           string
+	ReconcileOnConnect bool
+	Devices            []Device
+	USBEnabled         bool
+	Images             map[string]bool
+	BuildNetwork       bool
+	MaxArtifact        int64
 }
 
 var workspaceID = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -775,6 +777,51 @@ func (r *Runner) cleanupInterruptedJob(container string) error {
 	return nil
 }
 
+var workerNodeName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,62}$`)
+
+// ReconcileStaleJobs removes only this worker's managed one-shot containers.
+// It runs after successful authentication and before the worker claims work.
+// Jobs created by older versions without worker labels need manual review.
+func (r *Runner) ReconcileStaleJobs(ctx context.Context, node string) error {
+	if !workerNodeName.MatchString(node) {
+		return errors.New("invalid worker ID")
+	}
+	output, stderr, status, err := r.docker(ctx, 15*time.Second, nil,
+		"ps", "-a", "--filter", "label=project-workspace=job",
+		"--filter", "label=project-workspace-worker="+node, "--format", "{{.Names}}")
+	if err != nil {
+		return fmt.Errorf("list stale worker jobs: %w", err)
+	}
+	if status != 0 {
+		return fmt.Errorf("list stale worker jobs: %s", strings.TrimSpace(string(stderr)))
+	}
+	names := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		container := strings.TrimSpace(line)
+		if container == "" {
+			continue
+		}
+		if !strings.HasPrefix(container, "pwm-job-") ||
+			!workspaceID.MatchString(strings.TrimPrefix(container, "pwm-job-")) {
+			return errors.New("unexpected container in worker cleanup inventory")
+		}
+		if !seen[container] {
+			names = append(names, container)
+			seen[container] = true
+		}
+		if len(names) > 128 {
+			return errors.New("too many managed worker jobs to reconcile")
+		}
+	}
+	for _, container := range names {
+		if err := r.cleanupInterruptedJob(container); err != nil {
+			return fmt.Errorf("reconcile %s: %w", container, err)
+		}
+	}
+	return nil
+}
+
 func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 	if !workspaceID.MatchString(job.ID) {
 		return "failed", "invalid job ID"
@@ -783,14 +830,20 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 		return "failed", "unapproved container image"
 	}
 	container := "pwm-job-" + job.ID
+	if r.WorkerID != "" && !workerNodeName.MatchString(r.WorkerID) {
+		return "failed", "invalid worker ID"
+	}
 	args := []string{"run", "--rm", "--name", container, "--label", "project-workspace=job",
 		"--network", "none", "--read-only", "--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges", "--pids-limit", "128",
 		"--cpus", strconv.FormatFloat(job.CPU, 'f', 2, 64),
 		"--memory", fmt.Sprintf("%dm", job.MemoryMB),
 		"--memory-swap", fmt.Sprintf("%dm", job.MemoryMB),
-		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--user", "65534:65534",
-		job.Image, "sh", "-c", job.Command}
+		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--user", "65534:65534"}
+	if r.WorkerID != "" {
+		args = append(args, "--label", "project-workspace-worker="+r.WorkerID)
+	}
+	args = append(args, job.Image, "sh", "-c", job.Command)
 	out, stderr, status, err := r.docker(ctx, 5*time.Minute, nil, args...)
 	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
 		reason := err

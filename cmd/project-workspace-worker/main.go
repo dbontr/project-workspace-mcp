@@ -70,6 +70,7 @@ func run(args []string) error {
 	}
 	runner := worker.NewRunner(devices)
 	runner.USBEnabled = *enableUSB
+	runner.ReconcileOnConnect = cmd == "serve"
 	capabilities, err := worker.Capabilities(runner.AvailableDevices())
 	if err != nil {
 		return err

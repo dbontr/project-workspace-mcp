@@ -185,6 +185,8 @@ func (c *Client) runWithHeartbeatInterval(parent context.Context, runner *Runner
 		return errors.New("worker requires node credential and runner")
 	}
 	ctx, cancel := context.WithCancelCause(parent)
+	runner.WorkerID = c.Node
+	reconciled := false
 	heartbeatDone := make(chan struct{})
 	go func() {
 		defer close(heartbeatDone)
@@ -204,6 +206,12 @@ func (c *Client) runWithHeartbeatInterval(parent context.Context, runner *Runner
 				return failure
 			}
 			continue
+		}
+		if runner.ReconcileOnConnect && !reconciled {
+			if err := runner.ReconcileStaleJobs(ctx, c.Node); err != nil {
+				return fmt.Errorf("stale job recovery: %w", err)
+			}
+			reconciled = true
 		}
 		var op struct {
 			Operation *Operation `json:"operation"`

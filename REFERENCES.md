@@ -42,3 +42,4 @@
 
 - [systemd service execution settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) — systemd maintainers. Used for: service credentials, restricted state directories, environment files, and filesystem hardening.
 - [Docker Engine Linux post-installation](https://docs.docker.com/engine/install/linux-postinstall/) — Docker. Used for: systemd Docker startup and the root-equivalent trust boundary of the docker group.
+- [Docker container listing filters](https://docs.docker.com/reference/cli/docker/container/ls/) — Docker. Used for: worker-scoped managed-job inventory and crash reconciliation.
