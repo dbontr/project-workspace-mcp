@@ -92,6 +92,9 @@ jobs:
       - name: Verify worker heartbeat implementation format
         run: |
           test -z "$(gofmt -l internal/worker/agent.go internal/worker/agent_test.go internal/worker/docker.go internal/worker/recovery_test.go)"
+      - name: Verify display capture component formatting
+        run: |
+          test -z "$(gofmt -l internal/controller/display_image.go internal/controller/display_image_test.go internal/worker/display.go internal/worker/display_test.go internal/controller/artifacts.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
