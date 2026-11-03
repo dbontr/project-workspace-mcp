@@ -181,7 +181,6 @@ func (c *Client) Run(ctx context.Context, runner *Runner) error {
 // runWithHeartbeatInterval permits fast lifecycle tests without changing
 // the production heartbeat cadence.
 func (c *Client) runWithHeartbeatInterval(parent context.Context, runner *Runner, interval time.Duration) error {
-
 	if c.Node == "" || c.Token == "" || c.HTTP == nil || runner == nil {
 		return errors.New("worker requires node credential and runner")
 	}
