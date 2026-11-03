@@ -29,7 +29,8 @@ func location() (string, string) {
 }
 func readToken(path string) (string, error) {
 	if value := os.Getenv("PWM_ADMIN_TOKEN"); value != "" {
-		if len(value) < 32 {
+		value = strings.TrimSuffix(value, "\n")
+		if len(value) < 32 || strings.ContainsAny(value, "\x00\r\n") {
 			return "", errors.New("PWM_ADMIN_TOKEN is too short")
 		}
 		return value, nil
