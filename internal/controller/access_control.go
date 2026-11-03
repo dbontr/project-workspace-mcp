@@ -110,7 +110,7 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 	if name == "workspace_create" && (asBool(args["usb_passthrough"]) || asFloat(decodeAnyObject(args["hardware"])["usb"]) > 0) {
 		needed = 3
 	}
-	if name == "library_link" {
+	if name == "library_link" || name == "workspace_prune_volume" {
 		needed = 3
 	}
 	ok := s.authorizedFor(project, who, needed)
