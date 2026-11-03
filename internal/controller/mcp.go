@@ -27,6 +27,11 @@ var tools = []toolDefinition{
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
 	{"list_github_repositories", "List linked repositories", []string{"project_id"}, nil},
+	{"task_claim_list", "List cooperative project task claims without lease tokens", []string{"project_id"}, nil},
+	{"task_claim_status", "Inspect a project's work-key claim and durable completion", []string{"project_id", "work_key"}, nil},
+	{"task_claim", "Claim a work key with a fenced, expiring lease", []string{"project_id", "work_key"}, []string{"lease_seconds"}},
+	{"task_claim_renew", "Renew a live task lease by generation and secret token", []string{"project_id", "work_key", "lease_token", "generation"}, []string{"lease_seconds"}},
+	{"task_claim_finish", "Complete or release a task lease, validating result artifact ownership", []string{"project_id", "work_key", "lease_token", "generation", "status"}, []string{"artifact_ids"}},
 	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "image_pool_id", "hardware", "usb_passthrough", "usb_node", "usb_device_id"}},
 	{"workspace_list", "List project workspaces", []string{"project_id"}, nil},
 	{"workspace_call", "Queue a command or file operation", []string{"project_id", "workspace_id", "action", "payload"}, nil},
@@ -95,11 +100,11 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "duration_minutes", "expected_version", "number":
+	case "memory_mb", "duration_minutes", "expected_version", "number", "generation", "lease_seconds":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
-	case "packages", "software_ids":
+	case "packages", "software_ids", "artifact_ids":
 		return "array"
 	case "hardware", "payload", "params", "changes":
 		return "object"
@@ -110,7 +115,7 @@ func (t toolDefinition) schema() map[string]any {
 	properties := map[string]any{}
 	for _, key := range append(append([]string{}, t.Required...), t.Optional...) {
 		prop := map[string]any{"type": kindFor(key)}
-		if key == "software_ids" || key == "packages" {
+		if key == "software_ids" || key == "packages" || key == "artifact_ids" {
 			prop["items"] = map[string]any{"type": "string"}
 		}
 		properties[key] = prop
@@ -243,6 +248,30 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 		return db.LinkRepositoryWithRole(project, get("repository"), get("role"), get("default_ref"))
 	case "list_github_repositories":
 		return db.Repositories(project)
+	case "task_claim_list":
+		return db.ListTaskClaims(project)
+	case "task_claim_status":
+		return db.TaskClaimStatus(project, get("work_key"))
+	case "task_claim":
+		duration := asInt(a["lease_seconds"])
+		if duration == 0 {
+			duration = 900
+		}
+		return db.ClaimTask(project, get("work_key"), duration)
+	case "task_claim_renew":
+		duration := asInt(a["lease_seconds"])
+		if duration == 0 {
+			duration = 900
+		}
+		return db.RenewTaskClaim(project, get("work_key"), get("lease_token"), asInt(a["generation"]), duration)
+	case "task_claim_finish":
+		var artifacts []string
+		if a["artifact_ids"] != nil {
+			if err := JSONRequest(a["artifact_ids"], &artifacts); err != nil {
+				return nil, err
+			}
+		}
+		return db.FinishTaskClaim(project, get("work_key"), get("lease_token"), get("status"), asInt(a["generation"]), artifacts)
 	case "workspace_create":
 		var req WorkspaceRequest
 		if e := JSONRequest(a, &req); e != nil {
