@@ -41,7 +41,7 @@ func (s *Server) authorizedFor(project string, who caller, minimum int) bool {
 
 var readableTools = map[string]bool{
 	"list_projects":    true,
-	"pool_list_images": true, "pool_list_software": true,
+	"pool_list_images": true, "pool_list_software": true, "pool_list_programs": true,
 	"read_project_note": true, "search_project_knowledge": true,
 	"list_project_jobs": true, "list_github_repositories": true,
 	"task_claim_list": true, "task_claim_status": true,
@@ -59,6 +59,7 @@ var readableTools = map[string]bool{
 var rootTools = map[string]bool{
 	"create_project": true, "list_compute_nodes": true, "list_hardware": true,
 	"pool_register_image": true, "pool_register_software": true,
+	"pool_propose_program": true, "pool_review_program": true, "pool_update_entry": true, "pool_entry_info": true, "pool_events": true,
 	"library_create": true, "library_list": true, "library_sources": true, "library_add_source": true,
 	"link_github_repository": true, "github_repository_api": true,
 	"github_create_issue": true, "github_update_issue": true,
@@ -82,7 +83,7 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 		s.DB.AuditAccess(who.Principal, asString(args["project_id"]), "mcp:"+name, false)
 		return false
 	}
-	if name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" {
+	if name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" || name == "pool_list_programs" {
 		return true
 	}
 	project := asString(args["project_id"])

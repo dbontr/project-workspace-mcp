@@ -72,6 +72,13 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 			if image == nil {
 				return errors.New("image not found in approved pool")
 			}
+			status, _, e := db.poolStateLocked("image", req.ImagePoolID)
+			if e != nil {
+				return e
+			}
+			if status != "active" {
+				return errors.New("image has been disabled or retired")
+			}
 			req.Image = asString(image["image"])
 			arch = asString(image["architecture"])
 		}

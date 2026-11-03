@@ -12,7 +12,9 @@ import (
 var packageIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9+._:=-]{0,100}$`)
 
 func (db *Database) ImagePool() ([]map[string]any, error) {
-	images, err := db.query("SELECT id,image,architecture,description,created FROM pool_images ORDER BY id")
+	images, err := db.query(`SELECT p.id,p.image,p.architecture,p.description,p.created,
+		COALESCE(s.status,'active') status,COALESCE(s.revision,1) revision
+		FROM pool_images p LEFT JOIN pool_entry_states s ON s.kind='image' AND s.entry_id=p.id ORDER BY p.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -22,6 +24,10 @@ func (db *Database) ImagePool() ([]map[string]any, error) {
 	}
 	for _, image := range images {
 		available := []string{}
+		if asString(image["status"]) != "active" {
+			image["available_nodes"] = available
+			continue
+		}
 		for _, node := range nodes {
 			caps := decodeObject(asString(node["capabilities"]))
 			if !workerHasImage(caps, asString(image["image"])) {
@@ -79,7 +85,9 @@ func (db *Database) RegisterPoolImage(id, image, description, architecture strin
 }
 
 func (db *Database) SoftwarePool() ([]map[string]any, error) {
-	rows, err := db.query("SELECT id,image_id,packages,description,created FROM pool_software ORDER BY id")
+	rows, err := db.query(`SELECT p.id,p.image_id,p.packages,p.description,p.created,
+		COALESCE(s.status,'active') status,COALESCE(s.revision,1) revision
+		FROM pool_software p LEFT JOIN pool_entry_states s ON s.kind='software' AND s.entry_id=p.id ORDER BY p.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +122,13 @@ func (db *Database) RegisterPoolSoftware(id, imageID, description string, packag
 	if row == nil {
 		return nil, errors.New("catalog base image not found")
 	}
+	allowed, err := db.poolActive("image", imageID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, errors.New("catalog base image is disabled")
+	}
 	image := asString(row["image"])
 	// The selected package manager is only supported for known apt-based bases.
 	// Other toolchains belong in prebuilt, operator-approved OCI images.
@@ -144,6 +159,13 @@ func (db *Database) EnvironmentFromPool(project, name, imageID string, softwareI
 	if base == nil {
 		return nil, errors.New("catalog base image not found")
 	}
+	allowed, err := db.poolActive("image", imageID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, errors.New("catalog base image is disabled")
+	}
 	image := asString(base["image"])
 	packages := []string{}
 	seenSoftware := map[string]bool{}
@@ -159,6 +181,13 @@ func (db *Database) EnvironmentFromPool(project, name, imageID string, softwareI
 		}
 		if row == nil || asString(row["image_id"]) != imageID {
 			return nil, fmt.Errorf("software %s is not approved for this image", id)
+		}
+		active, err := db.poolActive("software", id)
+		if err != nil {
+			return nil, err
+		}
+		if !active {
+			return nil, fmt.Errorf("software %s is disabled", id)
 		}
 		var names []string
 		if err := json.Unmarshal([]byte(asString(row["packages"])), &names); err != nil {

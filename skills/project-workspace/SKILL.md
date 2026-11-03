@@ -74,6 +74,25 @@ configure `github_set_branch_auto_delete` intentionally and report the
 provider-confirmed setting.
 
 
+## Program and catalog lifecycle
+
+Discover `pool_list_programs` before assuming a named application is
+available. `pool_propose_program` records the publisher, supported OS,
+distribution route and license information; it does not install software.
+Administrative review uses `pool_review_program` with the current revision.
+Only reviewed Linux container entries linked to an active apt collection or
+OCI image can become catalog-available. Windows and macOS software requires a
+separate verified native execution adapter; do not substitute Wine or an
+untested virtual machine silently.
+
+Use `pool_update_entry` with an expected revision and reason to disable or
+retire a package collection or image. A disabled entry is barred from future
+catalog allocation. A retired entry is a permanent tombstone. Inspect
+`pool_events` for the administrative history; no catalog operation uninstalls
+software from existing workspaces or deletes retained artifacts. Never
+download, redistribute, or run a proprietary installer merely because a
+program request cites a publisher URL.
+
 ## Shared image and software catalogs
 
 Before reserving a worker, call `pool_list_images` to discover images approved

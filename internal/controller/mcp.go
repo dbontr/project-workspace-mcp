@@ -45,6 +45,12 @@ var tools = []toolDefinition{
 	{"pool_register_image", "Register an approved OCI image; workers must separately allowlist it", []string{"image_id", "image"}, []string{"description", "architecture"}},
 	{"pool_list_software", "List approved software package collections", nil, nil},
 	{"pool_register_software", "Register an immutable apt package collection for a base image", []string{"software_id", "image_id", "packages"}, []string{"description"}},
+	{"pool_list_programs", "Discover software requests and supported execution platforms", nil, nil},
+	{"pool_propose_program", "Register a program request with publisher and platform metadata; does not download or install software", []string{"id", "name", "platform", "distribution", "source_url"}, []string{"version", "description", "license_notes"}},
+	{"pool_review_program", "Review or retire a program request with a revision guard", []string{"id", "status", "expected_revision", "review_note"}, []string{"pool_kind", "pool_id"}},
+	{"pool_update_entry", "Enable, disable or retire a software/image pool entry with a revision guard", []string{"kind", "id", "status", "expected_revision", "reason"}, nil},
+	{"pool_entry_info", "Inspect the status and revision of an approved pool entry", []string{"kind", "id"}, nil},
+	{"pool_events", "Read the operator software catalog change history", []string{"kind"}, []string{"id"}},
 	{"environment_define_from_pool", "Compose a versioned OCI environment from approved image and software IDs", []string{"project_id", "name", "image_id", "software_ids"}, []string{"expected_version"}},
 	{"environment_build", "Build an OCI environment", []string{"project_id", "name", "workspace_id"}, nil},
 	{"environment_export", "Save an OCI image archive", []string{"project_id", "name", "workspace_id"}, nil},
@@ -100,7 +106,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "duration_minutes", "expected_version", "number", "generation", "lease_seconds":
+	case "memory_mb", "duration_minutes", "expected_version", "expected_revision", "number", "generation", "lease_seconds":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
@@ -307,6 +313,22 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 			return nil, err
 		}
 		return db.RegisterPoolSoftware(get("software_id"), get("image_id"), get("description"), packages)
+	case "pool_list_programs":
+		return db.Programs()
+	case "pool_propose_program":
+		var proposal ProgramProposal
+		if err := JSONRequest(a, &proposal); err != nil {
+			return nil, err
+		}
+		return db.ProposeProgram(proposal)
+	case "pool_review_program":
+		return db.ReviewProgram(get("id"), get("status"), get("review_note"), get("pool_kind"), get("pool_id"), asInt(a["expected_revision"]))
+	case "pool_update_entry":
+		return db.SetPoolState(get("kind"), get("id"), get("status"), asInt(a["expected_revision"]), get("reason"))
+	case "pool_entry_info":
+		return db.PoolEntryInfo(get("kind"), get("id"))
+	case "pool_events":
+		return db.PoolEvents(get("kind"), get("id"))
 	case "environment_define_from_pool":
 		var software []string
 		if err := JSONRequest(a["software_ids"], &software); err != nil {

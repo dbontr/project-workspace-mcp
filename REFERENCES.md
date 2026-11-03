@@ -26,6 +26,7 @@
 - [SQLite transactions](https://www.sqlite.org/lang_transaction.html) — SQLite. Used for: serialized, fenced task claim acquisition and completion.
 - [SQLite VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — SQLite. Used for: consistent SQLite database snapshots during offline backup.
 
+- [LTspice official simulator downloads](https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html) — Analog Devices. Used for: official Windows and macOS platform support and publisher download origin in native software catalog guidance.
 - [Debian apt-get manual](https://manpages.debian.org/stable/apt/apt-get.8.en.html) — Debian. Used for: operator-approved apt package installation in versioned OCI environments.
 
 - [RFC 7519: JSON Web Token](https://www.rfc-editor.org/rfc/rfc7519) — IETF. Used for: JWT claim validation and bearer-token expiration.

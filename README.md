@@ -253,6 +253,70 @@ worker) or an accessible local apt cache. Builds do not bypass image or
 hardware policy, provide a private registry, redistribute proprietary software,
 or guarantee availability of packages in upstream repositories.
 
+### Software catalog administration
+
+A program request is separate from an installable package or OCI image.
+Operators can register a program without asserting that an executor exists.
+The `/dashboard` software catalog provides forms to register images and apt
+packages, request programs, review their source and license, and disable,
+reactivate, or retire catalog entries. Equivalent owner-only operations are
+available through MCP and REST.
+
+To request a native application such as LTspice:
+
+```sh
+curl -fsS -X POST "$BASE/api/pool/programs" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "id":"ltspice",
+    "name":"LTspice",
+    "platform":"windows-native",
+    "distribution":"native",
+    "version":"26",
+    "source_url":"https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
+    "license_notes":"Review vendor download and use conditions before installing"
+  }'
+```
+
+The initial program status is `requested`, not `installed`. An
+administrator can record a license/source review with `pool_review_program`
+or `POST /api/pool/programs/ltspice/review` with
+`{"status":"reviewed","expected_revision":1,"review_note":"..."}`.
+A native program cannot be made available through a Linux Docker environment
+unless a separately authorized and verified native adapter exists.
+This catalog does not download, redistribute or silently execute vendor
+installers.
+
+Linux package requests can progress to `available` after review and after
+linking to an active, approved apt package collection. OCI-based programs
+similarly require an approved image. A reviewed program is not an installed
+application. To create a runnable environment, select its approved image or
+software entry, compose a versioned definition, build it on an eligible
+worker, and verify the resulting operation.
+
+For an image or apt package collection, an administrator may call
+`pool_update_entry`, or POST to
+`/api/pool/images/ENTRY_ID/state` or
+`/api/pool/software/ENTRY_ID/state`:
+
+```sh
+curl -fsS -X POST "$BASE/api/pool/software/c-toolchain/state" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"status":"disabled","expected_revision":1,"reason":"Replacing toolchain"}'
+```
+
+Status transitions use optimistic revision checks and a durable audit history,
+available at `GET /api/pool/events?kind=software&id=c-toolchain` or the
+`pool_events` tool. `disabled` entries can be reactivated after review;
+`retired` entries are permanent catalog tombstones. They are omitted from
+new catalog-based allocations and environment compositions, but existing
+containers, exported image archives, environment definitions and output
+artifacts remain untouched. To update an immutable package list, register a
+new collection and retire the superseded entry. To remove the binary from a
+host, use a separately approved worker/image cleanup or native installation
+adapter after ensuring no retained workspace depends on it. A catalog
+operation is **not** a host uninstall.
+
 ### File transfer over MCP
 
 The `artifact_send_base64` tool accepts `project_id`, `name`,
