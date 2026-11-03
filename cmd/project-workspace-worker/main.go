@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -20,10 +21,30 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:]); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatal(err)
 	}
 }
+func pairingCode(flagValue string, fromStdin bool, input io.Reader) (string, error) {
+	if fromStdin {
+		if flagValue != "" {
+			return "", errors.New("provide either --code or --code-stdin, not both")
+		}
+		data, err := io.ReadAll(io.LimitReader(input, 257))
+		if err != nil {
+			return "", fmt.Errorf("read pairing code: %w", err)
+		}
+		if len(data) > 256 {
+			return "", errors.New("pairing code input is too long")
+		}
+		flagValue = strings.TrimSpace(string(data))
+	}
+	if flagValue == "" {
+		return "", errors.New("worker pairing code is required")
+	}
+	return flagValue, nil
+}
+
 func run(args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: project-workspace-worker <doctor|join|serve> [options]")
@@ -33,6 +54,7 @@ func run(args []string) error {
 	controller := flags.String("controller", "", "HTTPS controller URL")
 	node := flags.String("node", "", "registered worker ID")
 	code := flags.String("code", "", "single-use worker pairing code")
+	codeStdin := flags.Bool("code-stdin", false, "read the pairing code from standard input")
 	tokenFile := flags.String("token-file", "", "worker credential file (owner read-only)")
 	deviceFile := flags.String("devices", os.Getenv("PWM_DEVICE_MANIFEST"), "approved hardware manifest")
 	enableUSB := flags.Bool("enable-usb", os.Getenv("PWM_ENABLE_USB_PASSTHROUGH") == "1", "allow operator-approved USB passthrough (disabled by default)")
@@ -72,10 +94,11 @@ func run(args []string) error {
 	c := &worker.Client{Base: base, Node: *node, HTTP: &http.Client{Transport: &http.Transport{
 		MaxIdleConnsPerHost: 2, IdleConnTimeout: 2 * time.Second, ResponseHeaderTimeout: 120 * time.Second}}}
 	if cmd == "join" {
-		if *code == "" {
-			return errors.New("worker pairing code is required")
+		pairCode, err := pairingCode(*code, *codeStdin, os.Stdin)
+		if err != nil {
+			return err
 		}
-		token, err := c.Pair(context.Background(), *code, capabilities)
+		token, err := c.Pair(context.Background(), pairCode, capabilities)
 		if err != nil {
 			return err
 		}
