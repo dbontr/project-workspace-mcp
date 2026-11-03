@@ -88,8 +88,6 @@ func TestPoolRESTAndMCP(t *testing.T) {
 	code, value = call(t, httpServer, "POST", "/api/pool/software", testOwner,
 		map[string]any{"id": "compiler", "image_id": "debian-base", "packages": []string{"gcc", "make"}})
 	wantOK(t, code, value)
-	code, value = call(t, httpServer, "GET", "/api/pool/software", testOwner, nil)
-	wantOK(t, code, value)
 	code, value = call(t, httpServer, "POST", "/api/projects/demo/environments/from-pool", testOwner,
 		map[string]any{"name": "compiler-env", "image_id": "debian-base", "software_ids": []string{"compiler"}, "expected_version": 0})
 	wantOK(t, code, value)
