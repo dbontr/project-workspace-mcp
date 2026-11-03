@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -341,4 +340,3 @@ func (db *Database) PromotePersonalTaskFile(owner, task, name string, revision i
 	return result, err
 }
 
-var _ = filepath.Separator
