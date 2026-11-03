@@ -161,7 +161,8 @@ func (s *Server) authorizeREST(r *http.Request, p []string, who caller) bool {
 			s.DB.AuditAccess(who.Principal, project, "rest:"+r.Method+":"+r.URL.Path, false)
 			return false
 		}
-		if len(p) >= 4 && p[3] == "permissions" {
+		if len(p) >= 4 && p[3] == "permissions" ||
+			len(p) == 7 && p[3] == "workspaces" && p[5] == "volume" && p[6] == "prune" {
 			needed = 3
 		}
 		ok := s.authorizedFor(project, who, needed)
