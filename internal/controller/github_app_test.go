@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -156,5 +155,4 @@ func TestGitHubAppRejectsUnsafeKeyPermissions(t *testing.T) {
 	if key := githubTokenScope("/graphql"); key != "" {
 		t.Fatalf("GraphQL should be unscoped: %q", key)
 	}
-	_ = big.NewInt(1)
 }
