@@ -314,7 +314,7 @@ func TestWorkerHeartbeatContinuesDuringJobExecution(t *testing.T) {
 			w.Write([]byte(`{"operation":null}`))
 		case "/api/worker/worker-one/claim":
 			if claimed.CompareAndSwap(false, true) {
-				w.Write([]byte(`{"job":{"id":"test-job","command":"echo test","image":"debian:bookworm-slim","cpu":1,"memory_mb":128,"lease_token":"test-lease"}}`))
+				w.Write([]byte(`{"job":{"id":"cccccccccccccccccccccccccccccccc","command":"echo test","image":"debian:bookworm-slim","cpu":1,"memory_mb":128,"lease_token":"test-lease"}}`))
 			} else {
 				w.Write([]byte(`{"job":null}`))
 			}
