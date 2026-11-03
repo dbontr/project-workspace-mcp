@@ -158,7 +158,8 @@ func run(args []string) error {
 		fmt.Printf("Worker %s paired; credential stored in %s\n", *node, *tokenFile)
 		return nil
 	}
-	if credential := os.Getenv("PWM_WORKER_TOKEN"); credential != "" {
+	if credential, configured := os.LookupEnv("PWM_WORKER_TOKEN"); configured {
+		credential = strings.TrimSuffix(credential, "\n")
 		if len(credential) < 32 || strings.ContainsAny(credential, "\x00\r\n\t ") {
 			return errors.New("invalid worker credential environment value")
 		}
