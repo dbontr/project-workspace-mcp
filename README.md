@@ -448,6 +448,61 @@ text; an integration that converts ChatGPT's native file attachments to this
 transport requires a separate client-side file-capable connector. It is not
 automatically established by installing this repository.
 
+## Source-linked research ingestion and search
+
+Shared research libraries retain the **original** binary paper, dataset or
+document as an immutable content-addressed library object, or a Git source
+pinned to an exact 40-character commit SHA. Derived passages belong to that
+source and never replace or modify the original evidence. A controller
+administrator registers the source with `research_register_source`, then
+ingests bounded passages with `research_ingest_passages`.
+
+A passage retains a stable source ID, page or section, optional line range,
+ordinal, topics, checksum, and the source's object digest or pinned Git
+revision. Index batches accept up to 64 passages and 8 KiB of UTF-8 text
+per passage. Every batch requires `expected_revision`; simultaneous
+writers must re-read before retrying. `append` adds a batch to the current
+index epoch, while `replace` creates a new epoch without deleting the old
+passages or original document.
+
+For example, after storing an original under the shared research library
+`science` as the immutable object `lecture.pdf`:
+
+```sh
+curl -fsS -X POST "$BASE/api/libraries/science/research/sources" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Vector analysis lecture","origin_kind":"object",
+       "origin_name":"lecture.pdf"}'
+# Use the registered source ID returned above:
+curl -fsS -X POST "$BASE/api/libraries/science/research/sources/SOURCE_ID/passages" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"mode":"append","expected_revision":0,"passages":[
+        {"ordinal":1,"page":2,"section":"Cylindrical basis",
+         "text":"The unit basis changes direction with azimuth.",
+         "topics":["vector-analysis"]}
+      ]}'
+```
+
+A project must explicitly link the shared library before its viewer/editor
+principals can search it. Read through `research_sources`,
+`research_search`, and `research_read_passage`, or the corresponding
+`GET /api/projects/PROJECT/research/sources`,
+`GET /api/projects/PROJECT/research/search?q=azimuth`, and
+`GET /api/projects/PROJECT/research/passages/PASSAGE_ID` routes.
+Search uses SQLite FTS5, returns at most 100 bounded excerpts, and
+restricts results to the requesting project's linked libraries.
+The full passage read verifies its SHA-256. Historical citations remain
+readable after reindexing while searches use only the current epoch.
+
+This is **source-linked lexical retrieval**. It is not a semantic embedding
+index, PDF parser, or automatic source upload from ChatGPT. A trusted
+preprocessor or file-capable connector must upload the original bytes and
+provide passages with correct source locations. Do not fabricate page
+numbers or assume metadata is verified merely because a model supplied it.
+FTS5 is required in the controller's linked SQLite library; a build without
+FTS5 cannot provide this index. Indexed history consumes database space,
+so operators should monitor growth before indexing very large corpora.
+
 ## Project context and immutable research contributions
 
 Canonical context uses the existing revision-guarded project notes with names

@@ -20,6 +20,26 @@ Treat the project, not the machine or chat, as the unit of work. The installed S
 
 The controller and worker are implemented in Go. Python is an optional application inside an approved workspace image, not a service dependency. The controller currently has one privileged administrator identity. Never put its token, GitHub credentials, or host SSH keys inside worker command payloads, project notes, snapshots, or image recipes. Docker is not a hostile-tenant security boundary. Report physical hardware integrations as unverified unless exercised on authorized devices.
 
+## Research source passages and citations
+
+Before indexing, register the **original** under a shared library as an
+immutable object with verified SHA-256, or select a Git source already pinned
+to an exact commit SHA. Use `research_register_source` for its stable
+identity, then `research_ingest_passages` with a revision-guarded batch of
+text, page/section/line locators, and optional topics. `append` adds to
+the current index epoch; `replace` starts a new visible epoch without
+deleting prior records. Do not invent location metadata or claim automatic
+PDF understanding; a trusted preprocessor must derive the text.
+
+For retrieval, select the authenticated project and use
+`research_sources`, `research_search`, and `research_read_passage`.
+Only the project's explicitly linked shared libraries are visible. Search
+excerpts include the immutable source provenance and locators; verify
+a passage by reading the full record before quoting or publishing it.
+Lexical SQLite FTS search is not semantic reasoning or a substitute for
+original-source inspection. Large ingest batches are bounded; concurrent
+updates require exact expected index revisions.
+
 ## Project context and contribution records
 
 Use `knowledge_context` to inspect canonical `project` and `context`

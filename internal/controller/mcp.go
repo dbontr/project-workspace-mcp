@@ -112,6 +112,11 @@ var tools = []toolDefinition{
 	{"github_project_add_item", "Add a linked repository issue or PR to the GitHub Project", []string{"project_id", "repository", "kind", "number"}, nil},
 	{"github_project_set_status", "Update a GitHub Project single-select field", []string{"project_id", "item_id", "field_id", "option_id"}, nil},
 	{"repository_memberships", "List all project repositories and their roles", []string{"project_id"}, nil},
+	{"research_register_source", "Register an immutable library object or pinned Git source for research indexing", []string{"library", "title", "origin_kind", "origin_name"}, []string{"origin_revision", "origin_path"}},
+	{"research_ingest_passages", "Append or replace bounded source-linked text passages with an expected index revision", []string{"library", "source_id", "mode", "expected_revision", "passages"}, nil},
+	{"research_sources", "List indexed research sources visible through a project's linked libraries", []string{"project_id"}, nil},
+	{"research_search", "Search indexed passages with source locators within the caller's permitted project", []string{"project_id", "query"}, []string{"limit"}},
+	{"research_read_passage", "Retrieve and verify a source-linked research passage at its immutable citation ID", []string{"project_id", "passage_id"}, nil},
 	{"library_create", "Register an independent shared research or Lean library", []string{"library_id", "title", "kind"}, []string{"description"}},
 	{"library_list", "List shared libraries independent of projects", nil, nil},
 	{"library_add_source", "Attach a GitHub repository at an immutable commit to a library", []string{"library_id", "repository", "ref"}, []string{"path", "kind"}},
@@ -131,7 +136,7 @@ func kindFor(key string) string {
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
-	case "packages", "software_ids", "artifact_ids", "tags":
+	case "packages", "software_ids", "artifact_ids", "tags", "passages":
 		return "array"
 	case "hardware", "payload", "params", "changes":
 		return "object"
@@ -144,6 +149,21 @@ func (t toolDefinition) schema() map[string]any {
 		prop := map[string]any{"type": kindFor(key)}
 		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" {
 			prop["items"] = map[string]any{"type": "string"}
+		}
+		if key == "passages" {
+			prop["items"] = map[string]any{
+				"type": "object", "additionalProperties": false,
+				"properties": map[string]any{
+					"ordinal":    map[string]any{"type": "integer"},
+					"page":       map[string]any{"type": "integer"},
+					"section":    map[string]any{"type": "string"},
+					"line_start": map[string]any{"type": "integer"},
+					"line_end":   map[string]any{"type": "integer"},
+					"text":       map[string]any{"type": "string"},
+					"topics":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+				"required": []string{"ordinal", "text"},
+			}
 		}
 		properties[key] = prop
 	}
@@ -504,6 +524,28 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return s.GitHub.ProjectSetSingleSelect(asString(board["github_id"]), get("item_id"), get("field_id"), get("option_id"))
 	case "repository_memberships":
 		return db.RepositoryMemberships(project)
+	case "research_register_source":
+		var request ResearchSourceRequest
+		if err := JSONRequest(a, &request); err != nil {
+			return nil, err
+		}
+		return db.RegisterResearchSource(request)
+	case "research_ingest_passages":
+		var passages []ResearchPassageInput
+		if err := JSONRequest(a["passages"], &passages); err != nil {
+			return nil, err
+		}
+		return db.IngestResearchPassages(get("library"), get("source_id"), get("mode"), asInt(a["expected_revision"]), passages)
+	case "research_sources":
+		return db.ResearchSources(project)
+	case "research_search":
+		limit := asInt(a["limit"])
+		if limit == 0 {
+			limit = 30
+		}
+		return db.SearchResearch(project, get("query"), limit)
+	case "research_read_passage":
+		return db.ReadResearchPassage(project, get("passage_id"))
 	case "library_create":
 		return db.CreateLibrary(get("library_id"), get("title"), get("description"), get("kind"))
 	case "library_list":

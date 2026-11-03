@@ -1,6 +1,7 @@
 # References
 
 - [Model Context Protocol specification, 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18) — MCP maintainers. Used for: Streamable HTTP transport, JSON-RPC initialization, and tool calls.
+- [SQLite FTS5 extension](https://www.sqlite.org/fts5.html) — SQLite. Used for: Unicode-aware indexed passage search with project-scoped source joins and bounded results.
 - [SQLite C interface](https://www.sqlite.org/cintro.html) — SQLite. Used for: durable transactional project state, prepared statements, and WAL.
 - [Go language specification](https://go.dev/ref/spec) — Go team. Used for: Go controller and worker implementation.
 - [Go net/http documentation](https://pkg.go.dev/net/http) — Go team. Used for: authenticated controller HTTP service and worker transport.

@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS personal_task_claims(task TEXT NOT NULL,work_key TEXT
 CREATE INDEX IF NOT EXISTS idx_personal_claims_task ON personal_task_claims(task,status,expires);
 CREATE TABLE IF NOT EXISTS personal_task_files(task TEXT NOT NULL,name TEXT NOT NULL,revision INTEGER NOT NULL,artifact_id TEXT NOT NULL UNIQUE,sha256 TEXT NOT NULL,size INTEGER NOT NULL,created REAL NOT NULL,PRIMARY KEY(task,name,revision),FOREIGN KEY(task) REFERENCES personal_tasks(id));
 CREATE INDEX IF NOT EXISTS idx_personal_task_files_task ON personal_task_files(task,name,revision);
+CREATE TABLE IF NOT EXISTS research_sources(id TEXT PRIMARY KEY,library TEXT NOT NULL,title TEXT NOT NULL,origin_kind TEXT NOT NULL,origin_name TEXT NOT NULL,origin_revision TEXT NOT NULL,origin_digest TEXT NOT NULL,origin_path TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1,index_revision INTEGER NOT NULL DEFAULT 0,created REAL NOT NULL,updated REAL NOT NULL,FOREIGN KEY(library) REFERENCES libraries(id));
+CREATE INDEX IF NOT EXISTS idx_research_sources_library ON research_sources(library,created);
+CREATE TABLE IF NOT EXISTS research_passages(id TEXT PRIMARY KEY,source TEXT NOT NULL,epoch INTEGER NOT NULL,batch_revision INTEGER NOT NULL,ordinal INTEGER NOT NULL,page INTEGER NOT NULL,section TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,body TEXT NOT NULL,body_sha256 TEXT NOT NULL,topics TEXT NOT NULL,created REAL NOT NULL,UNIQUE(source,epoch,ordinal),FOREIGN KEY(source) REFERENCES research_sources(id));
+CREATE INDEX IF NOT EXISTS idx_research_passages_source ON research_passages(source,epoch,ordinal);
+CREATE VIRTUAL TABLE IF NOT EXISTS research_passages_fts USING fts5(body, tokenize='unicode61');
 CREATE TABLE IF NOT EXISTS project_contributions(id TEXT PRIMARY KEY,project TEXT NOT NULL,kind TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,body_sha256 TEXT NOT NULL,repository TEXT NOT NULL,revision TEXT NOT NULL,artifact_id TEXT NOT NULL,principal TEXT NOT NULL,created REAL NOT NULL,FOREIGN KEY(project) REFERENCES projects(id));
 CREATE INDEX IF NOT EXISTS idx_project_contributions ON project_contributions(project,kind,created);
 CREATE TABLE IF NOT EXISTS project_grants(project TEXT NOT NULL,principal TEXT NOT NULL,role TEXT NOT NULL,created REAL NOT NULL,PRIMARY KEY(project,principal),FOREIGN KEY(project) REFERENCES projects(id));
