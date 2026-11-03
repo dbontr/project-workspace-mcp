@@ -91,8 +91,7 @@ func TestGitHubAppReadinessChecksScopedPermissions(t *testing.T) {
 		len(repositories[0]["missing_permissions"].([]string)) != 0 {
 		t.Fatalf("healthy repository rejected: %v", repositories[0])
 	}
-	if got := repositories[1]["missing_permissions"].([]string);
-		len(got) != 1 || got[0] != "contents:write" {
+	if got := repositories[1]["missing_permissions"].([]string); len(got) != 1 || got[0] != "contents:write" {
 		t.Fatalf("missing or incorrect permission deficiency: %v", got)
 	}
 	if issued["alpha"] != 1 || issued["beta"] != 1 {
