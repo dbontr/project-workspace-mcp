@@ -80,17 +80,28 @@ class WorkspaceRunner:
             raise ValueError('Invalid workspace resource request')
         name = self._name(wid)
         self._checked(('volume', 'create', name), timeout=30)
-        # Set the volume owner before the long-lived unprivileged container starts.
-        self._checked(('run', '--rm', '--network', 'none', '--cap-drop', 'ALL', '--cap-add', 'CHOWN',
-                       '--user', '0', '--mount', f'type=volume,source={name},target=/workspace',
-                       image, 'chown', '65534:65534', '/workspace'), timeout=300)
+        # Initialize a writable named volume without copying the image directory.
+        # Each workspace owns a distinct volume; the unprivileged runtime cannot
+        # modify the host or another workspace's files.
+        self._checked(('run', '--rm', '--network', 'none', '--cap-drop', 'ALL',
+                       '--cap-add', 'CHOWN', '--cap-add', 'FOWNER',
+                       '--user', '0', '--mount', f'type=volume,source={name},target=/workspace,volume-nocopy',
+                       image, 'sh', '-c', 'chown 65534:65534 /workspace && chmod 0700 /workspace'),
+                      timeout=300)
         self._checked(('run', '-d', '--name', name, '--label', 'project-workspace=managed',
                        '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
                        '--pids-limit', '128', '--cpus', str(cpu), '--memory', f'{mem}m',
                        '--memory-swap', f'{mem}m', '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m',
                        '--user', '65534:65534', '--workdir', '/workspace',
-                       '--mount', f'type=volume,source={name},target=/workspace',
+                       '--mount', f'type=volume,source={name},target=/workspace,volume-nocopy',
                        image, 'sh', '-c', 'while :; do sleep 3600; done'), timeout=300)
+        try:
+            self._checked(('exec', name, 'sh', '-c',
+                           'touch /workspace/.pwm-writecheck && rm /workspace/.pwm-writecheck'),
+                          timeout=30)
+        except Exception:
+            self._docker('rm', '-f', name, timeout=30)
+            raise
         return {'container': name, 'status': 'ready'}
 
     def exec(self, wid, command, *, data=None, timeout=120):
