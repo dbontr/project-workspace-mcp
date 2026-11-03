@@ -23,8 +23,8 @@ func setupResticTest(t *testing.T) (ResticRepositoryConfig, string) {
 	repo := filepath.Join(root, "encrypted")
 	conf := ResticRepositoryConfig{Repository: repo, PasswordFile: password}
 	cmd := conf.resticCommand(context.Background(), root, "init")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("restic init failed: %v %s", err, output)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("restic init failed: %v", err)
 	}
 	return conf, root
 }
