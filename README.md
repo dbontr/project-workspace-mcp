@@ -200,8 +200,20 @@ auto-deletion requires repository administration permission; changing the
 token alone does not expose a missing connector operation. Installation keys
 and tokens never enter worker payloads or repository archives.
 
-A live GitHub App connection and permissions acceptance test is required
-before treating this option as configured in production.
+For a non-mutating, credential-safe installation preflight, call the
+administrator-only `github_app_readiness` MCP tool with a `project_id`. It
+checks repository-scoped installation tokens against up to 64 repositories
+linked to that project. Each repository is checked for read access and the
+declared installation permissions required for source publication: Contents,
+Issues, and Pull requests at `write`, and Checks and Commit statuses at
+`read`. Results identify unavailable repositories and missing permissions
+without returning a signing key or access token. Installation diagnostics do
+not grant repository rights, verify GitHub Projects V2 scopes, or prove that
+a commit, CI run, or PR merge can succeed. Repository administration for
+branch auto-deletion must be authorized and tested separately.
+
+A live GitHub App connection and complete publication acceptance test is
+required before treating this option as configured in production.
 
 ## Pair a compute node
 
