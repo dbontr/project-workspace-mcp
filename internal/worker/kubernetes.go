@@ -94,7 +94,7 @@ func (k *Kubernetes) configureServiceAccount() error {
 		"apiVersion": "v1", "kind": "Config",
 		"clusters": []any{map[string]any{"name": "cluster",
 			"cluster": map[string]any{
-				"server": "https://" + net.JoinHostPort(host, port),
+				"server":                "https://" + net.JoinHostPort(host, port),
 				"certificate-authority": root + "/ca.crt",
 			}}},
 		"contexts": []any{map[string]any{"name": "worker",
@@ -140,7 +140,7 @@ func (k *Kubernetes) Close() {
 func (k *Kubernetes) labels(id, kind string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/managed-by": "project-workspace",
-		"pwm.dev/kind": kind, "pwm.dev/project": k.Project,
+		"pwm.dev/kind":                 kind, "pwm.dev/project": k.Project,
 		"pwm.dev/worker": k.Worker, "pwm.dev/workspace": id,
 	}
 }
@@ -223,9 +223,9 @@ func (k *Kubernetes) owns(m map[string]any, id, kind string) bool {
 		labels["pwm.dev/kind"] == kind
 }
 
-func kubePodName(id string) string { return "pwm-" + id }
+func kubePodName(id string) string   { return "pwm-" + id }
 func kubeClaimName(id string) string { return "pwm-data-" + id }
-func kubeJobName(id string) string { return "pwm-job-" + id }
+func kubeJobName(id string) string   { return "pwm-job-" + id }
 
 func kubernetesResources(cpu float64, memory int, devices map[string]string) map[string]any {
 	cpuUnits := strconv.FormatInt(int64(cpu*1000+0.5), 10) + "m"
@@ -241,7 +241,7 @@ func restrictedSecurity() map[string]any {
 	return map[string]any{
 		"runAsNonRoot": true, "runAsUser": 65534, "runAsGroup": 65534,
 		"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true,
-		"capabilities": map[string]any{"drop": []string{"ALL"}},
+		"capabilities":   map[string]any{"drop": []string{"ALL"}},
 		"seccompProfile": map[string]any{"type": "RuntimeDefault"},
 	}
 }
@@ -267,13 +267,13 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 		"spec": map[string]any{
 			"restartPolicy": "Never", "automountServiceAccountToken": false,
 			"serviceAccountName": "pwm-sandbox",
-			"securityContext": sandboxPodSecurity(),
+			"securityContext":    sandboxPodSecurity(),
 			"containers": []any{map[string]any{
 				"name": "workspace", "image": image,
 				"imagePullPolicy": "IfNotPresent",
-				"command": []string{"sh", "-c", command},
-				"workingDir": "/workspace", "env": env,
-				"resources": kubernetesResources(cpu, memory, devices),
+				"command":         []string{"sh", "-c", command},
+				"workingDir":      "/workspace", "env": env,
+				"resources":       kubernetesResources(cpu, memory, devices),
 				"securityContext": restrictedSecurity(),
 				"volumeMounts": []any{
 					map[string]any{"name": "workspace", "mountPath": "/workspace"},
@@ -291,14 +291,14 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 func (k *Kubernetes) claim(id string) map[string]any {
 	spec := map[string]any{
 		"accessModes": []string{"ReadWriteOnce"},
-		"resources": map[string]any{"requests": map[string]string{"storage": k.Storage}},
+		"resources":   map[string]any{"requests": map[string]string{"storage": k.Storage}},
 	}
 	if k.StorageClass != "" {
 		spec["storageClassName"] = k.StorageClass
 	}
 	return map[string]any{"apiVersion": "v1", "kind": "PersistentVolumeClaim",
 		"metadata": map[string]any{"name": kubeClaimName(id), "labels": k.labels(id, "volume")},
-		"spec": spec}
+		"spec":     spec}
 }
 
 func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[string]any) (map[string]any, error) {
@@ -458,12 +458,12 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 				"app.kubernetes.io/managed-by": "project-workspace", "pwm.dev/kind": "job", "pwm.dev/worker": worker,
 			}}, "spec": map[string]any{
 				"restartPolicy": "Never", "automountServiceAccountToken": false,
-				"serviceAccountName": "pwm-sandbox", "securityContext": sandboxPodSecurity(),
+				"serviceAccountName": "pwm-sandbox", "securityContext":    sandboxPodSecurity(),
 				"containers": []any{map[string]any{
 					"name": "task", "image": job.Image, "command": []string{"sh", "-c", job.Command},
-					"resources": kubernetesResources(job.CPU, job.MemoryMB, nil),
+					"resources":       kubernetesResources(job.CPU, job.MemoryMB, nil),
 					"securityContext": restrictedSecurity(),
-					"volumeMounts": []any{map[string]any{"name": "scratch", "mountPath": "/tmp"}},
+					"volumeMounts":    []any{map[string]any{"name": "scratch", "mountPath": "/tmp"}},
 				}},
 				"volumes": []any{map[string]any{"name": "scratch", "emptyDir": map[string]any{"sizeLimit": "64Mi"}}},
 			}},
