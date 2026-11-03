@@ -37,6 +37,20 @@ from a recorded handoff. The controller binds the authenticated principal
 automatically. Parallel workers contribute immutable records rather than
 editing a shared context file without a revision guard.
 
+## Cooperative claims on personal tasks
+
+Before expensive standalone work, inspect
+`personal_task_claim_list(task_id=...)`. Choose a stable lowercase
+`work_key` using the exact input revision or SHA-256, objective and
+method. Call `personal_task_claim`; only `claimed` authorizes
+execution. A `busy` response means another agent owns the active
+lease. For `completed`, verify the returned immutable task file IDs and
+reuse results. Renew before expiry with the secret token and generation,
+then `personal_task_claim_finish(status="completed")` with verified
+file artifact IDs. If the job fails or is canceled, release the lease.
+Never store its token in a repository, task file, worker, or log. Task
+claims do not reserve computing resources.
+
 ## Independent personal tasks and file revisions
 
 Use `task_list` and `task_details` to resume owner-scoped work that is not

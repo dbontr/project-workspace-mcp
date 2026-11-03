@@ -256,6 +256,31 @@ project artifact; project editor permission is checked separately. The source
 task remains intact. Afterwards, the usual `workspace_import_artifact`
 can stage the promoted file onto a worker.
 
+### Cooperative claims on standalone tasks
+
+Independent personal tasks also support expiring, owner-scoped work claims.
+Before a duplicate-prone operation, derive a stable `work_key` from the
+objective, exact input checksum and method. Call `personal_task_claim_list`
+before `personal_task_claim`, or POST to
+`/api/tasks/TASK_ID/claims` with `{"work_key":"analyze-input-sha256",
+"lease_seconds":900}`. The controller returns `claimed`, `busy`, or
+`completed`. Only a claimant receiving `claimed` and its one-time
+`lease_token` may begin work.
+
+The lease token is never included in listings, logs or persisted task files.
+Renew through `personal_task_claim_renew`, and complete through
+`personal_task_claim_finish` with immutable file artifact IDs from that
+same personal task. A missing or unrelated file ID is rejected. A failed
+or canceled attempt is `released` without marking completion.
+Expiration increments the generation on the next claim; a prior claimant
+cannot renew or complete a replacement lease.
+
+These claims are **cooperative duplicate prevention**, not physical
+device reservations or automatic worker allocations. They do not replace
+project task claims, source conflict control or the separate worker
+scheduler. Archived tasks retain their completed and historical claims,
+but do not admit new work.
+
 This is the **storage and transfer API**, not automatic ChatGPT attachment
 resolution. A connected, file-capable ChatGPT client/adapter must still pass
 the real attachment bytes or call the REST stream route. The task library
