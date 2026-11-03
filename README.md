@@ -36,8 +36,9 @@ The server's configuration variables include `PWM_GITHUB_TOKEN`, `PWM_GITHUB_GEN
 
 The controller can act as an OAuth 2.0 protected resource, validating signed
 RS256 JWT bearer tokens issued by a configured OIDC provider. The provider
-performs login, authorization, consent, token issuance, and revocation. This
-controller does not issue OAuth tokens or provide its own login page.
+performs login, authorization, consent, and token issuance. This controller
+does not issue OAuth tokens or provide its own login page. Stateless JWTs may
+remain cryptographically valid until expiry even after provider-side revocation.
 
 Configure all three variables on the controller:
 
@@ -76,7 +77,12 @@ projects in `GET /api/projects` and `list_projects`.
 
 Update a grant by supplying its current role as `expected_role`. Revoke it
 using `"role":"revoke"` and the exact prior role. This immediately removes
-project access even if the external identity token has not expired. The
+project access even if the external identity token has not expired. To reject
+one token irrespective of project grants, its holder may read the
+`token_sha256` fingerprint from `GET /api/whoami`. An administrator can
+POST `{"sha256":"FINGERPRINT","expires":UNIX_EXPIRATION}` to
+`/api/revocations`; the controller never needs the bearer token itself.
+The expiration must be within the next 24 hours. The
 controller checks token issuer, audience, signature, expiration, and
 not-before time; JWKS keys refresh every five minutes. Unavailable key
 services fail closed. Access decisions are recorded in the SQLite ledger,
