@@ -221,7 +221,8 @@ func (r *Runner) Start(ctx context.Context, id string, p map[string]any) (map[st
 	if err != nil {
 		return nil, err
 	}
-	if _, err := r.checked(ctx, 30*time.Second, nil, "volume", "create", n); err != nil {
+	if _, err := r.checked(ctx, 30*time.Second, nil, "volume", "create", "--label", "project-workspace=volume",
+		"--label", "project-workspace-workspace="+id, n); err != nil {
 		return nil, err
 	}
 	volume := "type=volume,source=" + n + ",target=/workspace,volume-nocopy"
@@ -525,6 +526,8 @@ func (r *Runner) Handle(ctx context.Context, op Operation, c *Client) (map[strin
 	switch op.Action {
 	case "start":
 		return r.Start(ctx, op.Workspace, payload)
+	case "prune_volume":
+		return r.PruneVolume(ctx, op.Workspace)
 	case "stop":
 		_, stderr, status, err := r.docker(ctx, 30*time.Second, nil, "rm", "-f", n)
 		if err != nil {
