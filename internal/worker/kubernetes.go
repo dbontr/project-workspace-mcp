@@ -23,19 +23,19 @@ var kubernetesName = regexp.MustCompile("^[a-z][a-z0-9-]{0,62}$")
 // Kubernetes executes workspace Pods, persistent claims, and batch Jobs via
 // the Kubernetes API. A worker serves one dedicated project namespace.
 type Kubernetes struct {
-	Namespace    string
-	Project      string
-	Worker       string
-	Binary       string
-	ConfigPath   string
-	OwnsConfig   bool
-	Storage      string
-	StorageClass string
-	ImagePullSecret string
-	Devices      []KubernetesDevice
-	CPU          float64
-	MemoryMB     int
-	MaxJobs      int
+	Namespace      string
+	Project        string
+	Worker         string
+	Binary         string
+	ConfigPath     string
+	OwnsConfig     bool
+	Storage        string
+	StorageClass   string
+	ImagePullSecretstring
+	Devices        []KubernetesDevice
+	CPU            float64
+	MemoryMB       int
+	MaxJobs        int
 }
 
 func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*Kubernetes, error) {
