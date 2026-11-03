@@ -244,6 +244,19 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, p []string)
 				}
 			}
 		}
+		if len(p) == 7 && p[5] == "volume" && p[6] == "prune" && method == "POST" {
+			var in struct {
+				SnapshotID string `json:"snapshot_id"`
+				Confirm    bool   `json:"confirm"`
+			}
+			if e := bodyJSON(r, &in); e != nil {
+				fail(w, 400, e.Error())
+				return
+			}
+			v, e := db.PruneWorkspaceVolume(project, ws, in.SnapshotID, in.Confirm)
+			send(w, v, e)
+			return
+		}
 		if len(p) == 7 && p[5] == "operations" && method == "GET" {
 			v, e := db.Operation(project, ws, p[6])
 			send(w, v, e)

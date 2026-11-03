@@ -81,6 +81,7 @@ var tools = []toolDefinition{
 	{"workspace_snapshot_list", "List workspace snapshots", []string{"project_id", "workspace_id"}, nil},
 	{"workspace_checkpoint_stop", "Preserve a verified workspace snapshot before queuing teardown", []string{"project_id", "workspace_id"}, nil},
 	{"workspace_checkpoint_stop_status", "Inspect checkpoint-before-stop progress and snapshot reference", []string{"project_id", "workspace_id"}, nil},
+	{"workspace_prune_volume", "Prune the stopped workspace's labeled Docker volume after verifying its checkpoint; requires project owner permission and explicit confirmation", []string{"project_id", "workspace_id", "snapshot_id", "confirm"}, nil},
 	{"workspace_restore", "Restore a workspace snapshot", []string{"project_id", "workspace_id", "snapshot_id"}, nil},
 	{"github_repository_api", "Call a repository-scoped GitHub endpoint", []string{"project_id", "repository", "method", "endpoint"}, []string{"params", "payload"}},
 	{"github_repository", "Read repository metadata", []string{"project_id", "repository"}, nil},
@@ -438,6 +439,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.CheckpointStopWorkspace(project, workspace)
 	case "workspace_checkpoint_stop_status":
 		return db.CheckpointStopStatus(project, workspace)
+	case "workspace_prune_volume":
+		return db.PruneWorkspaceVolume(project, workspace, get("snapshot_id"), a["confirm"] == true)
 	case "workspace_destroy":
 		return db.StopWorkspace(project, workspace)
 	case "list_hardware":

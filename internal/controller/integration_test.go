@@ -126,13 +126,40 @@ func TestDockerControllerWorker(t *testing.T) {
 	if e != nil || len(list) != 1 {
 		t.Fatalf("missing snapshot %v %v", list, e)
 	}
-	if _, e = db.StopWorkspace("demo", wid); e != nil {
+	if _, e = db.CheckpointStopWorkspace("demo", wid); e != nil {
 		t.Fatal(e)
 	}
 	await(t, 70*time.Second, func() (bool, error) {
 		row, e := db.Workspace("demo", wid)
-		return e == nil && row["status"] == "stopped", e
+		if e != nil {
+			return false, e
+		}
+		if row["status"] == "failed" {
+			return false, fmt.Errorf("checkpoint teardown failed")
+		}
+		return row["status"] == "stopped", nil
 	})
+	checkpoint, e := db.CheckpointStopStatus("demo", wid)
+	if e != nil || checkpoint["status"] != "stopped" {
+		t.Fatalf("checkpointed stop did not finish: %v %v", checkpoint, e)
+	}
+	prune, e := db.PruneWorkspaceVolume("demo", wid, asString(checkpoint["snapshot_id"]), true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	await(t, 50*time.Second, func() (bool, error) {
+		row, e := db.Operation("demo", wid, asString(prune["operation_id"]))
+		if e != nil {
+			return false, e
+		}
+		if row["status"] == "failed" {
+			return false, fmt.Errorf("volume prune failed: %v", row["result"])
+		}
+		return row["status"] == "succeeded", nil
+	})
+	if e := exec.Command("docker", "volume", "inspect", "pwm-"+wid).Run(); e == nil {
+		t.Fatal("pruned workspace volume still exists")
+	}
 }
 func TestDockerVirtualDisplayCapture(t *testing.T) {
 	if os.Getenv("RUN_DISPLAY_INTEGRATION") != "1" {
