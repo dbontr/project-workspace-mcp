@@ -40,6 +40,10 @@ spec:
         app: pwm-controller
     spec:
       serviceAccountName: pwm-controller
+      {{- with .Values.controller.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       securityContext:
         runAsUser: 65534
