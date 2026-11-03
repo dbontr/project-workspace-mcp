@@ -425,7 +425,6 @@ func TestInterruptedJobContainerCleanup(t *testing.T) {
 	}
 }
 
-
 func TestDockerClientFailureRemovesManagedJob(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "docker.log")
