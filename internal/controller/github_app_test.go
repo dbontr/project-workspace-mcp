@@ -149,10 +149,13 @@ func TestGitHubAppRejectsUnsafeKeyPermissions(t *testing.T) {
 	if err := g.ConfigureApp(0, 77, filename); err == nil {
 		t.Fatal("missing app identity must be rejected")
 	}
-	if key := githubTokenScope("/repos/example/repo/git/refs/heads/main"); key != "repo" {
-		t.Fatalf("repository scope: %q", key)
+	if key, err := githubTokenScope("/repos/example/repo/git/refs/heads/main"); err != nil || key != "repo" {
+		t.Fatalf("repository scope: %q %v", key, err)
 	}
-	if key := githubTokenScope("/graphql"); key != "" {
-		t.Fatalf("GraphQL should be unscoped: %q", key)
+	if key, err := githubTokenScope("/graphql"); err != nil || key != "" {
+		t.Fatalf("GraphQL should be unscoped: %q %v", key, err)
+	}
+	if _, err := githubTokenScope("/repos/example/%2Fsecret"); err == nil {
+		t.Fatal("malformed repository scope must be rejected")
 	}
 }
