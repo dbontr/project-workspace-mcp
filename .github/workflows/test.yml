@@ -38,6 +38,10 @@ jobs:
         run: |
           gofmt -d internal/controller/pool_management.go internal/controller/pool_management_test.go internal/controller/software_pool.go internal/controller/software_pool_http.go internal/controller/workspaces.go
           test -z "$(gofmt -l internal/controller/pool_management.go internal/controller/pool_management_test.go internal/controller/software_pool.go internal/controller/software_pool_http.go internal/controller/workspaces.go)"
+      - name: Format resource planner components
+        run: |
+          gofmt -d internal/controller/resource_plan.go internal/controller/resource_plan_http.go internal/controller/resource_plan_test.go internal/controller/workspaces.go
+          test -z "$(gofmt -l internal/controller/resource_plan.go internal/controller/resource_plan_http.go internal/controller/resource_plan_test.go internal/controller/workspaces.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
