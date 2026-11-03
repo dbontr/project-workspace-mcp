@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,16 @@ func NewRunner(devices []Device) *Runner {
 		}
 	}
 	return &Runner{Devices: devices, Images: images, BuildNetwork: os.Getenv("PWM_BUILD_NETWORK") == "1", MaxArtifact: max}
+}
+
+// ApprovedImages reports image policy without including credentials or host paths.
+func (r *Runner) ApprovedImages() []string {
+	images := make([]string, 0, len(r.Images))
+	for image := range r.Images {
+		images = append(images, image)
+	}
+	sort.Strings(images)
+	return images
 }
 
 // AvailableDevices rechecks removable USB disks on each heartbeat and allocation.
