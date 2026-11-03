@@ -93,7 +93,7 @@ func TestKubernetesWorkspaceLifecycleUsesAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{"create -f -", "wait --for=condition=Ready",
-		"exec pod/pwm-"+id, "delete pod pwm-"+id, "delete pvc pwm-data-"+id} {
+		"exec pod/pwm-" + id, "delete pod pwm-" + id, "delete pvc pwm-data-" + id} {
 		if !strings.Contains(string(operations), expected) {
 			t.Fatalf("missing API operation %q:\n%s", expected, operations)
 		}
