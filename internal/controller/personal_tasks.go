@@ -339,4 +339,3 @@ func (db *Database) PromotePersonalTaskFile(owner, task, name string, revision i
 	})
 	return result, err
 }
-
