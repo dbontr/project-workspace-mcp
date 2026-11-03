@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-workspace-mcp"
+version = "0.2.0"
+description = "Self-hosted project knowledge and distributed compute for MCP clients"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.110,<1", "uvicorn>=0.27,<1", "mcp>=1.28,<2", "httpx>=0.27,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+project-workspace = "project_workspace.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+project_workspace = ["dashboard.html"]

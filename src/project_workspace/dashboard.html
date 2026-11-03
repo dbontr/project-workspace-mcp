@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Project Workspace MCP</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color-scheme:dark;background:#111720;color:#f1f5f9}
+*{box-sizing:border-box}body{margin:0;padding:2rem;max-width:1120px;margin:auto}
+h1{font-size:1.65rem;letter-spacing:-.03em}p,small{color:#94a3b8}
+form{display:flex;flex-wrap:wrap;gap:.7rem;margin:1.5rem 0}input,button,select{font:inherit;border:1px solid #334155;border-radius:.55rem;padding:.65rem .85rem;background:#1e293b;color:#f1f5f9}
+input{flex:1;min-width:230px}button{cursor:pointer;background:#2563eb;border-color:#2563eb}button:hover{filter:brightness(1.12)}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}
+section{background:#19232f;border:1px solid #334155;border-radius:.8rem;padding:1.2rem;min-height:150px}
+h2{font-size:1.1rem;margin-top:0}ul{list-style:none;margin:0;padding:0}li{padding:.65rem 0;border-top:1px solid #334155;overflow-wrap:anywhere}
+strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb7185}
+</style>
+</head>
+<body>
+<header><h1>Project Workspace MCP</h1><p>Projects, compute resources, and durable workspaces.</p></header>
+<form id="auth"><input id="token" type="password" required placeholder="Administrator token" aria-label="Administrator token" autocomplete="off"><button>Connect</button></form>
+<p id="notice" role="status" aria-live="polite"></p>
+<main>
+  <section><h2>Projects</h2><ul id="projects"><li class="muted">Connect to view projects.</li></ul></section>
+  <section><h2>Compute nodes</h2><ul id="nodes"><li class="muted">Connect to view workers.</li></ul></section>
+  <section><h2>Active workspaces</h2><ul id="workspaces"><li class="muted">Connect to view workspaces.</li></ul></section>
+  <section><h2>Stored artifacts</h2><ul id="artifacts"><li class="muted">Connect to view artifacts.</li></ul></section>
+</main>
+<script>
+let credential='';
+const el=id=>document.getElementById(id);
+function item(parent,header,detail){let li=document.createElement('li');let a=document.createElement('strong');a.textContent=header;let b=document.createElement('div');b.className='muted';b.textContent=detail;li.append(a,b);parent.append(li)}
+function render(id,rows,show){let box=el(id);box.replaceChildren();if(!rows.length)item(box,'None','No entries');else rows.forEach(x=>item(box,...show(x)))}
+async function get(path){let response=await fetch(path,{headers:{Authorization:'Bearer '+credential},cache:'no-store'});if(!response.ok)throw new Error('Request '+response.status+' for '+path);return response.json()}
+async function refresh(){
+  const projects=await get('/api/projects');const nodes=await get('/api/nodes');
+  render('projects',projects,p=>[p.title,p.id]);
+  render('nodes',nodes,n=>[n.id,n.online?'Online · '+(n.capabilities.cpu||0)+' CPU · '+(n.capabilities.memory_mb||0)+' MiB available':'Offline']);
+  const workspaces=[];const artifacts=[];
+  for(const p of projects){
+    for(const w of await get('/api/projects/'+encodeURIComponent(p.id)+'/workspaces'))workspaces.push([p.id,w]);
+    for(const a of await get('/api/projects/'+encodeURIComponent(p.id)+'/artifacts'))artifacts.push([p.id,a]);
+  }
+  render('workspaces',workspaces.filter(([_,w])=>!['stopped','failed'].includes(w.status)),([p,w])=>[w.id.slice(0,12)+' · '+w.status,p+' · '+w.node]);
+  render('artifacts',artifacts.slice(-30),([p,a])=>[a.name,p+' · '+a.size+' bytes · SHA256 '+a.sha256.slice(0,12)]);
+  el('notice').textContent='';
+}
+el('auth').addEventListener('submit',async event=>{event.preventDefault();credential=el('token').value;el('token').value='';try{await refresh()}catch(e){credential='';el('notice').textContent=e.message}});
+</script>
+</body>
+</html>
