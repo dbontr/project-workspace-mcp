@@ -24,8 +24,8 @@ jobs:
           test -z "$(gofmt -l internal/controller/software_pool.go internal/controller/software_pool_http.go internal/controller/software_pool_test.go internal/controller/artifact_transfer.go)"
       - name: Format authentication components
         run: |
-          gofmt -d internal/controller/oidc.go internal/controller/project_grants.go internal/controller/access_control.go internal/controller/access_control_test.go internal/controller/server.go internal/controller/mcp.go
-          test -z "$(gofmt -l internal/controller/oidc.go internal/controller/project_grants.go internal/controller/access_control.go internal/controller/access_control_test.go internal/controller/server.go internal/controller/mcp.go)"
+          gofmt -d internal/controller/oidc.go internal/controller/project_grants.go internal/controller/access_control.go internal/controller/access_control_test.go internal/controller/token_revocations.go internal/controller/server.go internal/controller/mcp.go
+          test -z "$(gofmt -l internal/controller/oidc.go internal/controller/project_grants.go internal/controller/access_control.go internal/controller/access_control_test.go internal/controller/token_revocations.go internal/controller/server.go internal/controller/mcp.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
