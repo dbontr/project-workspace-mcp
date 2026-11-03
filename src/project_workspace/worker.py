@@ -10,7 +10,10 @@ import shutil
 import subprocess
 import tarfile
 import time
+import threading
 from pathlib import PurePosixPath
+
+from .device_config import manifest, docker_args
 
 import httpx
 
@@ -26,6 +29,7 @@ def capabilities():
     out = {'cpu': os.cpu_count() or 1, 'memory_mb': memory, 'os': platform.system(),
            'arch': platform.machine(), 'max_jobs': 1,
            'docker': platform.system() == 'Linux' and bool(shutil.which('docker'))}
+    out['devices']=[{k:v for k,v in d.items() if k in ('id','kind','model','memory_mb')} for d in manifest()]
     if shutil.which('nvidia-smi'):
         try:
             result = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
@@ -50,8 +54,9 @@ def _path(value):
 
 
 class WorkspaceRunner:
-    def __init__(self, fetch_artifact=None):
+    def __init__(self, fetch_artifact=None, upload_artifact=None):
         self.fetch_artifact = fetch_artifact
+        self.upload_artifact = upload_artifact
         self.images = {x.strip() for x in os.getenv('PWM_ALLOWED_IMAGES', 'python:3.12-slim').split(',') if x.strip()}
 
     @staticmethod
@@ -73,12 +78,13 @@ class WorkspaceRunner:
         if platform.system() != 'Linux' or not shutil.which('docker'):
             raise RuntimeError('Docker execution requires Linux and Docker')
         image = payload['image']
-        if image not in self.images:
+        if image not in self.images and not re.fullmatch(r'pwm-env-[a-z][a-z0-9-]+:v[1-9][0-9]*',image):
             raise ValueError('Container image not approved for this worker')
         cpu, mem = float(payload['cpu']), int(payload['memory_mb'])
         if not 0.1 <= cpu <= 32 or not 64 <= mem <= 131072:
             raise ValueError('Invalid workspace resource request')
         name = self._name(wid)
+        device_flags = docker_args(payload.get('devices', []), manifest())
         self._checked(('volume', 'create', name), timeout=30)
         # Initialize a writable named volume without copying the image directory.
         # Each workspace owns a distinct volume; the unprivileged runtime cannot
@@ -92,7 +98,7 @@ class WorkspaceRunner:
                        '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
                        '--pids-limit', '128', '--cpus', str(cpu), '--memory', f'{mem}m',
                        '--memory-swap', f'{mem}m', '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m',
-                       '--user', '65534:65534', '--workdir', '/workspace',
+                       *device_flags, '--user', '65534:65534', '--workdir', '/workspace',
                        '--mount', f'type=volume,source={name},target=/workspace,volume-nocopy',
                        image, 'sh', '-c', 'while :; do sleep 3600; done'), timeout=300)
         try:
@@ -128,6 +134,68 @@ class WorkspaceRunner:
                 raise RuntimeError(result.stderr.decode('utf-8', 'replace')[:2048])
             # Retain the named volume so unexported work can be recovered.
             return {'status': 'stopped', 'volume': name}
+        if action == 'build_image':
+            base=data.get('base_image')
+            image=data.get('image')
+            dockerfile=data.get('dockerfile') or ''
+            context_name=data.get('context') or ''
+            architecture=data.get('architecture') or ''
+            actual_arch={'x86_64':'amd64','aarch64':'arm64'}.get(platform.machine(),platform.machine())
+            if architecture and architecture != actual_arch:
+                raise ValueError('Environment architecture does not match worker')
+            context_dir='-'
+            if context_name:
+                if not re.fullmatch(r'[a-z][a-z0-9-]{1,62}',context_name):
+                    raise ValueError('Invalid build context')
+                root=os.getenv('PWM_BUILD_CONTEXT_ROOT')
+                if not root:raise ValueError('Local build contexts are not enabled')
+                root_path=os.path.realpath(root)
+                destination=os.path.realpath(os.path.join(root_path,context_name))
+                if os.path.relpath(destination,root_path)!=context_name or not os.path.isdir(destination):
+                    raise ValueError('Build context is not an approved directory')
+                context_dir=destination
+            if base not in self.images or not re.fullmatch(r'pwm-env-[a-z][a-z0-9-]+:v[1-9][0-9]*',image):
+                raise ValueError('Image build is not approved')
+            if dockerfile:
+                directives=[ln.strip() for ln in dockerfile.splitlines() if ln.strip() and not ln.lstrip().startswith('#')]
+                froms=[ln.split() for ln in directives if ln.split()[0].upper()=='FROM']
+                if not directives or directives[0].split()[0].upper()!='FROM' or len(froms)!=1 or len(froms[0])!=2 or froms[0][1]!=base:
+                    raise ValueError('Dockerfile base image does not match approved image')
+                network='default' if os.getenv('PWM_BUILD_NETWORK')=='1' else 'none'
+                self._checked(('build','--network',network,'--tag',image,'-f','-',context_dir),
+                              data=dockerfile.encode(),timeout=7200)
+            else:
+                self._checked(('tag',base,image),timeout=300)
+            result=self._checked(('image','inspect','--format','{{.Id}}',image),timeout=30)
+            return {'image':image,'image_id':result.decode().strip()}
+        if action == 'snapshot':
+            result=self._docker('exec',self._name(wid),'tar','-czf','-','-C','/workspace','.',timeout=1800)
+            if result.returncode:
+                raise RuntimeError(result.stderr.decode('utf-8','replace')[:1024])
+            if self.upload_artifact:
+                receipt=self.upload_artifact(wid,operation['id'],operation['lease_token'],
+                                             'workspace.tar.gz',result.stdout)
+                return {'artifact_id':receipt['id']}
+            if len(result.stdout)>1_048_576:raise ValueError('Snapshot exceeds inline transfer limit')
+            return {'name':'workspace.tar.gz','base64':base64.b64encode(result.stdout).decode()}
+        if action == 'restore_snapshot':
+            if self.fetch_artifact is None:raise RuntimeError('Artifact transfer unavailable')
+            content=self.fetch_artifact(wid,data['artifact_id'])
+            if len(content)>256*1024**2:raise ValueError('Snapshot download exceeds Python worker limit')
+            total=0
+            with tarfile.open(fileobj=io.BytesIO(content),mode='r:gz') as src:
+                for m in src:
+                    components=m.name.split('/')
+                    if (m.issym() or m.islnk() or not (m.isfile() or m.isdir()) or
+                            m.name.startswith('/') or any(c=='..' for c in components)):
+                        raise ValueError('Snapshot contains unsafe entry')
+                    total+=m.size
+                    if total>1024**3:raise ValueError('Expanded snapshot exceeds limit')
+            result=self._docker('exec','-i',self._name(wid),'tar','-xzf','-',
+                                '--no-same-owner','--no-same-permissions','-C','/workspace',
+                                data=content,timeout=1800)
+            if result.returncode:raise ValueError('Unable to restore snapshot')
+            return {'status':'restored','bytes':total}
         if action == 'command':
             return self.exec(wid, data.get('command', ''), timeout=120)
         if action == 'read_file':
@@ -197,6 +265,10 @@ class WorkspaceRunner:
             path = _path(data.get('path'))
             result = self._docker('exec', self._name(wid), 'cat', '--', path, timeout=120)
             if result.returncode:raise ValueError('Unable to export file')
+            if self.upload_artifact:
+                receipt=self.upload_artifact(wid,operation['id'],operation['lease_token'],
+                                             PurePosixPath(path).name,result.stdout)
+                return {'artifact_id':receipt['id']}
             if len(result.stdout)>1_048_576:raise ValueError('Artifact exceeds 1 MiB limit')
             return {'name': PurePosixPath(path).name, 'base64': base64.b64encode(result.stdout).decode()}
         raise ValueError('Unsupported workspace operation')
@@ -227,7 +299,16 @@ def serve(controller,node,token,interval=5):
             response.raise_for_status()
             return response.content
 
-        runner=WorkspaceRunner(fetch_artifact)
+        def upload_artifact(wid,op_id,lease_token,name,content):
+            import hashlib
+            response=client.put(f'/api/worker/{node}/workspaces/{wid}/operations/{op_id}/artifact',
+                                headers={'X-Operation-Token':lease_token,'X-Artifact-Name':name,
+                                         'X-Content-SHA256':hashlib.sha256(content).hexdigest()},
+                                content=content,timeout=1800)
+            response.raise_for_status()
+            return response.json()
+
+        runner=WorkspaceRunner(fetch_artifact,upload_artifact)
         while True:
             caps=capabilities()
             client.post(f'/api/worker/{node}/heartbeat',json={'capabilities':caps}).raise_for_status()
@@ -235,12 +316,26 @@ def serve(controller,node,token,interval=5):
             res.raise_for_status()
             operation=res.json()['operation']
             if operation:
+                stop_renew=threading.Event()
+                def keep_lease():
+                    while not stop_renew.wait(45):
+                        try:
+                            client.post(f'/api/worker/{node}/operation/renew',json={
+                                'operation_id':operation['id'],'lease_token':operation['lease_token']},
+                                timeout=20).raise_for_status()
+                        except httpx.HTTPError:
+                            return
+                renewer=threading.Thread(target=keep_lease,daemon=True)
+                renewer.start()
                 try:
                     output=runner.handle(operation)
                     success=True
                 except Exception as exc:
                     output={'error':str(exc)[:2048]}
                     success=False
+                finally:
+                    stop_renew.set()
+                    renewer.join(timeout=2)
                 reply=client.post(f'/api/worker/{node}/operation/finish',json={
                     'operation_id':operation['id'], 'lease_token':operation['lease_token'],
                     'success':success,'result':output})
