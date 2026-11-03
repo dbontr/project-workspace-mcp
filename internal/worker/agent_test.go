@@ -430,7 +430,7 @@ func TestDockerClientFailureRemovesManagedJob(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "docker.log")
 	script := "#!/bin/sh\\n" +
-		"printf '%s\\\\n' \\"$*\\" >> " + shellQuote(logFile) + "\\n" +
+		"printf '%s\\n' \\"$*\\" >> " + shellQuote(logFile) + "\\n" +
 		"if [ \\"$1\\" = run ]; then exit 125; fi\\n" +
 		"if [ \\"$1\\" = rm ] || [ \\"$1\\" = ps ]; then exit 0; fi\\n" +
 		"exit 1\\n"
