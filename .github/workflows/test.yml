@@ -62,6 +62,10 @@ jobs:
         run: |
           gofmt -d internal/controller/personal_task_claims.go internal/controller/personal_task_claims_http.go internal/controller/personal_task_claims_test.go
           test -z "$(gofmt -l internal/controller/personal_task_claims.go internal/controller/personal_task_claims_http.go internal/controller/personal_task_claims_test.go)"
+      - name: Format research index components
+        run: |
+          gofmt -d internal/controller/research_index.go internal/controller/research_index_http.go internal/controller/research_index_test.go
+          test -z "$(gofmt -l internal/controller/research_index.go internal/controller/research_index_http.go internal/controller/research_index_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
