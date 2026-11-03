@@ -16,7 +16,7 @@ func (s *Server) handleTaskClaims(w http.ResponseWriter, r *http.Request, p []st
 			send(w, rows, err)
 		case http.MethodPost:
 			var req struct {
-				WorkKey     string `json:"work_key"`
+				WorkKey      string `json:"work_key"`
 				LeaseSeconds int    `json:"lease_seconds"`
 			}
 			if err := bodyJSON(r, &req); err != nil {
