@@ -225,11 +225,11 @@ func (k *Kubernetes) captureDisplay(ctx context.Context, r *Runner, op Operation
 	defer file.Close()
 	_ = os.Remove(file.Name())
 	digest := sha256.New()
-	args := []string{"--namespace", k.Namespace, "exec", "pod/" + kubePodName(op.Workspace),
+	args := append(k.baseArgs(), "exec", "pod/" + kubePodName(op.Workspace),
 		"-c", "workspace", "--", "ffmpeg", "-hide_banner", "-loglevel", "error",
 		"-nostdin", "-f", "x11grab", "-video_size", fmt.Sprintf("%dx%d", width, height),
 		"-framerate", "1", "-i", ":99", "-frames:v", "1", "-f", "image2pipe",
-		"-vcodec", "png", "-"}
+		"-vcodec", "png", "-")
 	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, k.Binary, args...)
