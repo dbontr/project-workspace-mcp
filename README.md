@@ -32,6 +32,78 @@ go build -o project-workspace-worker ./cmd/project-workspace-worker
 
 The server's configuration variables include `PWM_GITHUB_TOKEN`, `PWM_GITHUB_GENERIC_WRITES=1` (opt-in repository mutations), and `PWM_MAX_ARTIFACT_BYTES` (default 2 GiB).
 
+
+### Managed Linux services
+
+On a conventional Linux host with systemd, a writable `/etc` and `/usr/local`,
+and the build dependencies listed above, install a controller service:
+
+~~~sh
+sudo sh scripts/install-systemd.sh controller
+sudo systemctl status project-workspace-controller
+curl --fail http://127.0.0.1:8000/health
+~~~
+
+The installer builds the Go executable unless `--binary PATH` identifies an
+existing executable. It creates the `project-workspace` service account, stores
+the SQLite database at `/var/lib/project-workspace/state.db` and the
+administrator token at
+`/var/lib/project-workspace/.config/project-workspace/admin.token`, and
+enables a loopback-only controller service. It does not overwrite existing
+data or issue a new administrator token when one exists. Configure
+`/etc/project-workspace/controller.env` (root-only mode `0600`) for
+approved OIDC, GitHub App, backup and public-origin settings. A remote
+worker or MCP client must connect through an operator-managed HTTPS reverse
+proxy with correct host/origin allowlists and identity policy. A loopback
+listener alone does not provide remote access.
+
+On the controller, obtain a single-use pairing code:
+
+~~~sh
+sudo runuser -u project-workspace -- env HOME=/var/lib/project-workspace \
+  PWM_DB=/var/lib/project-workspace/state.db \
+  /usr/local/bin/project-workspace-controller pair
+~~~
+
+On a **separate** Linux worker with a running rootful Docker daemon, create a
+private file containing only that code and enroll the worker:
+
+~~~sh
+umask 077
+touch "$HOME/worker-pairing-code"
+$EDITOR "$HOME/worker-pairing-code"
+sudo sh scripts/install-systemd.sh worker \
+  --controller https://controller.example.com --node compute-one \
+  --pairing-code-file "$HOME/worker-pairing-code"
+rm -f "$HOME/worker-pairing-code"
+sudo systemctl status project-workspace-worker
+~~~
+
+The worker installer refuses a non-HTTPS address, unsafe pairing-code file
+permissions and conflicting existing node configuration. It creates a
+separate `project-workspace-worker` account with membership in the
+`docker` group, enrolls with `--code-stdin` so the one-time code is not
+placed in process arguments, and stores the distinct worker credential
+under `/var/lib/project-workspace-worker/.config/project-workspace/workers/`.
+The worker service reads the controller address and node ID from the
+root-owned `/etc/project-workspace/worker.env`. On subsequent installs
+with unchanged settings, the existing credential is retained and the code
+file can be omitted. Operator-approved image and device settings may be
+added to that environment file. The Docker group confers root-equivalent
+host privileges: enroll only trusted machines and operators.
+
+Services are restarted on failure but persist state across restarts. To
+inspect them, use `journalctl -u project-workspace-controller` or
+`journalctl -u project-workspace-worker`. To stop without deleting project
+data, use `systemctl disable --now` with the corresponding service name.
+Before replacing an established deployment or attempting recovery, retain
+the controller's SQLite database and sibling artifacts together; prefer
+verified off-host encrypted backups. Systemd packaging does not establish
+successful two-host pairing, Docker execution, TLS configuration or disaster
+recovery without separate live acceptance tests. Declarative systems such as
+NixOS require equivalent native service definitions rather than this
+mutable-host installer.
+
 ## OAuth/OIDC identities and project permissions
 
 The controller can act as an OAuth 2.0 protected resource, validating signed
