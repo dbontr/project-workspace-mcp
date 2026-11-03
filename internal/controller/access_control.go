@@ -64,7 +64,7 @@ var rootTools = map[string]bool{
 	"pool_propose_program": true, "pool_review_program": true, "pool_update_entry": true, "pool_entry_info": true, "pool_events": true,
 	"library_create": true, "library_list": true, "library_sources": true, "library_add_source": true,
 	"research_register_source": true, "research_ingest_passages": true,
-	"link_github_repository": true, "github_repository_api": true,
+	"link_github_repository": true, "github_repository_api": true, "github_pat_readiness": true,
 	"github_create_issue": true, "github_update_issue": true,
 	"github_comment_issue": true, "github_create_branch": true,
 	"github_set_branch_auto_delete": true, "github_cleanup_merged_branch": true,

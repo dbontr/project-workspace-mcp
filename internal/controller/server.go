@@ -65,9 +65,15 @@ func NewServer(db *Database, token string) (*Server, error) {
 			return nil, errors.New("PWM_PUBLIC_URL must be an HTTPS origin")
 		}
 	}
-	github := NewGitHub(os.Getenv("PWM_GITHUB_TOKEN"))
-	if err := configureGitHubAppFromEnv(github); err != nil {
+	pat, err := configuredGitHubPAT()
+	if err != nil {
 		return nil, err
+	}
+	github := NewGitHub(pat)
+	if pat == "" {
+		if err := configureGitHubAppFromEnv(github); err != nil {
+			return nil, err
+		}
 	}
 	github.GenericWrites = os.Getenv("PWM_GITHUB_GENERIC_WRITES") == "1"
 	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil

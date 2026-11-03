@@ -316,6 +316,10 @@ func (g *GitHub) Publish(repo, branch, expected string, files map[string][]byte,
 		return nil, e
 	}
 	tree := asString(gitObj(gitObj(commit)["tree"])["sha"])
+	identity, e := g.commitIdentity()
+	if e != nil {
+		return nil, e
+	}
 	entries := []map[string]any{}
 	for path, data := range files {
 		if !validFilePath(path) || len(data) > 1<<20 {
@@ -331,11 +335,24 @@ func (g *GitHub) Publish(repo, branch, expected string, files map[string][]byte,
 	if e != nil {
 		return nil, e
 	}
-	newCommit, e := g.request("POST", prefix+"/git/commits", nil, map[string]any{"message": title, "tree": gitObj(next)["sha"], "parents": []string{expected}})
+	newCommit, e := g.request("POST", prefix+"/git/commits", nil, map[string]any{
+		"message": title, "tree": gitObj(next)["sha"], "parents": []string{expected},
+		"author":    map[string]string{"name": identity.Name, "email": identity.Email},
+		"committer": map[string]string{"name": identity.Name, "email": identity.Email},
+	})
 	if e != nil {
 		return nil, e
 	}
 	sha := asString(gitObj(newCommit)["sha"])
+	if !commitID.MatchString(sha) {
+		return nil, errors.New("GitHub returned an invalid publication commit")
+	}
+	for _, role := range []string{"author", "committer"} {
+		person := gitObj(gitObj(newCommit)[role])
+		if person["name"] != identity.Name || person["email"] != identity.Email {
+			return nil, errors.New("GitHub did not confirm the authenticated commit identity")
+		}
+	}
 	newBranch := "pwm/" + randomHex(8)
 	_, e = g.request("POST", prefix+"/git/refs", nil, map[string]any{"ref": "refs/heads/" + newBranch, "sha": sha})
 	if e != nil {
@@ -346,5 +363,5 @@ func (g *GitHub) Publish(repo, branch, expected string, files map[string][]byte,
 		return nil, e
 	}
 	m := gitObj(pr)
-	return map[string]any{"url": m["html_url"], "number": m["number"], "branch": newBranch, "commit_sha": sha, "base_sha": expected, "draft": true}, nil
+	return map[string]any{"url": m["html_url"], "number": m["number"], "branch": newBranch, "commit_sha": sha, "base_sha": expected, "draft": true, "author_login": identity.Login}, nil
 }

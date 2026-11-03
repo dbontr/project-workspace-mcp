@@ -142,11 +142,11 @@ func githubTokenScope(requestPath string) (string, error) {
 }
 
 func (g *GitHub) credential(requestPath string) (string, error) {
-	if g.App == nil {
-		if g.Token == "" {
-			return "", errors.New("GitHub credential is not configured")
-		}
+	if g.Token != "" {
 		return g.Token, nil
+	}
+	if g.App == nil {
+		return "", errors.New("GitHub credential is not configured")
 	}
 	scope, err := githubTokenScope(requestPath)
 	if err != nil {

@@ -167,6 +167,51 @@ deployment requires a real issuer, live token validation and rejection tests,
 an authorization-code client flow, and provider revocation acceptance before
 untrusted access is enabled.
 
+## GitHub user PAT and commit identity
+
+A controller-owned personal access token (PAT) authenticates GitHub
+operations as the user who created it. Store it in a local file with an
+absolute path, mode `0600`, and no symlink, then configure:
+
+```sh
+PWM_GITHUB_PAT_FILE=/etc/project-workspace/github.pat
+```
+
+The controller reads this file at startup; it never sends the token to
+workers, project artifacts, repository commits, or MCP clients. The legacy
+`PWM_GITHUB_TOKEN` environment setting is also supported, but a configured
+PAT file takes precedence. An invalid configured PAT file causes startup to
+fail rather than silently switching credentials.
+
+The `github_pat_readiness` MCP tool is restricted to the controller
+administrator. It verifies the PAT owner's GitHub identity, checks read
+access to repositories linked to the selected project, and reports GitHub's
+declared push and administration permissions, without returning the token.
+This is a non-mutating preflight; final authority comes from GitHub when the
+operation is attempted. Repository owners must grant the PAT the necessary
+permissions. A fine-grained PAT may be sufficient for supported repository
+operations; operations unavailable with its permissions or token type may
+require a classic PAT with applicable scopes. GitHub organization policies,
+repository rules and branch protections continue to apply.
+
+Workspace publication via `github_publish_artifacts` checks the PAT owner
+using `GET /user`. It assigns that user's public profile name (or login)
+to both the author and committer fields of the Git commit, and uses the
+GitHub ID-based `noreply` address to preserve email privacy. The controller
+verifies the commit's returned author and committer before creating the
+publication branch. The PR is opened using the same PAT, so the PR actor is
+the authenticated account. This provides account attribution, not a
+cryptographic commit signature or proof of who personally reviewed changes.
+Publication fails before writing any Git objects if the PAT owner cannot be
+verified.
+
+For privileged GitHub operations, use the explicit revision-checked MCP
+tools (including repository branch auto-deletion and merged-head cleanup).
+Generic repository API writes require the separate administrator opt-in
+`PWM_GITHUB_GENERIC_WRITES=1`. Treat a broad PAT as a controller
+administrator secret, rotate it when needed, and restrict it to the minimum
+account privileges and scopes that support the intended work.
+
 ## GitHub App installation credentials
 
 The Go controller can obtain short-lived GitHub installation credentials
@@ -190,9 +235,10 @@ installation belongs to a GitHub owner or organization: a second owner may
 require a separate installation, which this single-installation configuration
 does not yet manage.
 
-When these three App variables are supplied, the controller uses GitHub App
-credentials rather than `PWM_GITHUB_TOKEN`. If any App setting is invalid,
-startup fails rather than silently falling back to a broader token.
+An App installation is used only if no user PAT is configured. When an
+App is the selected credential and any App setting is invalid, startup fails.
+User-attributed Git publication requires a PAT; an App installation cannot
+represent a personal Git author or committer for this workflow.
 GitHub permissions still govern issue, pull request, contents, administration,
 and Projects V2 operations. The App must be installed on the intended
 repositories with the exact required permissions. Enabling branch
