@@ -74,11 +74,22 @@ def test_go_agent_hardware_environment_and_artifact_roundtrip(tmp_path):
             response=api('POST',f'/api/projects/integration/workspaces/{wid}/operations',
                          json={'action':action,'payload':payload or {}})
             op_id=response['operation_id']
+            observed={}
             def read():
+                if go_agent is not None and go_agent.poll() is not None:
+                    log=go_agent.stderr.read().decode('utf-8','replace')[-4000:]
+                    pytest.fail(f'Go worker exited during {action}: {log}')
                 snapshot=api('GET',f'/api/projects/integration/workspaces/{wid}/operations/{op_id}')
+                observed.update(snapshot)
                 if snapshot['status']=='failed':pytest.fail(f'Worker {action} failed: {snapshot["result"]}')
                 return snapshot if snapshot['status']=='succeeded' else None
-            return until(read,timeout=180)['result']
+            try:
+                return until(read,timeout=75)['result']
+            except BaseException:
+                if go_agent is not None and go_agent.poll() is not None:
+                    print('Go worker stopped:',go_agent.stderr.read().decode('utf-8','replace')[-4000:])
+                print('Pending operation:',observed)
+                raise
 
         def stop(wid):
             api('POST',f'/api/projects/integration/workspaces/{wid}/stop')
