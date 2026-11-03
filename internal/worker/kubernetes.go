@@ -129,6 +129,12 @@ func kubeObject(m map[string]any, key string) map[string]any {
 func (k *Kubernetes) owns(m map[string]any, id, kind string) bool {
 	meta := kubeObject(m, "metadata")
 	labels := kubeObject(meta, "labels")
+	if typed, ok := meta["labels"].(map[string]string); ok {
+		labels = make(map[string]any, len(typed))
+		for key, value := range typed {
+			labels[key] = value
+		}
+	}
 	return labels["app.kubernetes.io/managed-by"] == "project-workspace" &&
 		labels["pwm.dev/project"] == k.Project &&
 		labels["pwm.dev/worker"] == k.Worker &&
