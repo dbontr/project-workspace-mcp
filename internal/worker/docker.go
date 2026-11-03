@@ -792,11 +792,15 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 		"--tmpfs", "/tmp:rw,nosuid,noexec,size=64m", "--user", "65534:65534",
 		job.Image, "sh", "-c", job.Command}
 	out, stderr, status, err := r.docker(ctx, 5*time.Minute, nil, args...)
-	if ctx.Err() != nil {
-		if cleanupErr := r.cleanupInterruptedJob(container); cleanupErr != nil {
-			return "failed", fmt.Sprintf("%v; %v", ctx.Err(), cleanupErr)
+	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+		reason := err
+		if ctx.Err() != nil {
+			reason = ctx.Err()
 		}
-		return "failed", ctx.Err().Error()
+		if cleanupErr := r.cleanupInterruptedJob(container); cleanupErr != nil {
+			return "failed", fmt.Sprintf("%v; %v", reason, cleanupErr)
+		}
+		return "failed", reason.Error()
 	}
 	if err != nil {
 		return "failed", err.Error()
