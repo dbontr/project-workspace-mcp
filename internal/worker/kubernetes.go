@@ -31,7 +31,7 @@ type Kubernetes struct {
 	OwnsConfig     bool
 	Storage        string
 	StorageClass   string
-	ImagePullSecretstring
+	ImagePullSecret string
 	Devices        []KubernetesDevice
 	CPU            float64
 	MemoryMB       int
