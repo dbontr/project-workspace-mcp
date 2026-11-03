@@ -30,6 +30,8 @@ func ResticConfigFromEnv() ResticRepositoryConfig {
 	}
 }
 
+func (c ResticRepositoryConfig) Validate() error { return c.validate() }
+
 func (c ResticRepositoryConfig) validate() error {
 	if strings.TrimSpace(c.Repository) == "" || strings.ContainsAny(c.Repository, "\r\n\x00") ||
 		!filepath.IsAbs(c.PasswordFile) {
