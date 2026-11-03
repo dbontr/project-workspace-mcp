@@ -313,6 +313,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.ProjectContributionSearch(project, get("query"))
 	case "list_compute_nodes":
 		return db.Nodes()
+	case "worker_revoke":
+		return db.RevokeNode(get("node_id"))
 	case "submit_compute_job":
 		image := get("image")
 		if image == "" {
