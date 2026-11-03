@@ -212,3 +212,62 @@ func (db *Database) VerifyArtifact(meta map[string]any) (string, error) {
 	}
 	return path, nil
 }
+
+// StoreArtifactStream persists a large archive with a digest calculated during
+// transfer, without accumulating its bytes in the controller's address space.
+func (db *Database) StoreArtifactStream(project, name string, reader io.Reader, limit int64) (map[string]any, error) {
+	if !validArtifactName.MatchString(name) || reader == nil || limit <= 0 || limit > 100<<30 {
+		return nil, errors.New("invalid streamed artifact")
+	}
+	row, e := db.queryOne(`SELECT id FROM projects WHERE id=?`, project)
+	if e != nil {
+		return nil, e
+	}
+	if row == nil {
+		return nil, errors.New("project not found")
+	}
+	if e := os.MkdirAll(db.artifactDir(), 0700); e != nil {
+		return nil, e
+	}
+	tmp, e := os.CreateTemp(db.artifactDir(), ".github-archive-")
+	if e != nil {
+		return nil, e
+	}
+	defer os.Remove(tmp.Name())
+	hash := sha256.New()
+	size, e := io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(reader, limit+1))
+	if e != nil {
+		tmp.Close()
+		return nil, e
+	}
+	if size > limit {
+		tmp.Close()
+		return nil, errors.New("repository archive exceeds storage limit")
+	}
+	if e := tmp.Sync(); e != nil {
+		tmp.Close()
+		return nil, e
+	}
+	if e := tmp.Close(); e != nil {
+		return nil, e
+	}
+	sha := hex.EncodeToString(hash.Sum(nil))
+	var meta map[string]any
+	e = db.transaction(func() error {
+		if e := requireProject(db, project); e != nil {
+			return e
+		}
+		id := randomHex(16)
+		dest := db.artifactPath(id)
+		if e := os.Rename(tmp.Name(), dest); e != nil {
+			return e
+		}
+		if e := db.execLocked(`INSERT INTO artifacts(id,project,name,sha256,size,created) VALUES(?,?,?,?,?,?)`, id, project, name, sha, size, stamp()); e != nil {
+			os.Remove(dest)
+			return e
+		}
+		meta = map[string]any{"id": id, "name": name, "sha256": sha, "size": size}
+		return nil
+	})
+	return meta, e
+}

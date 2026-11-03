@@ -96,3 +96,138 @@ GitHub Actions runs Go unit and protocol tests, cross-architecture builds, and a
 ## Operating limits
 
 This is a single-owner system intended for trusted machines. It does not provide production OAuth, fine-grained multi-user project grants, VM-grade hostile-tenant isolation, automatic off-host database backup/restoration, or verified real GPU/NPU/FPGA/USB hardware passthrough. Those features require separate acceptance before untrusted users or destructive hardware work can be enabled. Proprietary applications such as Vivado are not redistributed by this project. An MCP tool call is not an autonomous reasoning agent.
+
+## GitHub Projects planning and shared research libraries
+
+Project Workspace can use a native GitHub Projects V2 board as the authoritative
+planning record. Local projects remain usable without GitHub. GitHub planning
+items, custom fields, and the Project README are read live from GitHub; the
+controller stores only the verified Project association. The linked board may
+contain issues and pull requests from repositories with different owners.
+
+Configure `PWM_GITHUB_TOKEN` **on the controller only**. Its GitHub identity
+needs `read:project` for reading Projects or `project` for updating them, as
+well as the required repository permissions. To link an existing board by its
+ordinary GitHub URL:
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/planning" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"url":"https://github.com/users/OWNER/projects/1"}'
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/projects/research/planning/items"
+```
+
+The `github_project_items` MCP tool returns a page of at most 50 live issues,
+pull requests, and drafts, including status and other custom fields. Use the
+returned cursor to request further pages. `github_project_fields` retrieves the
+Project's field IDs and single-select option IDs, including `Status`, and
+supports pagination. `github_project_add_item` adds a
+linked repository's issue or PR. `github_project_add_draft` creates planning
+ideas without inventing a repository issue. `github_project_set_status` sets
+an explicitly selected single-select field option. GitHub is the source of
+truth; no separate planning-item database is maintained. The dashboard also
+provides a GitHub Project URL connection form.
+
+A project may link multiple repositories, including repositories owned by
+other accessible organizations. Each association has a role (`source`,
+`research`, `lean`, `hardware`, or `documentation`) and an optional preferred
+ref. Existing `link_github_repository` calls retain the `source` default:
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/repositories" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"repository":"OWNER/lean-foundations","role":"lean","default_ref":"main"}'
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/projects/research/repository-memberships"
+```
+
+### Shared Lean, research, and data libraries
+
+Libraries are independent of any one project. Each library may reference
+several repositories at **immutable commit hashes**, while any number of
+projects can reference the same library. Referencing a library does **not**
+automatically grant unrestricted GitHub repository write permissions. The
+library catalog supports Lean formalizations, literature, software, and mixed
+research collections.
+
+```sh
+curl -fsS -X POST "$BASE/api/libraries" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"id":"lean-foundations","title":"Lean Foundations","kind":"lean","description":"Shared mathematical formalizations"}'
+curl -fsS -X POST "$BASE/api/libraries/lean-foundations/sources" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"repository":"OWNER/lean-theory","ref":"main","path":"Math","kind":"formalization"}'
+curl -fsS -X POST "$BASE/api/projects/research/libraries" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"library":"lean-foundations"}'
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/projects/research/libraries/lean-foundations/resolve"
+```
+
+The source registration resolves `main` to a specific commit at registration
+time. To use another revision, explicitly register it again. Source checkouts
+stream the GitHub archive to the controller instead of buffering it in memory,
+and queue an import into an authorized workspace via `library_checkout_source`.
+The same mechanism supports ordinary linked-repository checkouts. Repositories
+remain subject to GitHub's own size limits; splitting a large Lean source tree
+into independent Lake packages is preferable to keeping an enormous Git
+history in one repository.
+
+Compiled `.olean` files, caches, datasets, PDFs, and other large binary objects
+belong in the controller's **content-addressed library object store**, not in
+Git history. Each object is stored under its SHA-256 digest and can be
+referenced from multiple libraries without duplicating its bytes. Names are
+immutable; changing an object means creating a different name or library
+revision. To register a large artifact (the hash shown must be calculated from
+its actual bytes):
+
+```sh
+export PWM_MAX_ARTIFACT_BYTES=107374182400  # maximum single upload: 100 GiB
+sha256sum lean-cache.tar.zst
+curl -fS -X PUT "$BASE/api/libraries/lean-foundations/objects/cache-2026.tar.zst" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Content-SHA256: REPLACE_WITH_SHA256" \
+  -H 'X-Object-Kind: build-cache' \
+  -H 'Content-Type: application/octet-stream' \
+  --data-binary @lean-cache.tar.zst
+```
+
+For connections with restrictive upload limits or unstable networks, use
+resumable uploads in chunks of at most **8 MiB**. The controller stores the
+upload cursor in SQLite, so an interrupted client can query its accepted byte
+offset and continue without starting over:
+
+```sh
+# The SHA-256 digest must describe the entire source file.
+SHA=$(sha256sum lean-cache.tar.zst | cut -d ' ' -f1)
+SIZE=$(wc -c < lean-cache.tar.zst | tr -d ' ')
+curl -fsS -X POST "$BASE/api/libraries/lean-foundations/uploads" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"name\":\"cache-2026.tar.zst\",\"kind\":\"build-cache\",\"sha256\":\"$SHA\",\"size\":$SIZE}"
+```
+
+The response supplies `upload_id`, `received_bytes`, and `chunk_size`.
+Upload consecutive binary chunks with `PUT /api/libraries/lean-foundations/uploads/UPLOAD_ID`
+and the `X-Upload-Offset` header set to the exact byte position. Read
+`GET /api/libraries/lean-foundations/uploads/UPLOAD_ID` after a disconnect;
+complete with `POST .../uploads/UPLOAD_ID/complete` once all bytes are accepted.
+The controller verifies both total size and SHA-256 before the object becomes
+visible. Incomplete sessions expire after 24 hours and can be cancelled with
+`DELETE .../uploads/UPLOAD_ID`. A compatible client must not skip offsets or
+send more than 8 MiB in one request.
+
+`library_import_object` queues a shared object into a project's ready
+workspace. The controller creates an authorized hard link within its artifact
+store; it does not copy the entire binary for every linked project. The worker
+retrieves the bytes through its existing authenticated, digest-checked artifact
+transfer and refuses accidental overwrites. The object store is limited by
+available persistent disk and the configured per-upload maximum, not by
+GitHub's repository guidelines. It still needs an independently tested,
+off-host backup and storage-capacity monitoring. **It is not an off-host
+backup solution.**
+
+You can keep private source repositories and public planning boards separate,
+but do not publish confidential research in Project items. Owner-token access
+is still required for all library operations; a production multi-user
+permission system is not yet implemented.

@@ -11,3 +11,7 @@
 - [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) — Docker. Used for: portable environment archives.
 - [NVIDIA Container Toolkit CDI](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html) — NVIDIA. Used for: approved GPU device identifiers.
 - [AMD Vivado supported platforms](https://docs.amd.com/r/2025.2-English/ug973-vivado-release-notes-install-license/Supported-Operating-Systems) — AMD. Used for: vendor toolchain host and license constraints.
+- [GitHub Projects V2 GraphQL API](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects) — GitHub. Used for: native Project association, item pagination, draft issues, issue and pull request linking, and field updates.
+- [GitHub GraphQL Projects schema](https://docs.github.com/en/graphql/reference/projects) — GitHub. Used for: ProjectV2 node fields and paginated item/field-value queries.
+- [GitHub Projects repository linking](https://docs.github.com/en/issues/planning-and-tracking-with-projects/managing-your-project/adding-your-project-to-a-repository) — GitHub. Used for: distinguishing repositories listed under a Project from repositories with items tracked by a Project.
+- [GitHub repository size limits](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits) — GitHub. Used for: keeping compiled artifacts and large datasets outside Git history.

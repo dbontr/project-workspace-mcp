@@ -25,7 +25,7 @@ var tools = []toolDefinition{
 	{"list_compute_nodes", "List workers and availability", nil, nil},
 	{"submit_compute_job", "Queue a one-shot command", []string{"project_id", "command"}, []string{"image", "cpu", "memory_mb"}},
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
-	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, nil},
+	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
 	{"list_github_repositories", "List linked repositories", []string{"project_id"}, nil},
 	{"workspace_create", "Reserve resources and start a workspace", []string{"project_id"}, []string{"image", "cpu", "memory_mb", "duration_minutes", "environment", "hardware", "usb_passthrough", "usb_node", "usb_device_id"}},
 	{"workspace_list", "List project workspaces", []string{"project_id"}, nil},
@@ -51,13 +51,30 @@ var tools = []toolDefinition{
 	{"github_checkout_repository", "Checkout a GitHub archive into a workspace", []string{"project_id", "workspace_id", "repository", "ref"}, nil},
 	{"github_publish_artifacts", "Publish project artifacts to a revision-guarded draft PR", []string{"project_id", "repository", "base_branch", "expected_head", "changes", "title"}, []string{"body"}},
 	{"list_project_artifacts", "List durable project artifacts", []string{"project_id"}, nil},
+	{"github_project_attach", "Bind a GitHub Projects V2 board by URL or node ID", []string{"project_id"}, []string{"github_project_id", "url"}},
+	{"github_project_board", "Read the linked GitHub Projects board reference", []string{"project_id"}, nil},
+	{"github_project_items", "Read live GitHub Project items and fields", []string{"project_id"}, []string{"after"}},
+	{"github_project_fields", "List GitHub Project fields and select-option IDs", []string{"project_id"}, []string{"after"}},
+	{"github_project_add_draft", "Add a draft planning item to the GitHub Project", []string{"project_id", "title"}, []string{"body"}},
+	{"github_project_add_item", "Add a linked repository issue or PR to the GitHub Project", []string{"project_id", "repository", "kind", "number"}, nil},
+	{"github_project_set_status", "Update a GitHub Project single-select field", []string{"project_id", "item_id", "field_id", "option_id"}, nil},
+	{"repository_memberships", "List all project repositories and their roles", []string{"project_id"}, nil},
+	{"library_create", "Register an independent shared research or Lean library", []string{"library_id", "title", "kind"}, []string{"description"}},
+	{"library_list", "List shared libraries independent of projects", nil, nil},
+	{"library_add_source", "Attach a GitHub repository at an immutable commit to a library", []string{"library_id", "repository", "ref"}, []string{"path", "kind"}},
+	{"library_sources", "List pinned GitHub sources for a shared library", []string{"library_id"}, nil},
+	{"library_link", "Reference a shared library from a project without copying it", []string{"project_id", "library_id"}, nil},
+	{"library_resolve", "Resolve linked library sources and content hashes", []string{"project_id", "library_id"}, nil},
+	{"library_read_file", "Read a file from an authorized pinned shared library source", []string{"project_id", "library_id", "repository", "file"}, []string{"source_path"}},
+	{"library_import_object", "Import a shared large object into an isolated workspace", []string{"project_id", "library_id", "workspace_id", "name", "path"}, nil},
+	{"library_checkout_source", "Checkout a pinned shared library source into a workspace", []string{"project_id", "library_id", "workspace_id", "repository"}, []string{"source_path"}},
 }
 
 func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "duration_minutes", "expected_version":
+	case "memory_mb", "duration_minutes", "expected_version", "number":
 		return "integer"
 	case "usb_passthrough":
 		return "boolean"
@@ -108,7 +125,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	response := map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID)}
 	switch msg.Method {
 	case "initialize":
-		response["result"] = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": false}}, "serverInfo": map[string]any{"name": "project-workspace-mcp", "version": "0.5.0"}, "instructions": "Operations are asynchronous. Wait for worker-confirmed completion before claiming success."}
+		response["result"] = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": false}}, "serverInfo": map[string]any{"name": "project-workspace-mcp", "version": "0.6.0"}, "instructions": "Operations are asynchronous. Wait for worker-confirmed completion before claiming success."}
 	case "ping":
 		response["result"] = map[string]any{}
 	case "tools/list":
@@ -188,7 +205,7 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 	case "list_project_jobs":
 		return db.Jobs(project)
 	case "link_github_repository":
-		return db.LinkRepository(project, get("repository"))
+		return db.LinkRepositoryWithRole(project, get("repository"), get("role"), get("default_ref"))
 	case "list_github_repositories":
 		return db.Repositories(project)
 	case "workspace_create":
@@ -226,6 +243,93 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 		return db.SnapshotList(project, workspace)
 	case "workspace_restore":
 		return db.RestoreSnapshot(project, workspace, get("snapshot_id"))
+	case "github_project_attach":
+		if (get("github_project_id") == "") == (get("url") == "") {
+			return nil, errors.New("specify one GitHub Project ID or URL")
+		}
+		var metadata map[string]any
+		var e error
+		if get("url") != "" {
+			metadata, e = s.GitHub.ProjectByURL(get("url"))
+		} else {
+			metadata, e = s.GitHub.ProjectMetadata(get("github_project_id"))
+		}
+		if e != nil {
+			return nil, e
+		}
+		return db.AttachPlanningBoard(project, metadata)
+	case "github_project_board":
+		return db.PlanningBoard(project)
+	case "github_project_items":
+		board, e := db.PlanningBoard(project)
+		if e != nil {
+			return nil, e
+		}
+		return s.GitHub.ProjectItems(asString(board["github_id"]), get("after"))
+	case "github_project_fields":
+		board, e := db.PlanningBoard(project)
+		if e != nil {
+			return nil, e
+		}
+		return s.GitHub.ProjectFields(asString(board["github_id"]), get("after"))
+	case "github_project_add_draft":
+		board, e := db.PlanningBoard(project)
+		if e != nil {
+			return nil, e
+		}
+		return s.GitHub.ProjectAddDraft(asString(board["github_id"]), get("title"), get("body"))
+	case "github_project_add_item":
+		if !db.RepositoryLinked(project, get("repository")) {
+			return nil, errors.New("repository not linked to project")
+		}
+		board, e := db.PlanningBoard(project)
+		if e != nil {
+			return nil, e
+		}
+		return s.GitHub.ProjectAddIssue(asString(board["github_id"]), get("repository"), get("kind"), asInt(a["number"]))
+	case "github_project_set_status":
+		board, e := db.PlanningBoard(project)
+		if e != nil {
+			return nil, e
+		}
+		return s.GitHub.ProjectSetSingleSelect(asString(board["github_id"]), get("item_id"), get("field_id"), get("option_id"))
+	case "repository_memberships":
+		return db.RepositoryMemberships(project)
+	case "library_create":
+		return db.CreateLibrary(get("library_id"), get("title"), get("description"), get("kind"))
+	case "library_list":
+		return db.Libraries()
+	case "library_add_source":
+		if _, e := db.Library(get("library_id")); e != nil {
+			return nil, e
+		}
+		revision, e := s.GitHub.Commit(get("repository"), get("ref"))
+		if e != nil {
+			return nil, e
+		}
+		return db.AddLibrarySource(get("library_id"), get("repository"), revision, get("path"), get("kind"))
+	case "library_sources":
+		return db.LibrarySources(get("library_id"))
+	case "library_link":
+		return db.LinkLibrary(project, get("library_id"))
+	case "library_resolve":
+		return db.ResolveLibrary(project, get("library_id"))
+	case "library_read_file":
+		if !db.libraryAttached(project, get("library_id")) {
+			return nil, errors.New("library not linked to project")
+		}
+		source, e := db.LibrarySource(get("library_id"), get("repository"), get("source_path"))
+		if e != nil {
+			return nil, e
+		}
+		if !libraryFileAllowed(get("file"), get("source_path")) {
+			return nil, errors.New("file outside pinned library source")
+		}
+		return s.GitHub.File(get("repository"), get("file"), asString(source["revision"]))
+	case "library_import_object":
+		return db.QueueLibraryObjectImport(project, workspace, get("library_id"), get("name"), get("path"))
+	case "library_checkout_source":
+		return s.CheckoutLibrarySource(project, workspace, get("library_id"), get("repository"), get("source_path"))
 	case "list_project_artifacts":
 		return db.Artifacts(project)
 	}
@@ -255,24 +359,7 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 	case "github_create_issue":
 		return g.IssueCreate(repository, get("title"), get("body"))
 	case "github_checkout_repository":
-		if _, e := db.Workspace(project, workspace); e != nil {
-			return nil, e
-		}
-		sha, data, e := g.Snapshot(repository, get("ref"))
-		if e != nil {
-			return nil, e
-		}
-		artifact, e := db.ArtifactSave(project, "repo-"+sha[:12]+".tar.gz", data)
-		if e != nil {
-			return nil, e
-		}
-		op, e := db.QueueImportRepository(project, workspace, repository, sha, asString(artifact["id"]))
-		if e != nil {
-			return nil, e
-		}
-		op["revision"] = sha
-		op["artifact_id"] = artifact["id"]
-		return op, nil
+		return s.CheckoutArchive(project, workspace, repository, get("ref"))
 	case "github_publish_artifacts":
 		base := get("base_branch")
 		expected := get("expected_head")

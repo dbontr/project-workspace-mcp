@@ -27,7 +27,7 @@ func (db *Database) Repositories(project string) ([]string, error) {
 	return out, nil
 }
 func (db *Database) LinkRepository(project, repo string) (map[string]any, error) {
-	if !validRepo.MatchString(repo) {
+	if !validGitRepository(repo) {
 		return nil, errors.New("invalid repository")
 	}
 	err := db.transaction(func() error {
