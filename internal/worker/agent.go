@@ -380,7 +380,7 @@ func (r *Runner) Capabilities() (map[string]any, error) {
 			"cpu": k.CPU, "memory_mb": k.MemoryMB, "max_jobs": k.MaxJobs,
 			"kubernetes": true, "docker": false, "project_id": k.Project,
 			"namespace": k.Namespace, "os": "linux", "arch": runtime.GOARCH,
-			"devices": []any{}, "images": r.ApprovedImages(),
+			"devices": PublicKubernetesDevices(k.Devices), "images": r.ApprovedImages(),
 		}, nil
 	}
 	capabilities, err := Capabilities(r.AvailableDevices())
