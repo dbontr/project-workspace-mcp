@@ -3,6 +3,7 @@ package controller
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func plannerNode(cpu float64, memory float64, devices []any, image string) map[string]any {
@@ -147,5 +148,39 @@ func TestResourcePlanReadOnlyAndOfflineDiagnostics(t *testing.T) {
 	rows, err := db.Workspaces("demo")
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("advisory plan must never allocate a workspace: %v %v", rows, err)
+	}
+}
+
+func TestProjectViewerCanPlanWithoutAllocating(t *testing.T) {
+	db, server, httpServer := fixture(t)
+	project(t, httpServer)
+	if _, err := db.CreateProject("other-project", "Other"); err != nil {
+		t.Fatal(err)
+	}
+	key, issuer := testOIDCIssuer(t, server)
+	token := signedTestToken(t, key, issuer, "project-workspace", "viewer", time.Now().Add(time.Hour).Unix())
+	if _, err := db.SetProjectGrant("demo", "oidc:"+issuer+"#viewer", "viewer", ""); err != nil {
+		t.Fatal(err)
+	}
+	code, result := call(t, httpServer, "POST", "/api/projects/demo/resource-plan", token,
+		map[string]any{"cpu": 1, "memory_mb": 1024})
+	wantOK(t, code, result)
+	if result["status"] != "no_match" {
+		t.Fatalf("viewer read plan: %v", result)
+	}
+	code, _ = call(t, httpServer, "POST", "/api/workspaces", token,
+		map[string]any{"project_id": "demo"})
+	if code != 403 {
+		t.Fatal("viewers must not allocate workers")
+	}
+	code, _ = call(t, httpServer, "POST", "/api/projects/other-project/resource-plan", token,
+		map[string]any{"cpu": 1})
+	if code != 403 {
+		t.Fatal("users must not plan resources for unauthorized projects")
+	}
+	code, _ = call(t, httpServer, "POST", "/api/projects/demo/resource-plan", token,
+		map[string]any{"project_id": "other-project"})
+	if code == 200 {
+		t.Fatal("request project ID cannot override authorization")
 	}
 }
