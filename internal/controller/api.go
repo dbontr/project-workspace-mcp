@@ -245,10 +245,6 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, p []string)
 			}
 		}
 		if len(p) == 7 && p[5] == "volume" && p[6] == "prune" && method == "POST" {
-			if !s.authorizedFor(project, who, 3) {
-				fail(w, 403, "project owner permission required")
-				return
-			}
 			var in struct {
 				SnapshotID string `json:"snapshot_id"`
 				Confirm    bool   `json:"confirm"`
