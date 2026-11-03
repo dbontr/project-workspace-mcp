@@ -140,6 +140,10 @@ spec:
                   key: worker_token
             - name: PWM_ALLOWED_IMAGES
               value: {{ .Values.worker.allowedImages | quote }}
+            {{- if .Values.worker.deviceManifestConfigMap }}
+            - name: PWM_KUBE_DEVICE_MANIFEST
+              value: /etc/pwm-devices/devices.json
+            {{- end }}
             - name: PWM_KUBE_WORKSPACE_STORAGE
               value: {{ .Values.worker.workspaceStorage | quote }}
             {{- if .Values.worker.workspaceStorageClass }}
@@ -152,6 +156,11 @@ spec:
               readOnly: true
             - name: scratch
               mountPath: /tmp
+            {{- if .Values.worker.deviceManifestConfigMap }}
+            - name: devices
+              mountPath: /etc/pwm-devices
+              readOnly: true
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -167,4 +176,12 @@ spec:
         - name: scratch
           emptyDir:
             sizeLimit: 128Mi
+        {{- if .Values.worker.deviceManifestConfigMap }}
+        - name: devices
+          configMap:
+            name: {{ .Values.worker.deviceManifestConfigMap }}
+            items:
+              - key: devices.json
+                path: devices.json
+        {{- end }}
 {{- end }}
