@@ -15,6 +15,8 @@
 - [GitHub GraphQL Projects schema](https://docs.github.com/en/graphql/reference/projects) — GitHub. Used for: ProjectV2 node fields and paginated item/field-value queries.
 - [GitHub Projects repository linking](https://docs.github.com/en/issues/planning-and-tracking-with-projects/managing-your-project/adding-your-project-to-a-repository) — GitHub. Used for: distinguishing repositories listed under a Project from repositories with items tracked by a Project.
 - [GitHub repository size limits](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits) — GitHub. Used for: keeping compiled artifacts and large datasets outside Git history.
+- [Generating a GitHub App installation access token](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app) — GitHub. Used for: short-lived, restricted installation access tokens.
+- [Generating a JWT for a GitHub App](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app) — GitHub. Used for: application JWT signing and installation authentication.
 - [GitHub REST API: Pull requests](https://docs.github.com/en/rest/pulls/pulls) — GitHub. Used for: revision-guarded PR merging, provider-confirmed merge results, and draft PR operations.
 - [GitHub REST API: Checks](https://docs.github.com/en/rest/checks/runs) — GitHub. Used for: check-run status and merge verification.
 - [GitHub REST API: Commit statuses](https://docs.github.com/en/rest/commits/statuses) — GitHub. Used for: combined commit status checks before merging.

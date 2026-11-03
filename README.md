@@ -95,6 +95,42 @@ deployment requires a real issuer, live token validation and rejection tests,
 an authorization-code client flow, and provider revocation acceptance before
 untrusted access is enabled.
 
+## GitHub App installation credentials
+
+The Go controller can obtain short-lived GitHub installation credentials
+instead of retaining a long-lived personal access token. This is optional
+and requires an operator-owned GitHub App installation:
+
+```sh
+PWM_GITHUB_APP_ID=123456
+PWM_GITHUB_INSTALLATION_ID=12345678
+PWM_GITHUB_APP_KEY_FILE=/etc/project-workspace/github-app.pem
+```
+
+The PEM file must be a regular, owner-only file (`0600`), containing a
+2048-bit-or-stronger RSA private key. The controller signs a nine-minute
+application JWT and exchanges it for short-lived installation access tokens.
+It caches credentials in memory until two minutes before expiry. Repository
+REST operations request tokens restricted to the corresponding repository
+name; GitHub Projects V2 GraphQL operations require access to the
+installation's selected repositories and Projects resources. Each App
+installation belongs to a GitHub owner or organization: a second owner may
+require a separate installation, which this single-installation configuration
+does not yet manage.
+
+When these three App variables are supplied, the controller uses GitHub App
+credentials rather than `PWM_GITHUB_TOKEN`. If any App setting is invalid,
+startup fails rather than silently falling back to a broader token.
+GitHub permissions still govern issue, pull request, contents, administration,
+and Projects V2 operations. The App must be installed on the intended
+repositories with the exact required permissions. Enabling branch
+auto-deletion requires repository administration permission; changing the
+token alone does not expose a missing connector operation. Installation keys
+and tokens never enter worker payloads or repository archives.
+
+A live GitHub App connection and permissions acceptance test is required
+before treating this option as configured in production.
+
 ## Pair a compute node
 
 On the controller:

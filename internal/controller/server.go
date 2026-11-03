@@ -66,6 +66,9 @@ func NewServer(db *Database, token string) (*Server, error) {
 		}
 	}
 	github := NewGitHub(os.Getenv("PWM_GITHUB_TOKEN"))
+	if err := configureGitHubAppFromEnv(github); err != nil {
+		return nil, err
+	}
 	github.GenericWrites = os.Getenv("PWM_GITHUB_GENERIC_WRITES") == "1"
 	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil
 }
