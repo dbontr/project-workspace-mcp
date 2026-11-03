@@ -26,6 +26,10 @@ func (g *GitHub) SnapshotReader(repo, ref string) (string, io.ReadCloser, error)
 	if e != nil {
 		return "", nil, e
 	}
+	token, e := g.credential(prefix + "/tarball/" + sha)
+	if e != nil {
+		return "", nil, e
+	}
 	firstURL := g.API + prefix + "/tarball/" + sha
 	target, e := url.Parse(firstURL)
 	if e != nil {
@@ -38,7 +42,7 @@ func (g *GitHub) SnapshotReader(repo, ref string) (string, io.ReadCloser, error)
 	if e != nil {
 		return "", nil, e
 	}
-	req.Header.Set("Authorization", "Bearer "+g.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "project-workspace-mcp")
 	client := *g.Client
