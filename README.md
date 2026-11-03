@@ -204,6 +204,16 @@ controller:
     backendSecretName: pwm-restic-backend
 ```
 
+The Kubernetes distribution workflow also exercises encrypted recovery against
+a separate, disposable Restic REST-backend Pod. It takes a controller snapshot,
+checks the stored encrypted repository, restores the exact snapshot into an
+independent PVC, and opens the restored SQLite database through a fresh
+controller CLI invocation. The CI REST server deliberately has no authentication
+because it is restricted to the disposable kind test cluster; it must never be
+deployed as the production backup repository. CI verifies the Kubernetes
+plumbing and recovery procedure, not off-host durability or resilience to
+failure of Saturn or its storage.
+
 The password is copied by a non-root init container into a memory-backed
 volume with mode `0600`; the controller mounts only that protected copy.
 The password source Secret is not mounted into the main controller container.
