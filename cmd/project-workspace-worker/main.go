@@ -100,6 +100,9 @@ func run(args []string) error {
 		}
 		runner.Kube = k
 	}
+	if runner.Kube != nil {
+		defer runner.Kube.Close()
+	}
 	capabilities, err := runner.Capabilities()
 	if err != nil {
 		return err
