@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,6 +20,8 @@ var dashboard embed.FS
 type Server struct {
 	DB               *Database
 	AdminToken       string
+	OIDC             *OIDCVerifier
+	PublicURL        string
 	GitHub           *GitHub
 	AllowedHosts     map[string]bool
 	AllowedOrigins   map[string]bool
@@ -51,9 +54,20 @@ func NewServer(db *Database, token string) (*Server, error) {
 		}
 		limit = n
 	}
+	verifier, err := configuredOIDC()
+	if err != nil {
+		return nil, err
+	}
+	publicURL := strings.TrimRight(os.Getenv("PWM_PUBLIC_URL"), "/")
+	if publicURL != "" {
+		parsed, err := url.Parse(publicURL)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+			return nil, errors.New("PWM_PUBLIC_URL must be an HTTPS origin")
+		}
+	}
 	github := NewGitHub(os.Getenv("PWM_GITHUB_TOKEN"))
 	github.GenericWrites = os.Getenv("PWM_GITHUB_GENERIC_WRITES") == "1"
-	return &Server{DB: db, AdminToken: token, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil
+	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil
 }
 func (s *Server) isAuthorized(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.AdminToken)) == 1
@@ -126,6 +140,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "unapproved origin")
 		return
 	}
+	if r.URL.Path == "/.well-known/oauth-protected-resource" {
+		if s.OIDC == nil || s.PublicURL == "" {
+			fail(w, 404, "OAuth resource metadata is not configured")
+			return
+		}
+		if r.Method != http.MethodGet {
+			fail(w, 405, "method not allowed")
+			return
+		}
+		reply(w, 200, map[string]any{"resource": s.PublicURL, "authorization_servers": []string{s.OIDC.Issuer}, "bearer_methods_supported": []string{"header"}})
+		return
+	}
 	if r.URL.Path == "/health" {
 		if r.Method != "GET" {
 			fail(w, 405, "method not allowed")
@@ -147,11 +173,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/mcp" || r.URL.Path == "/mcp/" {
-		if !s.isAuthorized(r) {
-			fail(w, 401, "unauthorized")
+		who, err := s.authenticate(r)
+		if err != nil {
+			s.unauthorized(w)
 			return
 		}
-		s.handleMCP(w, r)
+		s.handleMCP(w, r, who)
 		return
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
@@ -177,8 +204,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handlePair(w, r)
 		return
 	}
-	if !s.isAuthorized(r) {
-		fail(w, 401, "invalid controller credential")
+	who, err := s.authenticate(r)
+	if err != nil {
+		s.unauthorized(w)
+		return
+	}
+	if !s.authorizeREST(r, parts, who) {
+		fail(w, 403, "project access denied")
+		return
+	}
+	if s.handleAccess(w, r, parts, who) {
 		return
 	}
 	if s.handlePool(w, r, parts) {
@@ -191,4 +226,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.handleAdmin(w, r, parts)
+}
+
+func (s *Server) unauthorized(w http.ResponseWriter) {
+	challenge := "Bearer realm=\"project-workspace\""
+	if s.PublicURL != "" && s.OIDC != nil {
+		challenge += ", resource_metadata=\"" + s.PublicURL + "/.well-known/oauth-protected-resource\""
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
+	fail(w, 401, "invalid controller credential")
 }

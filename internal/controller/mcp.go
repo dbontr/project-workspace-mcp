@@ -121,7 +121,7 @@ func (t toolDefinition) schema() map[string]any {
 	}
 	return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}
 }
-func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request, who caller) {
 	if r.Method != "POST" {
 		fail(w, 405, "MCP transport supports POST requests")
 		return
@@ -164,7 +164,15 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	case "tools/call":
 		name := asString(msg.Params["name"])
 		args, _ := msg.Params["arguments"].(map[string]any)
-		result, e := s.callTool(name, args)
+		var result any
+		var e error
+		if !s.authorizeTool(who, name, args) {
+			e = errors.New("project access denied")
+		} else if !who.Root && name == "list_projects" {
+			result, e = s.DB.ProjectsForPrincipal(who.Principal)
+		} else {
+			result, e = s.callTool(name, args)
+		}
 		if e != nil {
 			response["result"] = map[string]any{"content": []map[string]any{{"type": "text", "text": e.Error()}}, "isError": true}
 		} else {
