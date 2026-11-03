@@ -158,7 +158,7 @@ func command(args []string) error {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		var offsite sync.WaitGroup
-		if intervalText := os.Getenv("PWM_RESTIC_BACKUP_INTERVAL"); intervalText != "" {
+		if intervalText := os.Getenv("PWM_RESTIC_BACKUP_INTERVAL"); args[0] == "controller" && intervalText != "" {
 			interval, err := time.ParseDuration(intervalText)
 			if err != nil || interval < time.Hour {
 				return errors.New("PWM_RESTIC_BACKUP_INTERVAL must be at least one hour")
