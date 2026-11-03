@@ -36,11 +36,22 @@ strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb718
     <button type="submit">Create workspace</button>
   </form>
 </section>
+<section aria-label="GitHub planning integration">
+  <h2>GitHub Projects planning</h2>
+  <p>Link an existing GitHub Project. Its issues, status fields, and roadmap remain authoritative on GitHub.</p>
+  <form id="planning-link">
+    <select id="planning-project" required aria-label="Local project"></select>
+    <input id="planning-url" type="url" required placeholder="https://github.com/users/owner/projects/1" aria-label="GitHub Project URL">
+    <button type="submit">Link GitHub Project</button>
+  </form>
+</section>
 <main>
   <section><h2>Projects</h2><ul id="projects"><li class="muted">Connect to view projects.</li></ul></section>
   <section><h2>Compute nodes</h2><ul id="nodes"><li class="muted">Connect to view workers.</li></ul></section>
   <section><h2>Active workspaces</h2><ul id="workspaces"><li class="muted">Connect to view workspaces.</li></ul></section>
   <section><h2>Stored artifacts</h2><ul id="artifacts"><li class="muted">Connect to view artifacts.</li></ul></section>
+  <section><h2>GitHub planning boards</h2><ul id="planning"><li class="muted">Connect to view planning boards.</li></ul></section>
+  <section><h2>Shared libraries</h2><ul id="libraries"><li class="muted">Connect to view research libraries.</li></ul></section>
 </main>
 <script>
 let credential='';
@@ -52,8 +63,12 @@ async function get(path){let response=await fetch(path,{headers:{Authorization:'
 async function refresh(){
   const projects=await get('/api/projects');const nodes=await get('/api/nodes');
   const projectSelect=el('project-select');const selectedProject=projectSelect.value;
+  const planningSelect=el('planning-project');const selectedPlanning=planningSelect.value;
+  planningSelect.replaceChildren();
   projectSelect.replaceChildren();
-  for(const p of projects){const option=document.createElement('option');option.value=p.id;option.textContent=p.title+' ('+p.id+')';projectSelect.append(option)}
+  for(const p of projects){const option=document.createElement('option');option.value=p.id;option.textContent=p.title+' ('+p.id+')';projectSelect.append(option);
+    const planningOption=document.createElement('option');planningOption.value=p.id;planningOption.textContent=p.title+' ('+p.id+')';planningSelect.append(planningOption)}
+  if(projects.some(p=>p.id===selectedPlanning))planningSelect.value=selectedPlanning;
   if(projects.some(p=>p.id===selectedProject))projectSelect.value=selectedProject;
   const hardware=await get('/api/hardware');
   availableUSB=hardware.filter(d=>d.kind==='usb'&&d.online&&!d.leased_to);
@@ -67,16 +82,35 @@ async function refresh(){
   if(availableUSB.some(d=>d.node+'::'+d.id===previous))deviceSelect.value=previous;
   render('projects',projects,p=>[p.title,p.id]);
   render('nodes',nodes,n=>[n.id,n.online?'Online · '+(n.capabilities.cpu||0)+' CPU · '+(n.capabilities.memory_mb||0)+' MiB available':'Offline']);
-  const workspaces=[];const artifacts=[];
+  const workspaces=[];const artifacts=[];const boards=[];
   for(const p of projects){
     for(const w of await get('/api/projects/'+encodeURIComponent(p.id)+'/workspaces'))workspaces.push([p.id,w]);
     for(const a of await get('/api/projects/'+encodeURIComponent(p.id)+'/artifacts'))artifacts.push([p.id,a]);
+    const response=await fetch('/api/projects/'+encodeURIComponent(p.id)+'/planning',{headers:{Authorization:'Bearer '+credential},cache:'no-store'});
+    if(response.ok){boards.push([p.id,await response.json()])}else if(response.status!==400){throw new Error('Planning lookup failed: '+response.status)}
   }
   render('workspaces',workspaces.filter(([_,w])=>!['stopped','failed'].includes(w.status)),([p,w])=>[w.id.slice(0,12)+' · '+w.status,p+' · '+w.node]);
   render('artifacts',artifacts.slice(-30),([p,a])=>[a.name,p+' · '+a.size+' bytes · SHA256 '+a.sha256.slice(0,12)]);
+  render('planning',boards,([p,b])=>[b.title,p+' · '+b.url]);
+  const libraries=await get('/api/libraries');
+  render('libraries',libraries,l=>[l.title,l.kind+' · '+l.id]);
   el('notice').textContent='';
 }
-el('usb-toggle').addEventListener('change',()=>{el('usb-options').hidden=!el('usb-toggle').checked});
+el('planning-link').addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(!credential){el('notice').textContent='Connect first';return}
+  const project=el('planning-project').value;
+  const url=el('planning-url').value;
+  try{
+    const response=await fetch('/api/projects/'+encodeURIComponent(project)+'/planning',{
+      method:'POST',headers:{Authorization:'Bearer '+credential,'Content-Type':'application/json'},
+      body:JSON.stringify({url})});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.detail||'GitHub Project link failed');
+    await refresh();el('notice').textContent='Linked '+data.title+' to '+project;
+  }catch(e){el('notice').textContent=e.message}
+});
+el('usb-toggle').addEventListener('change' ,()=>{el('usb-options').hidden=!el('usb-toggle').checked});
 el('create').addEventListener('submit',async event=>{
   event.preventDefault();
   if(!credential){el('notice').textContent='Connect first';return}

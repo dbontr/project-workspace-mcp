@@ -181,5 +181,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "invalid controller credential")
 		return
 	}
+	if s.handleCatalog(w, r, parts) {
+		return
+	}
 	s.handleAdmin(w, r, parts)
 }

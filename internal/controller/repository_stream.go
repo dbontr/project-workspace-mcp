@@ -1,0 +1,127 @@
+package controller
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// SnapshotReader returns an immutable GitHub archive as a stream. The first
+// request authenticates only to GitHub; the redirected archive request never
+// carries a repository credential.
+func (g *GitHub) SnapshotReader(repo, ref string) (string, io.ReadCloser, error) {
+	prefix, e := repoPath(repo)
+	if e != nil {
+		return "", nil, e
+	}
+	sha, e := g.Commit(repo, ref)
+	if e != nil {
+		return "", nil, e
+	}
+	api, e := url.Parse(g.API)
+	if e != nil {
+		return "", nil, e
+	}
+	firstURL := g.API + prefix + "/tarball/" + sha
+	target, e := url.Parse(firstURL)
+	if e != nil {
+		return "", nil, e
+	}
+	if api.Host != target.Host || api.Scheme != target.Scheme {
+		return "", nil, errors.New("untrusted GitHub archive API host")
+	}
+	req, e := http.NewRequest("GET", target.String(), nil)
+	if e != nil {
+		return "", nil, e
+	}
+	req.Header.Set("Authorization", "Bearer "+g.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "project-workspace-mcp")
+	client := *g.Client
+	client.Timeout = 60 * time.Minute
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	first, e := client.Do(req)
+	if e != nil {
+		return "", nil, e
+	}
+	first.Body.Close()
+	if first.StatusCode != http.StatusFound && first.StatusCode != http.StatusTemporaryRedirect && first.StatusCode != http.StatusMovedPermanently {
+		return "", nil, fmt.Errorf("GitHub archive returned HTTP %d", first.StatusCode)
+	}
+	location, e := url.Parse(first.Header.Get("Location"))
+	if e != nil || location == nil || location.Scheme != "https" || location.User != nil || location.Port() != "" ||
+		(location.Hostname() != "codeload.github.com" && location.Hostname() != "api.github.com") ||
+		strings.HasPrefix(location.Path, "//") {
+		return "", nil, errors.New("untrusted GitHub archive redirect")
+	}
+	download, e := http.NewRequest("GET", location.String(), nil)
+	if e != nil {
+		return "", nil, e
+	}
+	download.Header.Set("User-Agent", "project-workspace-mcp")
+	response, e := client.Do(download)
+	if e != nil {
+		return "", nil, e
+	}
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		return "", nil, fmt.Errorf("GitHub archive download returned HTTP %d", response.StatusCode)
+	}
+	return sha, response.Body, nil
+}
+
+func (s *Server) CheckoutArchive(project, workspace, repo, ref string) (map[string]any, error) {
+	if !s.DB.RepositoryLinked(project, repo) {
+		return nil, errors.New("repository is not linked to project")
+	}
+	sha, reader, e := s.GitHub.SnapshotReader(repo, ref)
+	if e != nil {
+		return nil, e
+	}
+	defer reader.Close()
+	meta, e := s.DB.StoreArtifactStream(project, "repo-"+sha[:12]+".tar.gz", reader, s.MaxArtifactBytes)
+	if e != nil {
+		return nil, e
+	}
+	op, e := s.DB.QueueImportRepository(project, workspace, repo, sha, asString(meta["id"]))
+	if e != nil {
+		return nil, e
+	}
+	op["revision"] = sha
+	op["artifact_id"] = meta["id"]
+	return op, nil
+}
+func (s *Server) CheckoutLibrarySource(project, workspace, library, repo, path string) (map[string]any, error) {
+	if !s.DB.libraryAttached(project, library) {
+		return nil, errors.New("library is not linked to project")
+	}
+	source, e := s.DB.LibrarySource(library, repo, path)
+	if e != nil {
+		return nil, e
+	}
+	sha := asString(source["revision"])
+	confirmed, reader, e := s.GitHub.SnapshotReader(repo, sha)
+	if e != nil {
+		return nil, e
+	}
+	defer reader.Close()
+	if confirmed != sha {
+		return nil, errors.New("library source revision changed")
+	}
+	meta, e := s.DB.StoreArtifactStream(project, "library-"+sha[:12]+".tar.gz", reader, s.MaxArtifactBytes)
+	if e != nil {
+		return nil, e
+	}
+	op, e := s.DB.QueueImportLibraryRepository(project, workspace, library, repo, path, sha, asString(meta["id"]))
+	if e != nil {
+		return nil, e
+	}
+	op["revision"] = sha
+	op["artifact_id"] = meta["id"]
+	op["library"] = library
+	return op, nil
+}

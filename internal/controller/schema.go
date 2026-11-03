@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS workspace_snapshots(id TEXT PRIMARY KEY,workspace TEX
 CREATE TABLE IF NOT EXISTS operation_artifacts(operation TEXT NOT NULL,artifact TEXT NOT NULL,PRIMARY KEY(operation,artifact),FOREIGN KEY(operation) REFERENCES operations(id));
 CREATE TABLE IF NOT EXISTS artifact_grants(workspace TEXT NOT NULL,artifact TEXT NOT NULL,PRIMARY KEY(workspace,artifact));
 CREATE TABLE IF NOT EXISTS workspace_repositories(workspace TEXT NOT NULL,repository TEXT NOT NULL,revision TEXT NOT NULL,PRIMARY KEY(workspace,repository));
+CREATE TABLE IF NOT EXISTS repository_metadata(project TEXT NOT NULL,full_name TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'source',default_ref TEXT NOT NULL DEFAULT '',PRIMARY KEY(project,full_name),FOREIGN KEY(project,full_name) REFERENCES repositories(project,full_name));
+CREATE TABLE IF NOT EXISTS planning_boards(project TEXT PRIMARY KEY,github_id TEXT NOT NULL,url TEXT NOT NULL,title TEXT NOT NULL,updated REAL NOT NULL,FOREIGN KEY(project) REFERENCES projects(id));
+CREATE TABLE IF NOT EXISTS libraries(id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL,kind TEXT NOT NULL,created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS library_sources(library TEXT NOT NULL,repository TEXT NOT NULL,revision TEXT NOT NULL,path TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL DEFAULT 'source',added REAL NOT NULL,PRIMARY KEY(library,repository,path),FOREIGN KEY(library) REFERENCES libraries(id));
+CREATE TABLE IF NOT EXISTS project_libraries(project TEXT NOT NULL,library TEXT NOT NULL,linked REAL NOT NULL,PRIMARY KEY(project,library),FOREIGN KEY(project) REFERENCES projects(id),FOREIGN KEY(library) REFERENCES libraries(id));
+CREATE TABLE IF NOT EXISTS library_objects(library TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,kind TEXT NOT NULL,created REAL NOT NULL,PRIMARY KEY(library,name),FOREIGN KEY(library) REFERENCES libraries(id));
+CREATE TABLE IF NOT EXISTS library_uploads(id TEXT PRIMARY KEY,library TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,kind TEXT NOT NULL,received INTEGER NOT NULL,created REAL NOT NULL,expires REAL NOT NULL,FOREIGN KEY(library) REFERENCES libraries(id));
 `
 
 var (
@@ -44,6 +51,19 @@ var (
 	shaPattern        = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	validRelative     = regexp.MustCompile(`^[A-Za-z0-9_.-][A-Za-z0-9_./+@ -]+$`)
 )
+
+func validGitRepository(repo string) bool {
+	if !validRepo.MatchString(repo) {
+		return false
+	}
+	parts := strings.Split(repo, "/")
+	for _, part := range parts {
+		if part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
+}
 
 func stamp() float64 { return float64(time.Now().UnixNano()) / 1e9 }
 func randomHex(n int) string {

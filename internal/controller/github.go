@@ -89,7 +89,7 @@ func (g *GitHub) request(method, path string, query map[string]any, body any) (a
 }
 func gitObj(v any) map[string]any { m, _ := v.(map[string]any); return m }
 func repoPath(repo string) (string, error) {
-	if !validRepo.MatchString(repo) {
+	if !validGitRepository(repo) {
 		return "", errors.New("invalid repository")
 	}
 	return "/repos/" + repo, nil
