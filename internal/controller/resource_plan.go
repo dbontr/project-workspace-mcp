@@ -136,8 +136,8 @@ func (db *Database) PlanWorkspace(req WorkspaceRequest) (map[string]any, error) 
 			if arch != "" && normalizeArchitecture(asString(caps["arch"])) != arch {
 				reasons = append(reasons, "worker architecture mismatch")
 			}
-			if req.ImagePoolID != "" && !workerHasImage(caps, image) {
-				reasons = append(reasons, "worker has not approved the selected OCI image")
+			if req.Environment == "" && !workerHasImage(caps, image) {
+				reasons = append(reasons, "worker has not reported approval for the requested OCI image")
 			}
 			if cpuFree < req.CPU {
 				reasons = append(reasons, "insufficient unreserved CPU capacity")
