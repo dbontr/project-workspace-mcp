@@ -99,6 +99,11 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, p []string)
 			}
 		}
 	}
+	if len(p) == 4 && p[1] == "nodes" && p[3] == "revoke" && method == http.MethodPost {
+		result, err := db.RevokeNode(p[2])
+		send(w, result, err)
+		return
+	}
 	if len(p) < 3 || p[1] != "projects" {
 		fail(w, 404, "API route not found")
 		return
