@@ -40,7 +40,7 @@ func (s *Server) authorizedFor(project string, who caller, minimum int) bool {
 }
 
 var readableTools = map[string]bool{
-	"list_projects": true,
+	"list_projects":    true,
 	"pool_list_images": true, "pool_list_software": true,
 	"read_project_note": true, "search_project_knowledge": true,
 	"list_project_jobs": true, "list_github_repositories": true,
