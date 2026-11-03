@@ -388,6 +388,13 @@ func (db *Database) readyWorkspaceLocked(project, id string) (map[string]any, er
 	if row == nil {
 		return nil, errors.New("workspace is not ready")
 	}
+	pending, err := db.checkpointStopPendingLocked(id)
+	if err != nil {
+		return nil, err
+	}
+	if pending {
+		return nil, errors.New("workspace checkpoint-before-stop is pending")
+	}
 	return row, nil
 }
 func (db *Database) StopWorkspace(project, id string) (map[string]any, error) {
@@ -399,6 +406,13 @@ func (db *Database) StopWorkspace(project, id string) (map[string]any, error) {
 		}
 		if ws == nil {
 			return errors.New("workspace not found")
+		}
+		pending, err := db.checkpointStopPendingLocked(id)
+		if err != nil {
+			return err
+		}
+		if pending {
+			return errors.New("checkpoint-before-stop is pending; ordinary stop is denied")
 		}
 		status := asString(ws["status"])
 		if status == "stopping" || status == "stopped" || status == "expired" {
