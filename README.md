@@ -742,6 +742,40 @@ running device state, or an off-host encrypted backup. The stored
 artifact only survives controller disk loss when a verified independent
 backup includes it.
 
+## Retained workspace volume cleanup
+
+Stopping a workspace does **not** delete its named Docker volume. Project owners
+can remove the retained volume only after a successful
+`workspace_checkpoint_stop` transaction has produced a verified project
+artifact and the corresponding workspace teardown has completed. The
+`workspace_prune_volume` tool requires the exact `project_id`,
+`workspace_id`, `snapshot_id` from
+`workspace_checkpoint_stop_status`, and `confirm: true`.
+
+The equivalent REST request is:
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/workspaces/WORKSPACE_ID/volume/prune" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"snapshot_id":"CHECKPOINT_SNAPSHOT_ID","confirm":true}'
+```
+
+The controller verifies the checkpoint artifact's SHA-256 and rejects volume
+deletion when the workspace has not stopped, holds hardware leases, has pending
+operations, or has already completed cleanup. The worker independently checks
+the exact Docker volume name, the workspace-specific ownership labels, and
+the absence of attached containers. It never uses forced volume removal or
+deletes an unlabeled legacy volume. Cleanup is an asynchronous, worker-confirmed
+operation; poll `workspace_operation` before claiming that storage was
+released. If the original worker is unreachable, the operation remains queued
+rather than targeting a different host.
+
+The controller-side checkpoint remains available after volume deletion and can
+be restored to another approved workspace in the same project. A checksum-
+verified local snapshot is **not** equivalent to an independently restorable
+off-host encrypted backup. Verify off-host recovery before deleting the only
+remaining copy of important work.
+
 ## Offline recovery snapshots
 
 Stop the controller and all processes that write to its data directory before
