@@ -337,6 +337,12 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.LinkRepositoryWithRole(project, get("repository"), get("role"), get("default_ref"))
 	case "list_github_repositories":
 		return db.Repositories(project)
+	case "github_app_readiness":
+		repositories, err := db.Repositories(project)
+		if err != nil {
+			return nil, err
+		}
+		return s.GitHub.AppReadiness(repositories)
 	case "task_create":
 		var tags []string
 		if a["tags"] != nil {
