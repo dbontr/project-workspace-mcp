@@ -3,7 +3,6 @@ package controller
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 func plannerNode(cpu float64, memory float64, devices []any, image string) map[string]any {
@@ -149,5 +148,4 @@ func TestResourcePlanReadOnlyAndOfflineDiagnostics(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("advisory plan must never allocate a workspace: %v %v", rows, err)
 	}
-	_ = time.Second
 }
