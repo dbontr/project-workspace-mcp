@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -24,6 +25,8 @@ type Kubernetes struct {
 	Project      string
 	Worker       string
 	Binary       string
+	ConfigPath   string
+	OwnsConfig   bool
 	Storage      string
 	StorageClass string
 	CPU          float64
@@ -52,8 +55,86 @@ func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*K
 	if class != "" && !kubernetesName.MatchString(class) {
 		return nil, errors.New("invalid Kubernetes storage class")
 	}
-	return &Kubernetes{Namespace: namespace, Project: project, Binary: binary,
-		Storage: storage, StorageClass: class, CPU: cpu, MemoryMB: memory, MaxJobs: jobs}, nil
+	k := &Kubernetes{Namespace: namespace, Project: project, Binary: binary,
+		Storage: storage, StorageClass: class, CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
+	if err := k.configureServiceAccount(); err != nil {
+		return nil, err
+	}
+	return k, nil
+}
+
+// configureServiceAccount creates an ephemeral, owner-only kubeconfig.
+// kubectl does not receive the API bearer token as a command-line argument.
+func (k *Kubernetes) configureServiceAccount() error {
+	host := os.Getenv("KUBERNETES_SERVICE_HOST")
+	if host == "" {
+		return nil // Operator-provided kubeconfig for external cluster access.
+	}
+	port := os.Getenv("KUBERNETES_SERVICE_PORT_HTTPS")
+	if port == "" {
+		port = os.Getenv("KUBERNETES_SERVICE_PORT")
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil || p <= 0 || p > 65535 {
+		return errors.New("invalid Kubernetes API service port")
+	}
+	root := "/var/run/secrets/kubernetes.io/serviceaccount"
+	token, err := os.ReadFile(root + "/token")
+	if err != nil {
+		return fmt.Errorf("worker ServiceAccount token not mounted: %w", err)
+	}
+	credential := strings.TrimSpace(string(token))
+	if len(credential) < 20 || len(credential) > 16384 || strings.ContainsAny(credential, "\x00\r\n ") {
+		return errors.New("invalid Kubernetes ServiceAccount credential")
+	}
+	if _, err := os.Stat(root + "/ca.crt"); err != nil {
+		return fmt.Errorf("Kubernetes API CA unavailable: %w", err)
+	}
+	config := map[string]any{
+		"apiVersion": "v1", "kind": "Config",
+		"clusters": []any{map[string]any{"name": "cluster",
+			"cluster": map[string]any{
+				"server": "https://" + net.JoinHostPort(host, port),
+				"certificate-authority": root + "/ca.crt",
+			}}},
+		"contexts": []any{map[string]any{"name": "worker",
+			"context": map[string]string{"cluster": "cluster", "user": "worker", "namespace": k.Namespace}}},
+		"current-context": "worker",
+		"users": []any{map[string]any{"name": "worker",
+			"user": map[string]string{"token": credential}}},
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	file, err := os.CreateTemp("", "pwm-kubeconfig-*")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
+		_ = os.Remove(file.Name())
+		return err
+	}
+	k.ConfigPath = file.Name()
+	k.OwnsConfig = true
+	return nil
+}
+
+func (k *Kubernetes) baseArgs() []string {
+	args := []string{}
+	if k.ConfigPath != "" {
+		args = append(args, "--kubeconfig", k.ConfigPath)
+	}
+	return append(args, "--namespace", k.Namespace)
+}
+
+func (k *Kubernetes) Close() {
+	if k != nil && k.OwnsConfig {
+		_ = os.Remove(k.ConfigPath)
+		k.ConfigPath = ""
+		k.OwnsConfig = false
+	}
 }
 
 func (k *Kubernetes) labels(id, kind string) map[string]string {
@@ -68,7 +149,7 @@ func (k *Kubernetes) call(ctx context.Context, limit int64, input io.Reader, arg
 	if k == nil || !kubernetesName.MatchString(k.Namespace) {
 		return nil, nil, 0, errors.New("Kubernetes worker not configured")
 	}
-	command := exec.CommandContext(ctx, k.Binary, append([]string{"--namespace", k.Namespace}, args...)...)
+	command := exec.CommandContext(ctx, k.Binary, append(k.baseArgs(), args...)...)
 	command.Stdin = input
 	var out, stderr bytes.Buffer
 	command.Stdout = &maxWriter{Writer: &out, Limit: limit}
