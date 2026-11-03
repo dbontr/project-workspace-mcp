@@ -34,7 +34,7 @@ func TestResearchSourceIndexAndProvenance(t *testing.T) {
 	id := asString(source["id"])
 	first, err := db.IngestResearchPassages("science", id, "append", 0, []ResearchPassageInput{
 		{Ordinal: 1, Page: 2, Section: "Cylindrical basis", LineStart: 12, LineEnd: 18,
-			Text: "Curvilinear coordinates rotate the local unit basis with azimuth phi.",
+			Text:   "Curvilinear coordinates rotate the local unit basis with azimuth phi.",
 			Topics: []string{"vector-analysis", "coordinates"}},
 		{Ordinal: 2, Page: 3, Section: "Scale factors",
 			Text: "Orthogonal coordinates have metric scale factors; cylindrical azimuth depends on radius."},
