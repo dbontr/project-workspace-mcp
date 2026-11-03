@@ -293,7 +293,6 @@ func TestImportArtifactValidatesDestinationBeforeDownloading(t *testing.T) {
 	}
 }
 
-
 func TestWorkerHeartbeatContinuesDuringJobExecution(t *testing.T) {
 	dir := t.TempDir()
 	docker := filepath.Join(dir, "docker")
