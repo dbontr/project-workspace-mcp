@@ -42,6 +42,11 @@ var tools = []toolDefinition{
 	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
 	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
 	{"task_export_project", "Promote an immutable task file into an editor-authorized project artifact", []string{"task_id", "name", "project_id"}, []string{"revision"}},
+	{"personal_task_claim_list", "List owner-scoped cooperative claims without lease tokens", []string{"task_id"}, nil},
+	{"personal_task_claim_status", "Inspect a personal task claim and durable completion", []string{"task_id", "work_key"}, nil},
+	{"personal_task_claim", "Reserve a personal task work key with an expiring fenced token", []string{"task_id", "work_key"}, []string{"lease_seconds"}},
+	{"personal_task_claim_renew", "Renew a valid personal task work lease", []string{"task_id", "work_key", "lease_token", "generation"}, []string{"lease_seconds"}},
+	{"personal_task_claim_finish", "Complete a personal work claim with task-owned immutable file IDs or release it", []string{"task_id", "work_key", "lease_token", "generation", "status"}, []string{"artifact_ids"}},
 	{"task_claim_list", "List cooperative project task claims without lease tokens", []string{"project_id"}, nil},
 	{"task_claim_status", "Inspect a project's work-key claim and durable completion", []string{"project_id", "work_key"}, nil},
 	{"task_claim", "Claim a work key with a fenced, expiring lease", []string{"project_id", "work_key"}, []string{"lease_seconds"}},
@@ -324,6 +329,30 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.PersonalTaskFileBase64(who.Principal, get("task_id"), get("name"), asInt(a["revision"]))
 	case "task_export_project":
 		return db.PromotePersonalTaskFile(who.Principal, get("task_id"), get("name"), asInt(a["revision"]), project)
+	case "personal_task_claim_list":
+		return db.PersonalTaskClaimList(who.Principal, get("task_id"))
+	case "personal_task_claim_status":
+		return db.PersonalTaskClaimStatus(who.Principal, get("task_id"), get("work_key"))
+	case "personal_task_claim":
+		duration := asInt(a["lease_seconds"])
+		if duration == 0 {
+			duration = 900
+		}
+		return db.ClaimPersonalTask(who.Principal, get("task_id"), get("work_key"), duration)
+	case "personal_task_claim_renew":
+		duration := asInt(a["lease_seconds"])
+		if duration == 0 {
+			duration = 900
+		}
+		return db.RenewPersonalTaskClaim(who.Principal, get("task_id"), get("work_key"), get("lease_token"), asInt(a["generation"]), duration)
+	case "personal_task_claim_finish":
+		var artifacts []string
+		if a["artifact_ids"] != nil {
+			if err := JSONRequest(a["artifact_ids"], &artifacts); err != nil {
+				return nil, err
+			}
+		}
+		return db.FinishPersonalTaskClaim(who.Principal, get("task_id"), get("work_key"), get("lease_token"), get("status"), asInt(a["generation"]), artifacts)
 	case "task_claim_list":
 		return db.ListTaskClaims(project)
 	case "task_claim_status":
