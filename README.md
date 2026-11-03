@@ -1,15 +1,120 @@
 # Project Workspace MCP
 
-A self-hosted, project-aware distributed computing system for MCP clients. Its Go controller retains projects, repository associations, knowledge, durable artifacts, environment definitions, hardware leases, jobs, and execution history. Linux Go workers run isolated Docker workspaces on allocated compute nodes. The controller and worker require **no Python interpreter or Python application server**. Python, Vivado, C++, and other applications can be installed within approved workspace images.
+A self-hosted, project-aware distributed computing system for MCP clients. Its Go controller retains projects, repository associations, knowledge, durable artifacts, environment definitions, hardware leases, jobs, and execution history. Kubernetes workers create restricted Pods and persistent volume claims for workspaces and Kubernetes Jobs for finite tasks. The Kubernetes scheduler performs final placement across approved nodes. The controller and worker require **no Python interpreter or Python application server**. Python, Vivado, C++, and other applications can be installed within approved workspace images.
 
 The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Project Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
 
 ## Requirements
 
 - Go 1.23 or later at build time, and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation.
-- Linux and Docker on each execution worker. The controller can run on supported hosts that provide SQLite and a C compiler at build time.
+- A supported Kubernetes cluster (including K3s), a dynamic CSI StorageClass for PVCs, and RBAC permissions scoped to the project's workload namespace. The worker image includes `kubectl`; no Docker daemon or host Docker socket is required for Kubernetes execution. Network-policy enforcement depends on the cluster CNI.
+- The Kubernetes controller runs as a single-writer process over durable SQLite and artifact storage. Conventional Linux Docker workers remain an optional compatibility backend selected with `--backend docker`.
 - A trusted MCP client. The HTTP MCP endpoint implements stateless Streamable HTTP with the 2025-06-18 protocol, including `initialize`, `tools/list`, and `tools/call`.
 - An HTTPS ingress for remote connections; the controller listens on loopback by default. The owner credential is always available for administration. Optional OIDC bearer-token verification and per-project grants require an external identity provider.
+
+## Kubernetes deployment and execution
+
+The production execution backend is Kubernetes. Each project has a dedicated
+workload namespace and a worker identity that can access only that namespace.
+The controller, worker credentials, and GitHub PAT live in the separate
+`pwm-system` namespace. Workloads never receive these credentials, the
+Kubernetes API token, or a host Docker socket.
+
+The controller records project state and artifact revisions in SQLite on its
+own persistent volume. Workspace files use separate PVCs in project namespaces.
+A Pod can be rescheduled only if its PVC is attachable on the replacement node;
+for portable storage, use a replicated CSI StorageClass. K3s `local-path`
+volumes are node-local and are not a substitute for independent off-host backup.
+
+Build and publish the project controller and worker images to an authorized OCI
+registry:
+
+```sh
+docker build -f deploy/kubernetes/Dockerfile.controller -t registry.example/project-workspace-controller:release .
+docker build -f deploy/kubernetes/Dockerfile.worker -t registry.example/project-workspace-worker:release .
+docker push registry.example/project-workspace-controller:release
+docker push registry.example/project-workspace-worker:release
+```
+
+These Docker commands **package container images** on the operator's build
+machine. Kubernetes runs those images through the cluster container runtime;
+the Kubernetes worker does not invoke Docker.
+
+The Helm chart is under `deploy/helm/project-workspace`. Prepare the
+`pwm-system` namespace, TLS certificate and private key for
+`pwm-controller.pwm-system.svc.cluster.local`, its trusted CA, and protected
+Kubernetes Secrets for the controller administrator credential and any
+GitHub PAT. Do not put credentials in chart values or commit them to Git.
+The worker credential must be obtained through a one-time controller pairing
+operation and stored in its own Kubernetes Secret.
+
+```sh
+kubectl create namespace pwm-system
+kubectl label namespace pwm-system pod-security.kubernetes.io/enforce=restricted
+kubectl -n pwm-system create secret generic pwm-controller-credentials \
+  --from-file=admin_token=/secure/controller-admin-token
+kubectl -n pwm-system create secret tls pwm-controller-tls \
+  --cert=/secure/controller.crt --key=/secure/controller.key
+kubectl -n pwm-system create secret generic pwm-controller-ca \
+  --from-file=ca.crt=/secure/controller-ca.crt
+
+helm upgrade --install pwm-controller deploy/helm/project-workspace \
+  --namespace pwm-system --set worker.enabled=false \
+  --set controller.image=registry.example/project-workspace-controller:release
+```
+
+When a GitHub PAT is needed, store it separately using a
+`pwm-github-pat` Secret with key `token`, and set
+`controller.githubPATSecretName=pwm-github-pat`. The controller reads it from
+a Kubernetes Secret environment variable. In ordinary host deployments,
+`PWM_GITHUB_PAT_FILE` remains the preferred owner-only file setting.
+
+Create a single-use pairing code with the authoritative controller, then run
+`project-workspace-worker join --backend kubernetes --node research-agent
+--namespace pwm-research --project research --controller
+https://pwm-controller.pwm-system.svc.cluster.local:8443 --code-stdin` from a
+trusted operator environment that can verify the internal HTTPS certificate
+and reach the controller. Include the configured capacity flags if they differ
+from defaults. Store the resulting credential in a private
+`pwm-worker-research-credentials` Secret with key `worker_token`. Do not
+print or transmit the resulting token through chat.
+
+```sh
+kubectl -n pwm-system create secret generic pwm-worker-research-credentials \
+  --from-file=worker_token=/secure/research-agent.token
+helm upgrade --install pwm-research deploy/helm/project-workspace \
+  --namespace pwm-system --set controller.enabled=false \
+  --set worker.projectID=research --set worker.workloadNamespace=pwm-research \
+  --set worker.name=research-agent \
+  --set worker.image=registry.example/project-workspace-worker:release \
+  --set worker.workspaceStorageClass=YOUR_REPLICATED_STORAGE_CLASS
+```
+
+Install a separate worker release and namespace for each additional project,
+with a distinct worker ID, token Secret, and storage quota. The Helm chart
+provides namespace-restricted RBAC, a workload ServiceAccount with automatic
+token mounting disabled, restricted Pod security settings, a default-deny
+NetworkPolicy and ResourceQuota. Verify that the cluster CNI enforces
+NetworkPolicy and that the CSI driver provisions writable volumes before
+allowing untrusted workloads. GPU/NPU/FPGA resources require approved
+Kubernetes device plugins. Direct USB/host-device mapping is not enabled.
+
+`project-workspace-worker doctor --backend kubernetes --project research
+--namespace pwm-research --node research-agent` reports configured capacity.
+Use `kubectl get pods,pvc,jobs -n pwm-research` and the controller's
+`list_compute_nodes`, `workspace_list`, and `workspace_operation` tools to
+verify real resource placement and completion. The controller's capacity
+preflight is advisory: Kubernetes admission and scheduling are authoritative.
+A configured worker is not evidence that the full cluster has passed
+host-failure or storage-recovery acceptance tests.
+
+The Kubernetes backend currently supports Pod/PVC workspace lifecycle,
+commands, file imports and exports, repository archives, verified workspace
+snapshots, display capture, finite batch Jobs, and guarded PVC cleanup.
+Local Docker-based image building and image save/load require a separate
+registry-backed Kubernetes builder; these operations are not emulated with
+privileged Docker access to the worker. The explicit Docker compatibility
+backend continues to provide them where authorized.
 
 ## Install and start
 
@@ -33,7 +138,7 @@ go build -o project-workspace-worker ./cmd/project-workspace-worker
 The server's configuration variables include `PWM_GITHUB_TOKEN`, `PWM_GITHUB_GENERIC_WRITES=1` (opt-in repository mutations), and `PWM_MAX_ARTIFACT_BYTES` (default 2 GiB).
 
 
-### Managed Linux services
+### Managed Linux services (Docker compatibility)
 
 On a conventional Linux host with systemd, a writable `/etc` and `/usr/local`,
 and the build dependencies listed above, install a controller service:
