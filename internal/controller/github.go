@@ -249,11 +249,15 @@ func (g *GitHub) Snapshot(repo, ref string) (string, []byte, error) {
 		return "", nil, e
 	}
 	target := g.API + prefix + "/tarball/" + sha
+	token, e := g.credential(prefix + "/tarball/" + sha)
+	if e != nil {
+		return "", nil, e
+	}
 	req, e := http.NewRequest("GET", target, nil)
 	if e != nil {
 		return "", nil, e
 	}
-	req.Header.Set("Authorization", "Bearer "+g.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "project-workspace-mcp")
 	noRedirect := &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
