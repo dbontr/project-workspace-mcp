@@ -91,7 +91,7 @@ jobs:
             "$RUNNER_TEMP/pwm-systemd/worker.service"
       - name: Verify worker heartbeat implementation format
         run: |
-          test -z "$(gofmt -l internal/worker/agent.go internal/worker/agent_test.go internal/worker/docker.go)"
+          test -z "$(gofmt -l internal/worker/agent.go internal/worker/agent_test.go internal/worker/docker.go internal/worker/recovery_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
