@@ -110,6 +110,10 @@ jobs:
         run: |
           gofmt -d internal/controller/worker_revocation.go internal/controller/worker_revocation_test.go internal/controller/tls_worker_test.go
           test -z "$(gofmt -l internal/controller/worker_revocation.go internal/controller/worker_revocation_test.go internal/controller/tls_worker_test.go)"
+      - name: Check Kubernetes executor formatting
+        run: |
+          gofmt -d internal/worker/kubernetes.go internal/worker/kubernetes_operations.go internal/worker/kubernetes_test.go internal/controller/kubernetes_test.go
+          test -z "$(gofmt -l internal/worker/kubernetes.go internal/worker/kubernetes_operations.go internal/worker/kubernetes_test.go internal/controller/kubernetes_test.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables
