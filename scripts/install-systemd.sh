@@ -93,6 +93,9 @@ ensure_account() {
 ensure_account
 if [ "$role" = worker ]; then
     usermod -aG docker "$account"
+    if ! runuser -u "$account" -- env HOME="$state" docker info --format "{{.ServerVersion}}" >/dev/null 2>&1; then
+        die "worker account cannot reach the Docker daemon; check Docker service and group access"
+    fi
     token=$state/.config/project-workspace/workers/$node.token
     config=/etc/project-workspace/worker.env
     if [ -e "$config" ]; then
