@@ -11,8 +11,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -145,7 +145,7 @@ func (k *Kubernetes) saveOutput(ctx context.Context, r *Runner, op Operation, c 
 	digest := sha256.New()
 	runCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
-	args := append(k.baseArgs(), "exec", "pod/" + kubePodName(op.Workspace), "-c", "workspace", "--")
+	args := append(k.baseArgs(), "exec", "pod/"+kubePodName(op.Workspace), "-c", "workspace", "--")
 	args = append(args, command...)
 	cmd := exec.CommandContext(runCtx, k.Binary, args...)
 	cmd.Stdout = &maxWriter{Writer: io.MultiWriter(f, digest), Limit: r.MaxArtifact}
@@ -225,7 +225,7 @@ func (k *Kubernetes) captureDisplay(ctx context.Context, r *Runner, op Operation
 	defer file.Close()
 	_ = os.Remove(file.Name())
 	digest := sha256.New()
-	args := append(k.baseArgs(), "exec", "pod/" + kubePodName(op.Workspace),
+	args := append(k.baseArgs(), "exec", "pod/"+kubePodName(op.Workspace),
 		"-c", "workspace", "--", "ffmpeg", "-hide_banner", "-loglevel", "error",
 		"-nostdin", "-f", "x11grab", "-video_size", fmt.Sprintf("%dx%d", width, height),
 		"-framerate", "1", "-i", ":99", "-frames:v", "1", "-f", "image2pipe",
