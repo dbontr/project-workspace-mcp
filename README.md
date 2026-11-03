@@ -26,8 +26,17 @@ A Pod can be rescheduled only if its PVC is attachable on the replacement node;
 for portable storage, use a replicated CSI StorageClass. K3s `local-path`
 volumes are node-local and are not a substitute for independent off-host backup.
 
-Build and publish the project controller and worker images to an authorized OCI
-registry:
+The `.github/workflows/kubernetes-distribution.yml` workflow builds and
+smoke-tests both Go service images in a disposable Kubernetes cluster. The
+acceptance test installs the Helm chart, enrolls a worker using a one-time
+pairing code, verifies the worker heartbeat, executes a project workspace Pod
+and command, and confirms graceful Pod removal with its PVC retained.
+Successful `main` runs publish the controller and worker images to GitHub
+Container Registry with `main` and immutable commit-SHA tags, subject to
+repository package permissions. The Helm chart defaults to `main` image tags;
+prefer an immutable commit tag or digest for production deployments.
+
+You can also build and publish images to an authorized OCI registry manually:
 
 ```sh
 docker build -f deploy/kubernetes/Dockerfile.controller -t registry.example/project-workspace-controller:release .
@@ -39,6 +48,16 @@ docker push registry.example/project-workspace-worker:release
 These Docker commands **package container images** on the operator's build
 machine. Kubernetes runs those images through the cluster container runtime;
 the Kubernetes worker does not invoke Docker.
+
+For private OCI packages, configure `controller.imagePullSecrets` and
+`worker.imagePullSecrets` with the names of Kubernetes `dockerconfigjson`
+pull Secrets in `pwm-system`. Runtime workspace Pods and Jobs use a separate
+pull Secret in their project namespace, configured by
+`worker.workspaceImagePullSecret`. Create those Secrets using a least-privilege
+registry credential with package-read access. Kubernetes uses the referenced
+pull Secret for image retrieval without exposing its value as a container
+environment variable or a workspace file. The worker's cluster access remains
+scoped to the project namespace.
 
 The Helm chart is under `deploy/helm/project-workspace`. Prepare the
 `pwm-system` namespace, TLS certificate and private key for
@@ -146,7 +165,9 @@ Use `kubectl get pods,pvc,jobs -n pwm-research` and the controller's
 verify real resource placement and completion. The controller's capacity
 preflight is advisory: Kubernetes admission and scheduling are authoritative.
 A configured worker is not evidence that the full cluster has passed
-host-failure or storage-recovery acceptance tests.
+host-failure or storage-recovery acceptance tests. The CI installation test
+uses a disposable single-node kind cluster, not the operator's real K3s
+hardware, replicated storage, private registry, or external identity provider.
 
 The Kubernetes backend currently supports Pod/PVC workspace lifecycle,
 commands, file imports and exports, repository archives, verified workspace
