@@ -107,7 +107,7 @@ var tools = []toolDefinition{
 	{"artifact_info", "Read the metadata and verified digest of a saved project artifact", []string{"project_id", "artifact_id"}, nil},
 	{"artifact_send_base64", "Store a project file up to 512 KiB from base64 and its SHA-256 digest; larger files use REST streaming", []string{"project_id", "name", "sha256", "data_base64"}, nil},
 	{"artifact_read_base64", "Return a verified project file up to 512 KiB as base64; larger files use authenticated REST downloads", []string{"project_id", "artifact_id"}, nil},
-	{"artifact_view_image", "Render a verified project PNG up to 4 MiB as native MCP image content for visual review", []string{"project_id", "artifact_id"}, nil},
+	{"artifact_view_image", "Return a verified project PNG up to 4 MiB as native MCP image content", []string{"project_id", "artifact_id"}, nil},
 	{"github_project_attach", "Bind a GitHub Projects V2 board by URL or node ID", []string{"project_id"}, []string{"github_project_id", "url"}},
 	{"github_project_board", "Read the linked GitHub Projects board reference", []string{"project_id"}, nil},
 	{"github_project_items", "Read live GitHub Project items and fields", []string{"project_id"}, []string{"after"}},

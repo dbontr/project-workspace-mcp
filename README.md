@@ -240,7 +240,7 @@ curl -fsS -X POST "$BASE/api/workspaces" -H "Authorization: Bearer $TOKEN" \
 
 Workspace creation queues a `start` operation; it is not synchronous. Poll `GET /api/projects/research/workspaces` until the workspace is `ready`. Use `workspace_call` to run commands and edit files; poll `workspace_operation` for worker-confirmed results. `exit_code != 0` means a command failed even when the operation itself completed. Export important artifacts before stopping the workspace. Named volumes are retained for deliberate recovery and cleanup.
 
-## Virtual display capture and UI review
+## Workspace display capture
 
 A graphical workspace runs its own Xvfb display (`DISPLAY=:99`) inside the
 isolated Docker container. Capture never reads a worker's physical screen, host
@@ -281,25 +281,27 @@ wide, 240–2160 pixels high, and at most eight million pixels.
 After the workspace is reported `ready`, launch an approved GUI application
 through `workspace_call` with `action: "command"`, for example,
 `xclock >/tmp/xclock.log 2>&1 &`. The container inherits `DISPLAY=:99`.
-For web development, run the application and its browser within the same
-workspace; `--network none` remains in force, so this workflow does not
-expose an application port or permit arbitrary Internet browsing.
+Applications that need local networking must remain within the workspace's
+network policy; `--network none` is the default and does not expose an
+application port or permit arbitrary Internet browsing.
 
 Call `workspace_capture_display` with `project_id` and `workspace_id`.
 This queues a capture; it does not immediately return an image. Poll
 `workspace_operation` for success, then use the returned
 `result.artifact.id` with `artifact_view_image`. The latter returns a
-native MCP PNG image content item for visual inspection, as well as image
+native MCP PNG image content item for inspection, as well as image
 dimensions and a SHA-256 reference. Every capture is stored as a distinct,
 immutable, project-scoped artifact and can be downloaded through the
 authenticated artifact endpoint. MCP image inspection accepts PNGs up to
 4 MiB; larger screenshots remain available by authenticated download.
 Capture output is capped at 8 MiB and must pass PNG validation.
 
-The development loop is: **run UI → capture → inspect → edit → capture again**.
-Use the normal workspace commands and repository publication workflows for
-changes; no screenshot is itself evidence that a UI is accessible, correct,
-or free of defects. Captures may contain application secrets and must be
+Capture is a general-purpose observation tool. Common uses include graphical
+software tests, scientific visualization, simulation diagnostics, application
+fault investigation, demonstrations, and inspection of a running workspace.
+Clients may capture repeatedly or occasionally; no particular workflow is
+required. A screenshot records one rendered state, not the correctness of the
+underlying application. Captures may contain application secrets and must be
 handled under the project's usual grants and artifact retention policy.
 A virtual display cannot capture host-native macOS/Windows applications or
 hardware consoles; those require explicitly authorized platform adapters.
