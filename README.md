@@ -566,6 +566,46 @@ go vet ./...
 
 GitHub Actions runs Go unit and protocol tests, cross-architecture builds, and an optional Docker controller/worker integration. The latter requires Docker and a `python:3.12-slim` test image **inside the container only**; no Python interpreter runs on the controller or worker host.
 
+## Checkpoint-preserving workspace shutdown
+
+A normal workspace stop does not automatically save mutable files. For work
+that must survive worker teardown, use `workspace_checkpoint_stop` or:
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/workspaces/WORKSPACE_ID/checkpoint-stop" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The controller appends a `snapshot` operation after previously queued work
+and prevents new workspace mutations while the checkpoint is pending. Only
+after the worker uploads a verified, durable project artifact and completes
+the exact leased snapshot operation does the controller enqueue `stop`.
+Poll `workspace_checkpoint_stop_status` or
+`GET /api/projects/research/workspaces/WORKSPACE_ID/checkpoint-stop`
+for `pending`, `stopping`, `stopped`, `failed`, or `expired`.
+Successful records retain both the snapshot ID and stop operation ID.
+Repeated requests while pending or stopping are idempotent.
+
+If snapshot creation fails or its operation lease expires while the
+workspace lease is still valid, the controller does not enqueue teardown.
+The workspace remains eligible for recovery and a new checkpoint request.
+An ordinary stop cannot bypass a pending checkpoint, although an
+expired workspace lease still triggers mandatory resource cleanup.
+A worker crash or lease expiry can therefore prevent preservation of
+uncollected files. Schedule checkpoints early rather than waiting until
+the lease deadline. A request is rejected when the lease has less than
+two minutes remaining.
+
+The durable snapshot appears in `workspace_snapshot_list` for the original
+workspace. `workspace_restore` can use its snapshot ID on another ready
+workspace belonging to the **same project**, including after the original
+worker is no longer available. A queued restore is not proof of completion;
+inspect the worker's terminal result and the restored data. Snapshot
+archives store workspace filesystem contents, not process memory,
+running device state, or an off-host encrypted backup. The stored
+artifact only survives controller disk loss when a verified independent
+backup includes it.
+
 ## Offline recovery snapshots
 
 Stop the controller and all processes that write to its data directory before
