@@ -98,3 +98,50 @@ def test_usb_workspace_toggle_is_off_by_default_and_selects_exact_device(monkeyp
         next_ = client.post('/api/workspaces', headers=admin, json={**base,
             'usb_passthrough': True, 'usb_node': 'worker-one', 'usb_device_id': 'usb-drive-1'})
         assert next_.status_code == 400 and 'capacity and hardware' in next_.text
+
+
+def test_admin_stream_upload_and_workspace_import_is_project_scoped(monkeypatch, tmp_path):
+    import hashlib
+    monkeypatch.setenv('PWM_ADMIN_TOKEN', 'controller-secret-' + 'v' * 48)
+    monkeypatch.setenv('PWM_DB', str(tmp_path / 'controller.db'))
+    sys.modules.pop('project_workspace.server', None)
+    server = importlib.import_module('project_workspace.server')
+    admin = {'Authorization': 'Bearer ' + 'controller-secret-' + 'v' * 48}
+    data = b'example image' * 20000
+    digest = hashlib.sha256(data).hexdigest()
+    with TestClient(server.app, base_url='http://localhost') as client:
+        for project in ('alpha', 'beta'):
+            assert client.post('/api/projects', headers=admin,
+                json={'id':project,'title':project}).status_code == 200
+        code=client.post('/api/pairing', headers=admin).json()['pairing_code']
+        worker=client.post('/api/pair',json={'pairing_code':code,'name':'worker-one',
+            'capabilities':{'cpu':4,'memory_mb':8192,'max_jobs':1,'docker':True}})
+        assert worker.status_code == 200
+        missing=client.put('/api/projects/alpha/artifacts/upload',data=data,headers={**admin,
+            'X-Artifact-Name':'image.img','X-Content-Sha256':'0'*64})
+        assert missing.status_code == 400
+        created=client.put('/api/projects/alpha/artifacts/upload',data=data,headers={**admin,
+            'X-Artifact-Name':'image.img','X-Content-Sha256':digest})
+        assert created.status_code == 200,created.text
+        artifact=created.json()
+        assert artifact['size']==len(data) and artifact['sha256']==digest
+        assert client.get(f"/api/projects/alpha/artifacts/{artifact['id']}",headers=admin).content == data
+        selected=client.post('/api/workspaces',headers=admin,json={'project_id':'alpha',
+            'cpu':1,'memory_mb':512})
+        assert selected.status_code == 200,selected.text
+        wid=selected.json()['id']
+        store=server.store
+        operation=store.operation_claim('worker-one')
+        store.operation_finish('worker-one',operation['id'],operation['lease_token'],True,{'status':'ready'})
+        invalid=client.post(f'/api/projects/alpha/workspaces/{wid}/artifacts/import',
+            headers=admin,json={'artifact_id':artifact['id'],'path':'../disk.img'})
+        assert invalid.status_code == 400
+        blocked=client.post(f'/api/projects/beta/workspaces/{wid}/artifacts/import',
+            headers=admin,json={'artifact_id':artifact['id'],'path':'disk.img'})
+        assert blocked.status_code == 400
+        imported=client.post(f'/api/projects/alpha/workspaces/{wid}/artifacts/import',
+            headers=admin,json={'artifact_id':artifact['id'],'path':'images/disk.img'})
+        assert imported.status_code == 200,imported.text
+        op=store.operation_claim('worker-one')
+        assert op['action']=='import_file' and op['payload']['path']=='images/disk.img'
+        assert store.worker_artifact('worker-one',wid,artifact['id'])[1]==data

@@ -57,3 +57,25 @@ class UploadStoreMixin:
                        (artifact_id,row['project'],name,digest,size,time.time()))
             db.execute('INSERT INTO operation_artifacts VALUES(?,?)',(op_id,artifact_id))
             return {'id':artifact_id,'name':name,'sha256':digest,'size':size}
+
+    def artifact_import_stream(self, project, name, temp_path, size, digest):
+        """Register a fully streamed and checksum-verified administrator upload."""
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', name):
+            raise ValueError('Invalid artifact name')
+        if size < 0 or not re.fullmatch(r'[0-9a-f]{64}', digest):
+            raise ValueError('Invalid artifact metadata')
+        artifact_id = uuid.uuid4().hex
+        target = Path(self.path).parent / 'artifacts' / artifact_id
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with self.lock, self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if not db.execute('SELECT 1 FROM projects WHERE id=?', (project,)).fetchone():
+                raise ValueError('Unknown project')
+            os.replace(temp_path, target)
+            try:
+                db.execute('INSERT INTO artifacts VALUES(?,?,?,?,?,?)',
+                           (artifact_id, project, name, digest, size, time.time()))
+            except BaseException:
+                target.unlink(missing_ok=True)
+                raise
+        return {'id': artifact_id, 'name': name, 'sha256': digest, 'size': size}

@@ -278,3 +278,15 @@ func writeDeviceManifest(t *testing.T, payload string) string {
 	}
 	return file
 }
+
+func TestImportArtifactValidatesDestinationBeforeDownloading(t *testing.T) {
+	runner := NewRunner(nil)
+	id := strings.Repeat("a", 32)
+	for _, target := range []string{"../device", "/etc/passwd", "images//disk.img"} {
+		payload, _ := json.Marshal(map[string]any{"path": target, "artifact_id": id})
+		_, err := runner.Handle(context.Background(), Operation{Workspace: id, Action: "import_file", Payload: payload}, nil)
+		if err == nil || !strings.Contains(err.Error(), "workspace path") {
+			t.Fatalf("unsafe artifact destination %q accepted: %v", target, err)
+		}
+	}
+}

@@ -87,6 +87,32 @@ Inspect `GET /api/hardware` for the device `node` and `id`, and choose that devi
 }
 ```
 
+### Transfer an OS image to a workspace
+
+An OS image can be larger than the normal 128 KiB workspace text-write limit. The controller provides an authenticated, streamed binary artifact upload and the Go worker can then import that artifact into its workspace. The image is not placed in a Docker layer. Configure `PWM_MAX_ARTIFACT_BYTES` on the controller **and worker** to a value sufficient for the image (the default is 2 GiB), and provision equivalent disk capacity on both systems.
+
+```sh
+IMAGE=path/to/operating-system.img
+SHA256=$(sha256sum "$IMAGE" | awk '{print $1}')
+curl --fail-with-body -X PUT "$BASE/api/projects/research/artifacts/upload" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Artifact-Name: operating-system.img" \
+  -H "X-Content-Sha256: $SHA256" \
+  -H 'Content-Type: application/octet-stream' \
+  --data-binary @"$IMAGE"
+```
+
+Use the returned `id` to queue the import into a ready workspace:
+
+```sh
+curl --fail-with-body -X POST \
+  "$BASE/api/projects/research/workspaces/WORKSPACE_ID/artifacts/import" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"artifact_id":"ARTIFACT_ID","path":"images/operating-system.img"}'
+```
+
+Check the operation result and verify the checksum inside the workspace before imaging any device. This API does not issue a flash command automatically; selecting a physical target and initiating a destructive write remain separate, explicit actions. File import refuses to overwrite an existing workspace file.
+
 The controller reserves that single device exclusively until the worker confirms container cleanup. A missing or busy selected USB device causes an error; it cannot silently choose another drive. The container maps only the selected device, not all host USB ports. A workspace with a block-device lease can run an OS imaging tool against its mapped device if it has write access. **Flashing is destructive**: identify the intended target on the host and inside the container before writing an image, and never select a host system disk. Docker device pass-through and group permissions are not strong protection against malicious workloads, nor can they make unplug/replug during a flash safe. Physical-drive imaging has not yet passed hardware acceptance tests.
 
 ## Projects, environments, and workspace snapshots
@@ -126,7 +152,7 @@ The default Docker build has network access disabled. To install packages from a
 
 - `workspace_snapshot` creates a compressed, SHA-256 checked archive of workspace files and uploads it to the controller using a fenced, streamed worker transfer. List snapshots and restore a chosen revision into a different workspace in the same project. Snapshots preserve files, not a running process or its memory.
 - `environment_export` saves the built Docker image as a separate durable archive. `environment_import` loads an authorized image export into another approved worker, after checking project and environment versions. Images may be many gigabytes; set `PWM_MAX_ARTIFACT_BYTES` and provision sufficient durable storage and bandwidth.
-- `workspace_call` can run commands, read and write files, list directories, search text, and export files. Only a worker can upload an operation's result, and its short-lived lease token is checked again before the controller commits the artifact.
+- `workspace_call` can run commands, read and write files, list directories, search text, and export files. Large binary inputs use the authenticated streaming artifact-upload endpoint and `workspace_import_artifact`. Only a worker can upload an operation's result, and its short-lived lease token is checked again before the controller commits the artifact.
 - Stop a workspace with `workspace_destroy` or the REST `/stop` route. The worker removes the container but retains the named Docker volume for explicit recovery. The controller releases its GPU/NPU/FPGA reservations **only after the worker confirms cleanup**. Failed cleanup can be retried. Export vital files before deleting volumes.
 
 Docker image archives and filesystem snapshots are separate because mounted volumes are excluded from `docker commit` and `docker image save`. The controller database and artifact directory still need an independently tested off-host backup; the feature above is not a controller backup system.

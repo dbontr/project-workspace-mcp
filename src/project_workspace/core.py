@@ -423,6 +423,25 @@ class Store(ResourceStoreMixin, UploadStoreMixin):
                 raise ValueError('Unknown project')
             return self._artifact_write(db,project,name,data,'github')
 
+    def workspace_import_file(self, project, wid, artifact_id, destination):
+        """Authorize a specific controller artifact for one active workspace."""
+        if (not isinstance(destination, str) or len(destination) > 511 or not destination
+                or destination.startswith('/') or any(part in ('', '.', '..')
+                for part in destination.split('/')) or any(c in destination for c in ('\x00', '\r', '\n'))):
+            raise ValueError('Invalid workspace destination')
+        with self.lock, self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            ws = db.execute("SELECT * FROM workspaces WHERE id=? AND project=? AND status='ready' AND expires>?",
+                            (wid, project, time.time())).fetchone()
+            if not ws:
+                raise ValueError('Workspace is not ready')
+            if not db.execute('SELECT 1 FROM artifacts WHERE id=? AND project=?',
+                              (artifact_id, project)).fetchone():
+                raise ValueError('Artifact not found')
+            db.execute('INSERT OR IGNORE INTO artifact_grants VALUES(?,?)', (wid, artifact_id))
+            return {'operation_id': self._enqueue(db, wid, ws['node'], 'import_file',
+                    {'artifact_id': artifact_id, 'path': destination}), 'status': 'queued'}
+
     def workspace_import(self, project, wid, repository, revision, artifact_id):
         with self.lock,self.connect() as db:
             db.execute('BEGIN IMMEDIATE')

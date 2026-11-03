@@ -606,6 +606,43 @@ func (r *Runner) Handle(ctx context.Context, op Operation, c *Client) (map[strin
 			return nil, err
 		}
 		return map[string]any{"image": image, "image_id": strings.TrimSpace(string(id))}, nil
+	case "import_file":
+		destination, err := safePath(getString(payload, "path"))
+		if err != nil {
+			return nil, err
+		}
+		artifactID := getString(payload, "artifact_id")
+		if !workspaceID.MatchString(artifactID) {
+			return nil, errors.New("invalid file artifact ID")
+		}
+		if c == nil {
+			return nil, errors.New("artifact transfer requires a controller")
+		}
+		file, err := os.CreateTemp("", "pwm-file-import-*")
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		os.Remove(file.Name())
+		if err := c.Artifact(ctx, op, artifactID, file); err != nil {
+			return nil, err
+		}
+		stat, err := file.Stat()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			return nil, err
+		}
+		// The destination is relative to the workspace and must not exist.
+		// Imports cannot silently overwrite a previous file or symlink.
+		parent := path.Dir(destination)
+		command := "set -eu; umask 077; mkdir -p " + shellQuote(parent) +
+			"; [ ! -e " + shellQuote(destination) + " ] && [ ! -L " + shellQuote(destination) + " ]; cat > " + shellQuote(destination)
+		if _, err := r.checked(ctx, 2*time.Hour, file, "exec", "-i", n, "sh", "-c", command); err != nil {
+			return nil, err
+		}
+		return map[string]any{"path": getString(payload, "path"), "size": stat.Size()}, nil
 	case "import_archive":
 		return r.importArchive(ctx, op, c)
 	default:

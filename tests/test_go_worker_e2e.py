@@ -1,6 +1,7 @@
 """Real Go worker and Python MCP controller over HTTP with Docker execution."""
 
 import json
+import hashlib
 import os
 import signal
 import socket
@@ -132,6 +133,24 @@ def test_go_agent_hardware_environment_and_artifact_roundtrip(tmp_path):
             until(lambda:(lambda op:op if op['status']=='succeeded' else None)(api(
                 'GET',f'/api/projects/integration/workspaces/{clone_id}/operations/{restore_id}')),timeout=180)
             assert operation(clone_id,'read_file',{'path':'answer.py'})['content']=='print(42)\n'
+
+            # Stream an image-like artifact larger than the 128 KiB text-write limit.
+            image_bytes=os.urandom(320*1024)
+            image_sha=hashlib.sha256(image_bytes).hexdigest()
+            delivered=client.put('/api/projects/integration/artifacts/upload',content=image_bytes,
+                                 headers={**admin,'X-Artifact-Name':'os-image.bin',
+                                          'X-Content-Sha256':image_sha})
+            assert delivered.status_code==200, delivered.text
+            uploaded=delivered.json()
+            imported=api('POST',f'/api/projects/integration/workspaces/{clone_id}/artifacts/import',
+                         json={'artifact_id':uploaded['id'],'path':'images/os-image.bin'})
+            def import_file_done():
+                op=api('GET',f'/api/projects/integration/workspaces/{clone_id}/operations/{imported["operation_id"]}')
+                if op['status']=='failed':pytest.fail(f'Artifact import failed: {op["result"]}')
+                return op if op['status']=='succeeded' else None
+            until(import_file_done,timeout=180)
+            checked=operation(clone_id,'command',{'command':'sha256sum images/os-image.bin'})
+            assert checked['exit_code']==0 and checked['stdout'].split()[0]==image_sha
 
             recipe={'name':'python-tools','base_image':'python:3.12-slim',
                     'dockerfile':'FROM python:3.12-slim\nRUN python --version\n',
