@@ -72,3 +72,4 @@
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) — Kubernetes. Used for: isolated controller-only backup password projection, init-container copies, and backend credential injection.
 - [Kubernetes init containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) — Kubernetes. Used for: preparing owner-only Restic credentials before controller startup.
 - [Restic REST server](https://github.com/restic/rest-server) — Restic project. Used for: disposable Kubernetes CI REST-backend and networked encrypted backup verification.
+- [Restic 0.14 restore documentation](https://restic.readthedocs.io/en/v0.14.0/050_restore.html) — Restic. Used for: snapshot-ID restore compatibility with the Debian Bookworm controller image.
