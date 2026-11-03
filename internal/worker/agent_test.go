@@ -392,9 +392,9 @@ func TestInterruptedJobContainerCleanup(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "docker.log")
 	script := "#!/bin/sh\n" +
-		"printf '%s\\n' \\"$*\\" >> " + shellQuote(logFile) + "\n" +
-		"if [ \\"$1\\" = run ]; then exec sleep 4; fi\n" +
-		"if [ \\"$1\\" = rm ] || [ \\"$1\\" = ps ]; then exit 0; fi\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(logFile) + "\n" +
+		"if [ \"$1\" = run ]; then exec sleep 4; fi\n" +
+		"if [ \"$1\" = rm ] || [ \"$1\" = ps ]; then exit 0; fi\n" +
 		"exit 1\n"
 	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -434,8 +434,8 @@ func TestJobContainerIdentityAndCleanupVerification(t *testing.T) {
 
 	dir := t.TempDir()
 	script := "#!/bin/sh\n" +
-		"if [ \\"$1\\" = run ]; then exec sleep 4; fi\n" +
-		"if [ \\"$1\\" = ps ]; then printf '%s\\n' pwm-job-" + strings.Repeat("b", 32) + "; fi\n"
+		"if [ \"$1\" = run ]; then exec sleep 4; fi\n" +
+		"if [ \"$1\" = ps ]; then printf '%s\\n' pwm-job-" + strings.Repeat("b", 32) + "; fi\n"
 	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
