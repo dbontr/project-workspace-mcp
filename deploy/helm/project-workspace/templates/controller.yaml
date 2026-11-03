@@ -11,6 +11,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: pwm-controller-state
   namespace: {{ .Values.systemNamespace }}
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   accessModes: ["ReadWriteOnce"]
   {{- if .Values.controller.storageClass }}
