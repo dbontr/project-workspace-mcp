@@ -148,6 +148,10 @@ spec:
             - name: PWM_KUBE_DEVICE_MANIFEST
               value: /etc/pwm-devices/devices.json
             {{- end }}
+            {{- if .Values.worker.workspaceImagePullSecret }}
+            - name: PWM_KUBE_IMAGE_PULL_SECRET
+              value: {{ .Values.worker.workspaceImagePullSecret | quote }}
+            {{- end }}
             - name: PWM_KUBE_WORKSPACE_STORAGE
               value: {{ .Values.worker.workspaceStorage | quote }}
             {{- if .Values.worker.workspaceStorageClass }}
