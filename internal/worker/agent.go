@@ -138,22 +138,69 @@ func (c *Client) Pair(ctx context.Context, code string, capabilities map[string]
 	return response.WorkerToken, err
 }
 
-func (c *Client) Run(ctx context.Context, runner *Runner) error {
-	if c.Node == "" || c.Token == "" || c.HTTP == nil {
-		return errors.New("worker requires node credential")
+// heartbeat reports current node capacity independently of work execution.
+func (c *Client) heartbeat(ctx context.Context, runner *Runner) error {
+	capabilities, err := Capabilities(runner.AvailableDevices())
+	if err != nil {
+		return err
 	}
+	capabilities["images"] = runner.ApprovedImages()
+	return c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/heartbeat", c.Node),
+		map[string]any{"capabilities": capabilities}, nil)
+}
+
+// heartbeatWhileRunning keeps a busy worker visible to the scheduler. A
+// revoked worker credential ends execution instead of allowing new work.
+func (c *Client) heartbeatWhileRunning(ctx context.Context, runner *Runner, interval time.Duration, cancel context.CancelCauseFunc) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			requestCtx, stop := context.WithTimeout(ctx, 20*time.Second)
+			err := c.heartbeat(requestCtx, runner)
+			stop()
+			if err == nil || ctx.Err() != nil {
+				continue
+			}
+			if !retryableControllerError(err) {
+				cancel(fmt.Errorf("worker heartbeat rejected: %w", err))
+				return
+			}
+			log.Printf("worker heartbeat temporarily failed: %v", err)
+		}
+	}
+}
+
+func (c *Client) Run(ctx context.Context, runner *Runner) error {
+	return c.runWithHeartbeatInterval(ctx, runner, 30*time.Second)
+}
+
+// runWithHeartbeatInterval permits fast lifecycle tests without changing
+// the production heartbeat cadence.
+func (c *Client) runWithHeartbeatInterval(parent context.Context, runner *Runner, interval time.Duration) error {
+
+	if c.Node == "" || c.Token == "" || c.HTTP == nil || runner == nil {
+		return errors.New("worker requires node credential and runner")
+	}
+	ctx, cancel := context.WithCancelCause(parent)
+	heartbeatDone := make(chan struct{})
+	go func() {
+		defer close(heartbeatDone)
+		c.heartbeatWhileRunning(ctx, runner, interval, cancel)
+	}()
+	defer func() {
+		cancel(nil)
+		<-heartbeatDone
+	}()
 	attempts := 0
 	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return context.Cause(ctx)
 		}
-		capabilities, err := Capabilities(runner.AvailableDevices())
-		if err != nil {
-			return err
-		}
-		capabilities["images"] = runner.ApprovedImages()
-		beat := map[string]any{"capabilities": capabilities}
-		if err := c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/heartbeat", c.Node), beat, nil); err != nil {
+		if err := c.heartbeat(ctx, runner); err != nil {
 			if failure := retryController(ctx, err, &attempts); failure != nil {
 				return failure
 			}
@@ -203,7 +250,7 @@ func (c *Client) Run(ctx context.Context, runner *Runner) error {
 		attempts = 0
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return context.Cause(ctx)
 		case <-time.After(5 * time.Second):
 		}
 	}
