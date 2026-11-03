@@ -196,7 +196,16 @@ func command(args []string) error {
 			_ = server.Shutdown(ctx)
 		}()
 		log.Printf("Project Workspace MCP listening at %s", *addr)
-		serveErr := server.ListenAndServe()
+		certFile, keyFile := os.Getenv("PWM_TLS_CERT_FILE"), os.Getenv("PWM_TLS_KEY_FILE")
+		if (certFile == "") != (keyFile == "") {
+			return errors.New("controller HTTPS requires both certificate and private key")
+		}
+		var serveErr error
+		if certFile != "" {
+			serveErr = server.ListenAndServeTLS(certFile, keyFile)
+		} else {
+			serveErr = server.ListenAndServe()
+		}
 		stop()
 		offsite.Wait()
 		if serveErr != nil && serveErr != http.ErrServerClosed {
