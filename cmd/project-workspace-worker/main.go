@@ -58,24 +58,52 @@ func run(args []string) error {
 	tokenFile := flags.String("token-file", "", "worker credential file (owner read-only)")
 	deviceFile := flags.String("devices", os.Getenv("PWM_DEVICE_MANIFEST"), "approved hardware manifest")
 	enableUSB := flags.Bool("enable-usb", os.Getenv("PWM_ENABLE_USB_PASSTHROUGH") == "1", "allow operator-approved USB passthrough (disabled by default)")
+	backendDefault := os.Getenv("PWM_EXECUTION_BACKEND")
+	if backendDefault == "" {
+		backendDefault = "kubernetes"
+	}
+	backend := flags.String("backend", backendDefault, "executor: kubernetes or docker")
+	namespace := flags.String("namespace", os.Getenv("PWM_KUBE_NAMESPACE"), "Kubernetes workload namespace")
+	project := flags.String("project", os.Getenv("PWM_KUBE_PROJECT_ID"), "project isolated in this Kubernetes namespace")
+	cpu := flags.Float64("capacity-cpu", 4, "advisory namespace CPU capacity")
+	memory := flags.Int("capacity-memory-mb", 8192, "advisory namespace memory capacity in MiB")
+	maxJobs := flags.Int("max-jobs", 2, "maximum parallel Kubernetes task leases")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
 	if cmd != "doctor" && cmd != "join" && cmd != "serve" {
 		return errors.New("unsupported command")
 	}
-	devices, err := worker.LoadDevices(*deviceFile)
-	if err != nil {
-		return err
+	var devices []worker.Device
+	if *backend == "docker" {
+		var err error
+		devices, err = worker.LoadDevices(*deviceFile)
+		if err != nil {
+			return err
+		}
+	} else if *backend != "kubernetes" {
+		return errors.New("unsupported execution backend")
+	} else if *enableUSB || *deviceFile != "" {
+		return errors.New("Kubernetes device claims require an approved device-plugin configuration, not host device mappings")
 	}
 	runner := worker.NewRunner(devices)
-	runner.USBEnabled = *enableUSB
+	runner.USBEnabled = *enableUSB && *backend == "docker"
 	runner.ReconcileOnConnect = cmd == "serve"
-	capabilities, err := worker.Capabilities(runner.AvailableDevices())
+	if *backend == "kubernetes" {
+		k, err := worker.NewKubernetes(*namespace, *project, *cpu, *memory, *maxJobs)
+		if err != nil {
+			return err
+		}
+		k.Worker = *node
+		if cmd == "doctor" && *node == "" {
+			k.Worker = "doctor"
+		}
+		runner.Kube = k
+	}
+	capabilities, err := runner.Capabilities()
 	if err != nil {
 		return err
 	}
-	capabilities["images"] = runner.ApprovedImages()
 	if cmd == "doctor" {
 		encoded, _ := json.MarshalIndent(capabilities, "", "  ")
 		fmt.Println(string(encoded))
