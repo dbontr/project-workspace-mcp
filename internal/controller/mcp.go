@@ -48,6 +48,19 @@ var tools = []toolDefinition{
 	{"github_list_issues", "List issues", []string{"project_id", "repository"}, []string{"state"}},
 	{"github_list_pull_requests", "List pull requests", []string{"project_id", "repository"}, []string{"state"}},
 	{"github_create_issue", "Create a GitHub issue", []string{"project_id", "repository", "title"}, []string{"body"}},
+	{"github_get_issue", "Read a GitHub issue", []string{"project_id", "repository", "number"}, nil},
+	{"github_update_issue", "Update a GitHub issue with an expected state", []string{"project_id", "repository", "number", "expected_state"}, []string{"state", "state_reason", "title", "body"}},
+	{"github_comment_issue", "Comment on a GitHub issue or pull request", []string{"project_id", "repository", "number", "body"}, nil},
+	{"github_list_branches", "List repository branches", []string{"project_id", "repository"}, nil},
+	{"github_set_branch_auto_delete", "Configure GitHub to delete branches after merging PRs", []string{"project_id", "repository", "enabled", "confirm"}, nil},
+	{"github_create_branch", "Create an agent-managed branch from a revision", []string{"project_id", "repository", "branch", "from_ref"}, nil},
+	{"github_get_pull_request", "Read a GitHub pull request", []string{"project_id", "repository", "number"}, nil},
+	{"github_create_pull_request", "Create a pull request from a managed branch", []string{"project_id", "repository", "base_branch", "head_branch", "title"}, []string{"body", "draft"}},
+	{"github_update_pull_request", "Edit a pull request with a revision guard", []string{"project_id", "repository", "number", "expected_head"}, []string{"title", "body"}},
+	{"github_mark_pull_request_ready", "Mark a revision-guarded draft pull request ready for review", []string{"project_id", "repository", "number", "expected_head"}, nil},
+	{"github_verify_pull_request", "Inspect mergeability and commit checks for a pull request", []string{"project_id", "repository", "number"}, nil},
+	{"github_merge_pull_request", "Verify checks and merge a pull request with explicit confirmation", []string{"project_id", "repository", "number", "expected_head", "confirm"}, []string{"merge_method", "cleanup_branch"}},
+	{"github_cleanup_merged_branch", "Delete a merged branch after verifying ownership, revision, and open PRs", []string{"project_id", "repository", "number", "expected_head", "confirm"}, nil},
 	{"github_checkout_repository", "Checkout a GitHub archive into a workspace", []string{"project_id", "workspace_id", "repository", "ref"}, nil},
 	{"github_publish_artifacts", "Publish project artifacts to a revision-guarded draft PR", []string{"project_id", "repository", "base_branch", "expected_head", "changes", "title"}, []string{"body"}},
 	{"list_project_artifacts", "List durable project artifacts", []string{"project_id"}, nil},
@@ -76,7 +89,7 @@ func kindFor(key string) string {
 		return "number"
 	case "memory_mb", "duration_minutes", "expected_version", "number":
 		return "integer"
-	case "usb_passthrough":
+	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
 	case "hardware", "payload", "params", "changes":
 		return "object"
@@ -358,6 +371,32 @@ func (s *Server) callTool(name string, a map[string]any) (any, error) {
 		return g.Issues(repository, state, name == "github_list_pull_requests")
 	case "github_create_issue":
 		return g.IssueCreate(repository, get("title"), get("body"))
+	case "github_get_issue":
+		return g.Issue(repository, asInt(a["number"]))
+	case "github_update_issue":
+		return g.IssueUpdate(repository, asInt(a["number"]), get("expected_state"), get("state"), get("state_reason"), optionalString(a, "title"), optionalString(a, "body"))
+	case "github_comment_issue":
+		return g.IssueComment(repository, asInt(a["number"]), get("body"))
+	case "github_list_branches":
+		return g.Branches(repository)
+	case "github_set_branch_auto_delete":
+		return g.SetAutoDeleteMergedBranches(repository, a["enabled"] == true, a["confirm"] == true)
+	case "github_create_branch":
+		return g.BranchCreate(repository, get("branch"), get("from_ref"))
+	case "github_get_pull_request":
+		return g.Pull(repository, asInt(a["number"]))
+	case "github_create_pull_request":
+		return g.PullCreate(repository, get("base_branch"), get("head_branch"), get("title"), get("body"), a["draft"] == true)
+	case "github_update_pull_request":
+		return g.PullUpdate(repository, asInt(a["number"]), get("expected_head"), optionalString(a, "title"), optionalString(a, "body"))
+	case "github_mark_pull_request_ready":
+		return g.PullReady(repository, asInt(a["number"]), get("expected_head"))
+	case "github_verify_pull_request":
+		return g.PullVerification(repository, asInt(a["number"]))
+	case "github_merge_pull_request":
+		return g.PullMerge(repository, asInt(a["number"]), get("expected_head"), get("merge_method"), a["confirm"] == true, a["cleanup_branch"] != false)
+	case "github_cleanup_merged_branch":
+		return g.CleanupMergedBranch(repository, asInt(a["number"]), get("expected_head"), a["confirm"] == true)
 	case "github_checkout_repository":
 		return s.CheckoutArchive(project, workspace, repository, get("ref"))
 	case "github_publish_artifacts":
@@ -401,4 +440,17 @@ func readBounded(path string, limit int64) ([]byte, error) {
 		return nil, errors.New("file exceeds size limit")
 	}
 	return data, nil
+}
+
+// optionalString distinguishes an omitted field from an explicit empty value.
+func optionalString(args map[string]any, key string) *string {
+	v, ok := args[key]
+	if !ok {
+		return nil
+	}
+	str, ok := v.(string)
+	if !ok {
+		return nil
+	}
+	return &str
 }
