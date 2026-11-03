@@ -1,0 +1,170 @@
+{{- if .Values.worker.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.worker.workloadNamespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pwm-sandbox
+  namespace: {{ .Values.worker.workloadNamespace }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pwm-worker-{{ .Values.worker.projectID }}
+  namespace: {{ .Values.systemNamespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pwm-worker
+  namespace: {{ .Values.worker.workloadNamespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pwm-worker
+  namespace: {{ .Values.worker.workloadNamespace }}
+subjects:
+  - kind: ServiceAccount
+    name: pwm-worker-{{ .Values.worker.projectID }}
+    namespace: {{ .Values.systemNamespace }}
+roleRef:
+  kind: Role
+  name: pwm-worker
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: pwm-project-quota
+  namespace: {{ .Values.worker.workloadNamespace }}
+spec:
+  hard:
+    requests.cpu: {{ .Values.quota.cpu | quote }}
+    limits.cpu: {{ .Values.quota.cpu | quote }}
+    requests.memory: {{ .Values.quota.memory | quote }}
+    limits.memory: {{ .Values.quota.memory | quote }}
+    requests.storage: {{ .Values.quota.storage | quote }}
+    count/persistentvolumeclaims: {{ .Values.quota.maxPVCs | quote }}
+    count/pods: {{ .Values.quota.maxPods | quote }}
+    count/jobs.batch: {{ .Values.quota.maxJobs | quote }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pwm-isolate-workloads
+  namespace: {{ .Values.worker.workloadNamespace }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress: []
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pwm-worker-{{ .Values.worker.projectID }}
+  namespace: {{ .Values.systemNamespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pwm-worker
+      pwm-project: {{ .Values.worker.projectID }}
+  template:
+    metadata:
+      labels:
+        app: pwm-worker
+        pwm-project: {{ .Values.worker.projectID }}
+    spec:
+      serviceAccountName: pwm-worker-{{ .Values.worker.projectID }}
+      automountServiceAccountToken: true
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: {{ .Values.worker.image | quote }}
+          imagePullPolicy: Always
+          args:
+            - serve
+            - --backend=kubernetes
+            - --controller=https://pwm-controller.{{ .Values.systemNamespace }}.svc.cluster.local:8443
+            - --node={{ .Values.worker.name }}
+            - --project={{ .Values.worker.projectID }}
+            - --namespace={{ .Values.worker.workloadNamespace }}
+            - --capacity-cpu={{ .Values.worker.cpuCapacity }}
+            - --capacity-memory-mb={{ .Values.worker.memoryCapacityMB }}
+            - --max-jobs={{ .Values.worker.maxJobs }}
+          env:
+            - name: HOME
+              value: /tmp
+            - name: SSL_CERT_FILE
+              value: /etc/pwm-ca/ca.crt
+            - name: PWM_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.worker.tokenSecretName }}
+                  key: worker_token
+            - name: PWM_ALLOWED_IMAGES
+              value: {{ .Values.worker.allowedImages | quote }}
+            - name: PWM_KUBE_WORKSPACE_STORAGE
+              value: {{ .Values.worker.workspaceStorage | quote }}
+            {{- if .Values.worker.workspaceStorageClass }}
+            - name: PWM_KUBE_STORAGE_CLASS
+              value: {{ .Values.worker.workspaceStorageClass | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: ca
+              mountPath: /etc/pwm-ca
+              readOnly: true
+            - name: scratch
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: ca
+          secret:
+            secretName: {{ .Values.worker.controllerCASecretName }}
+            defaultMode: 292
+        - name: scratch
+          emptyDir:
+            sizeLimit: 128Mi
+{{- end }}

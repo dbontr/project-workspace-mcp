@@ -1,5 +1,5 @@
 [Unit]
-Description=Project Workspace MCP Docker worker
+Description=Project Workspace MCP Docker compatibility worker
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service
@@ -12,7 +12,7 @@ SupplementaryGroups=docker
 WorkingDirectory=/var/lib/project-workspace-worker
 Environment=HOME=/var/lib/project-workspace-worker
 EnvironmentFile=/etc/project-workspace/worker.env
-ExecStart=/usr/local/bin/project-workspace-worker serve --controller ${PWM_CONTROLLER_URL} --node ${PWM_NODE_ID}
+ExecStart=/usr/local/bin/project-workspace-worker serve --backend docker --controller ${PWM_CONTROLLER_URL} --node ${PWM_NODE_ID}
 StateDirectory=project-workspace-worker
 StateDirectoryMode=0700
 UMask=0077

@@ -1,0 +1,21 @@
+FROM golang:1.23-bookworm AS build
+WORKDIR /src
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -o /out/worker ./cmd/project-workspace-worker
+
+FROM debian:bookworm-slim AS kubectl
+ARG TARGETARCH=amd64
+ARG KUBECTL_VERSION=v1.34.1
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
+    && curl -fsSLo /tmp/kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256" \
+    && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum --check \
+    && chmod 0755 /usr/local/bin/kubectl
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/worker /usr/local/bin/project-workspace-worker
+COPY --from=kubectl /usr/local/bin/kubectl /usr/local/bin/kubectl
+USER 65534:65534
+ENTRYPOINT ["/usr/local/bin/project-workspace-worker"]

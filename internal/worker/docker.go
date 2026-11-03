@@ -25,6 +25,7 @@ import (
 )
 
 type Runner struct {
+	Kube               *Kubernetes
 	WorkerID           string
 	ReconcileOnConnect bool
 	Devices            []Device
@@ -339,6 +340,39 @@ func (r *Runner) saveOutput(ctx context.Context, op Operation, c *Client, artifa
 	return map[string]any{"artifact_id": artifactID}, nil
 }
 
+// workspaceExec preserves tar validation and artifact integrity across runtimes.
+func (r *Runner) workspaceExec(ctx context.Context, timeout time.Duration, input io.Reader, id string, command ...string) ([]byte, error) {
+	n, err := name(id)
+	if err != nil {
+		return nil, err
+	}
+	if r.Kube != nil {
+		args := []string{"exec"}
+		if input != nil {
+			args = append(args, "-i")
+		}
+		args = append(args, "pod/"+n, "-c", "workspace", "--")
+		args = append(args, command...)
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		out, stderr, status, err := r.Kube.call(runCtx, 2<<20, input, args...)
+		if err != nil {
+			return nil, err
+		}
+		if status != 0 {
+			return nil, fmt.Errorf("Kubernetes workspace command failed: %s", strings.TrimSpace(string(stderr)))
+		}
+		return out, nil
+	}
+	args := []string{"exec"}
+	if input != nil {
+		args = append(args, "-i")
+	}
+	args = append(args, n)
+	args = append(args, command...)
+	return r.checked(ctx, timeout, input, args...)
+}
+
 func (r *Runner) restore(ctx context.Context, op Operation, c *Client) (map[string]any, error) {
 	var payload struct {
 		ArtifactID string `json:"artifact_id"`
@@ -390,11 +424,7 @@ func (r *Runner) restore(ctx context.Context, op Operation, c *Client) (map[stri
 	if _, err := temp.Seek(0, 0); err != nil {
 		return nil, err
 	}
-	n, err := name(op.Workspace)
-	if err != nil {
-		return nil, err
-	}
-	_, err = r.checked(ctx, 2*time.Hour, temp, "exec", "-i", n, "tar", "-xzf", "-",
+	_, err = r.workspaceExec(ctx, 2*time.Hour, temp, op.Workspace, "tar", "-xzf", "-",
 		"--no-same-owner", "--no-same-permissions", "-C", "/workspace")
 	if err != nil {
 		return nil, err
@@ -515,6 +545,9 @@ func (r *Runner) build(ctx context.Context, p map[string]any) (map[string]any, e
 }
 
 func (r *Runner) Handle(ctx context.Context, op Operation, c *Client) (map[string]any, error) {
+	if r.Kube != nil {
+		return r.Kube.Handle(ctx, r, op, c)
+	}
 	payload, err := stringPayload(op.Payload)
 	if err != nil {
 		return nil, err
@@ -773,14 +806,11 @@ func (r *Runner) importArchive(ctx context.Context, op Operation, c *Client) (ma
 		return nil, err
 	}
 	gz.Close()
-	n, err := name(op.Workspace)
-	if err != nil {
+	if _, err := r.workspaceExec(ctx, 5*time.Minute, nil, op.Workspace, "mkdir", "-p", "/workspace/repos"); err != nil {
 		return nil, err
 	}
-	if _, err := r.checked(ctx, 5*time.Minute, nil, "exec", n, "mkdir", "-p", "/workspace/repos"); err != nil {
-		return nil, err
-	}
-	if _, err := r.checked(ctx, 5*time.Minute, bytes.NewReader(packed.Bytes()), "exec", "-i", n, "tar", "-xf", "-", "-C", "/workspace"); err != nil {
+	if _, err := r.workspaceExec(ctx, 5*time.Minute, bytes.NewReader(packed.Bytes()), op.Workspace,
+		"tar", "-xf", "-", "--no-same-owner", "--no-same-permissions", "-C", "/workspace"); err != nil {
 		return nil, err
 	}
 	return map[string]any{"repository": p.Repository, "revision": p.Revision, "files_bytes": total}, nil
@@ -813,6 +843,10 @@ var workerNodeName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,62}$`)
 // It runs after successful authentication and before the worker claims work.
 // Jobs created by older versions without worker labels need manual review.
 func (r *Runner) ReconcileStaleJobs(ctx context.Context, node string) error {
+	if r.Kube != nil {
+		r.Kube.Worker = node
+		return r.Kube.ReconcileStaleJobs(ctx)
+	}
 	if !workerNodeName.MatchString(node) {
 		return errors.New("invalid worker ID")
 	}
@@ -853,6 +887,9 @@ func (r *Runner) ReconcileStaleJobs(ctx context.Context, node string) error {
 }
 
 func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
+	if r.Kube != nil {
+		return r.Kube.ExecuteJob(ctx, r, job)
+	}
 	if !workspaceID.MatchString(job.ID) {
 		return "failed", "invalid job ID"
 	}

@@ -121,8 +121,11 @@ func (db *Database) PlanWorkspace(req WorkspaceRequest) (map[string]any, error) 
 			if now-asFloat(node["last_seen"]) >= 90 {
 				reasons = append(reasons, "worker heartbeat expired")
 			}
-			if !asBool(caps["docker"]) {
-				reasons = append(reasons, "worker has no approved Docker executor")
+			if !asBool(caps["kubernetes"]) && !asBool(caps["docker"]) {
+				reasons = append(reasons, "worker has no approved Kubernetes or Docker executor")
+			}
+			if asBool(caps["kubernetes"]) && asString(caps["project_id"]) != req.ProjectID {
+				reasons = append(reasons, "Kubernetes namespace is reserved for another project")
 			}
 			if req.NodeID != "" && id != req.NodeID {
 				reasons = append(reasons, "worker does not match requested node")

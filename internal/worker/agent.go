@@ -140,11 +140,10 @@ func (c *Client) Pair(ctx context.Context, code string, capabilities map[string]
 
 // heartbeat reports current node capacity independently of work execution.
 func (c *Client) heartbeat(ctx context.Context, runner *Runner) error {
-	capabilities, err := Capabilities(runner.AvailableDevices())
+	capabilities, err := runner.Capabilities()
 	if err != nil {
 		return err
 	}
-	capabilities["images"] = runner.ApprovedImages()
 	return c.request(ctx, "POST", fmt.Sprintf("/api/worker/%s/heartbeat", c.Node),
 		map[string]any{"capabilities": capabilities}, nil)
 }
@@ -367,6 +366,29 @@ func (c *Client) Upload(ctx context.Context, op Operation, name string, f *os.Fi
 		return "", errors.New("artifact upload digest verification failed")
 	}
 	return receipt.ID, nil
+}
+
+// Capabilities reports namespace limits for Kubernetes workers and host
+// capacity only for the explicit legacy Docker backend.
+func (r *Runner) Capabilities() (map[string]any, error) {
+	if r.Kube != nil {
+		k := r.Kube
+		if !kubernetesName.MatchString(k.Worker) {
+			return nil, errors.New("invalid Kubernetes worker identity")
+		}
+		return map[string]any{
+			"cpu": k.CPU, "memory_mb": k.MemoryMB, "max_jobs": k.MaxJobs,
+			"kubernetes": true, "docker": false, "project_id": k.Project,
+			"namespace": k.Namespace, "os": "linux", "arch": runtime.GOARCH,
+			"devices": []any{}, "images": r.ApprovedImages(),
+		}, nil
+	}
+	capabilities, err := Capabilities(r.AvailableDevices())
+	if err != nil {
+		return nil, err
+	}
+	capabilities["images"] = r.ApprovedImages()
+	return capabilities, nil
 }
 
 func Capabilities(devices []Device) (map[string]any, error) {

@@ -1,0 +1,51 @@
+systemNamespace: pwm-system
+
+controller:
+  enabled: true
+  image: ghcr.io/dbontr/project-workspace-controller:main
+  secretName: pwm-controller-credentials
+  tlsSecretName: pwm-controller-tls
+  publicURL: ""
+  allowedHosts: "pwm-controller,pwm-controller.pwm-system.svc.cluster.local"
+  allowedOrigins: "https://pwm-controller.pwm-system.svc.cluster.local"
+  databaseSize: 50Gi
+  storageClass: ""
+  githubPATSecretName: ""
+  backupInterval: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+worker:
+  enabled: true
+  image: ghcr.io/dbontr/project-workspace-worker:main
+  name: research-agent
+  projectID: research
+  workloadNamespace: pwm-research
+  tokenSecretName: pwm-worker-research-credentials
+  controllerCASecretName: pwm-controller-ca
+  cpuCapacity: 8
+  memoryCapacityMB: 16384
+  maxJobs: 4
+  workspaceStorage: 10Gi
+  workspaceStorageClass: ""
+  allowedImages: "debian:bookworm-slim"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+quota:
+  cpu: "16"
+  memory: 32Gi
+  storage: 500Gi
+  maxPods: "64"
+  maxPVCs: "64"
+  maxJobs: "64"

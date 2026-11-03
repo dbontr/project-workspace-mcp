@@ -229,7 +229,7 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			return errors.New("node not found")
 		}
 		caps := decodeObject(asString(n["capabilities"]))
-		if !asBool(caps["docker"]) {
+		if !asBool(caps["docker"]) && !asBool(caps["kubernetes"]) {
 			return nil
 		}
 		occupied, e := db.lockedOne("SELECT count(*) n,coalesce(sum(cpu),0) c,coalesce(sum(memory_mb),0) m FROM jobs WHERE node=? AND status='leased'", node)
@@ -245,7 +245,17 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 		}
 		availableCPU := asFloat(caps["cpu"]) - asFloat(occupied["c"]) - asFloat(reserved["c"])
 		availableMem := asFloat(caps["memory_mb"]) - asFloat(occupied["m"]) - asFloat(reserved["m"])
-		row, e := db.lockedOne("SELECT * FROM jobs WHERE status='queued' AND cpu<=? AND memory_mb<=? ORDER BY created,id LIMIT 1", availableCPU, availableMem)
+		query := "SELECT * FROM jobs WHERE status='queued' AND cpu<=? AND memory_mb<=?"
+		arguments := []any{availableCPU, availableMem}
+		if asBool(caps["kubernetes"]) {
+			project := asString(caps["project_id"])
+			if project == "" {
+				return errors.New("Kubernetes worker must be scoped to one project")
+			}
+			query += " AND project=?"
+			arguments = append(arguments, project)
+		}
+		row, e := db.lockedOne(query+" ORDER BY created,id LIMIT 1", arguments...)
 		if e != nil || row == nil {
 			return e
 		}

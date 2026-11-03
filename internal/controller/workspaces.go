@@ -166,7 +166,9 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 				req.Environment == "" && caps["images"] != nil && !workerHasImage(caps, req.Image) {
 				continue
 			}
-			if !asBool(caps["docker"]) || asFloat(caps["cpu"]) < req.CPU || asFloat(caps["memory_mb"]) < float64(req.MemoryMB) {
+			if (!asBool(caps["kubernetes"]) && !asBool(caps["docker"])) ||
+				asBool(caps["kubernetes"]) && asString(caps["project_id"]) != req.ProjectID ||
+				asFloat(caps["cpu"]) < req.CPU || asFloat(caps["memory_mb"]) < float64(req.MemoryMB) {
 				continue
 			}
 			nodeArch := asString(caps["arch"])
