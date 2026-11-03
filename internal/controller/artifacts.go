@@ -50,7 +50,7 @@ func (db *Database) operationUploadAuthorized(node, ws, op, token string) (strin
 		return "", errors.New("invalid upload lease")
 	}
 	switch asString(r["action"]) {
-	case "export_file", "snapshot", "export_image":
+	case "export_file", "snapshot", "export_image", "capture_display":
 		return asString(r["project"]), nil
 	}
 	return "", errors.New("operation does not permit upload")
