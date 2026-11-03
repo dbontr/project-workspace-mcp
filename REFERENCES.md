@@ -49,3 +49,7 @@
 - [Docker volume create](https://docs.docker.com/reference/cli/docker/volume/create/) — Docker. Used for: independently labeled workspace volume ownership.
 - [Docker volume inspect](https://docs.docker.com/reference/cli/docker/volume/inspect/) — Docker. Used for: ownership verification before retained-volume cleanup.
 - [Docker volume remove](https://docs.docker.com/reference/cli/docker/volume/rm/) — Docker. Used for: non-forced removal and verification of stopped workspace volumes.
+- [Managing your personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) — GitHub. Used for: account-owned PAT authentication, token scope constraints and controller credential guidance.
+- [REST API: Get the authenticated user](https://docs.github.com/en/rest/users/users#get-the-authenticated-user) — GitHub. Used for: deriving Git author and committer identity from the PAT owner.
+- [REST API: Git commits](https://docs.github.com/en/rest/git/commits#create-a-commit) — GitHub. Used for: explicit Git author and committer fields and provider-confirmed commit creation.
+- [GitHub no-reply email address reference](https://docs.github.com/en/account-and-profile/reference/email-addresses-reference) — GitHub. Used for: privacy-preserving ID-based commit attribution to the authenticated account.
