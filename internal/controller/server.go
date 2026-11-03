@@ -8,8 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
