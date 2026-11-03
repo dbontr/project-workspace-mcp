@@ -177,4 +177,3 @@ func TestKubernetesWorkloadsUseNamespaceImagePullSecrets(t *testing.T) {
 		}
 	}
 }
-
