@@ -810,11 +810,21 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 		}
 		return "failed", err.Error()
 	}
+	if status != 0 {
+		// A failed command normally exits with --rm cleanup, but a Docker
+		// client or daemon failure can leave the named container behind.
+		if cleanupErr := r.cleanupInterruptedJob(container); cleanupErr != nil {
+			return "failed", fmt.Sprintf("docker exit %d; %v", status, cleanupErr)
+		}
+	}
 	result := string(out) + "\n" + string(stderr)
 	if len(result) > 32768 {
 		result = result[len(result)-32768:]
 	}
 	if status != 0 {
+		if strings.TrimSpace(result) == "" {
+			return "failed", fmt.Sprintf("docker exit %d", status)
+		}
 		return "failed", result
 	}
 	return "succeeded", result
