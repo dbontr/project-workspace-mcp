@@ -86,7 +86,7 @@ func TestGitHubAppInstallationCredentials(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"token":      fmt.Sprintf("ghs-%s-%020d", scope, issued[scope]),
-				"expires_at": time.Now().Add(40*time.Minute).UTC().Format(time.RFC3339),
+				"expires_at": time.Now().Add(40 * time.Minute).UTC().Format(time.RFC3339),
 			})
 		case r.URL.Path == "/repos/example/repo" && r.Method == http.MethodGet:
 			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ghs-repo-") {
