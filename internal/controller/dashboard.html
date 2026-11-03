@@ -14,7 +14,7 @@ input:not([type=checkbox]){flex:1;min-width:180px}select{min-width:180px}label{d
 main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem}
 section{background:#19232f;border:1px solid #334155;border-radius:.8rem;padding:1.2rem;min-height:150px}
 h2{font-size:1.1rem;margin-top:0}ul{list-style:none;margin:0;padding:0}li{padding:.65rem 0;border-top:1px solid #334155;overflow-wrap:anywhere}
-strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb7185}details{padding:.5rem 0;border-top:1px solid #334155}summary{cursor:pointer;font-weight:600}.control-note{font-size:.9rem}
+strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb7185}#plan-result{white-space:pre-wrap;overflow-wrap:anywhere;color:#94a3b8;font:inherit;font-size:.9rem}details{padding:.5rem 0;border-top:1px solid #334155}summary{cursor:pointer;font-weight:600}.control-note{font-size:.9rem}
 </style>
 </head>
 <body>
@@ -27,14 +27,20 @@ strong{color:#f8fafc}.muted{color:#94a3b8}#notice{min-height:1.2rem;color:#fb718
     <select id="project-select" aria-label="Project" required><option value="">Connect to select a project</option></select>
     <input id="cpu" type="number" step="0.5" min="0.5" max="32" value="1" aria-label="CPU cores" required>
     <input id="memory" type="number" step="128" min="128" max="131072" value="1024" aria-label="Memory in MiB" required>
+    <select id="node-target" aria-label="Requested compute node"><option value="">Automatic node selection</option></select>
+    <select id="arch-target" aria-label="Required architecture"><option value="">Any architecture</option><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
+    <select id="gpu-count" aria-label="Required GPU count"><option value="0">No GPU</option><option value="1">One GPU</option></select>
+    <input id="min-gpu-memory" type="number" min="0" max="1000000" value="0" step="1024" aria-label="Minimum GPU memory in MiB">
     <label><input id="usb-toggle" type="checkbox"> Enable USB passthrough</label>
     <div id="usb-options" hidden>
       <label for="usb-device">USB device to attach</label>
       <select id="usb-device"><option value="">Select a USB device</option></select>
       <small class="usb-warning">A workspace with USB access can overwrite the selected device. Select the exact device intended for flashing. All mounted disks are rejected.</small>
     </div>
+    <button type="button" id="preview-workspace">Preview resource eligibility</button>
     <button type="submit">Create workspace</button>
   </form>
+  <pre id="plan-result" role="status" aria-live="polite"></pre>
 </section>
 <section aria-label="GitHub planning integration">
   <h2>GitHub Projects planning</h2>
@@ -149,6 +155,7 @@ async function submitPool(event,operation){
 }
 async function refresh(){
   const projects=await get('/api/projects');const nodes=await get('/api/nodes');
+  pickOptions('node-target',[['','Automatic node selection'],...nodes.map(n=>[n.id,n.id+(n.online?' (online)':' (offline)')])]);
   const projectSelect=el('project-select');const selectedProject=projectSelect.value;
   const planningSelect=el('planning-project');const selectedPlanning=planningSelect.value;
   planningSelect.replaceChildren();
@@ -238,21 +245,42 @@ el('planning-link').addEventListener('submit',async event=>{
   }catch(e){el('notice').textContent=e.message}
 });
 el('usb-toggle').addEventListener('change' ,()=>{el('usb-options').hidden=!el('usb-toggle').checked});
+function workspaceRequest(){
+  const usb=el('usb-toggle').checked;
+  const device=availableUSB.find(d=>d.node+'::'+d.id===el('usb-device').value);
+  if(usb&&!device)throw new Error('Select the exact USB device to reserve');
+  const gpu=Number(el('gpu-count').value),vram=Number(el('min-gpu-memory').value);
+  if(vram>0&&gpu===0)throw new Error('Select a GPU when specifying GPU memory');
+  const request={project_id:el('project-select').value,cpu:Number(el('cpu').value),
+    memory_mb:Number(el('memory').value),usb_passthrough:usb};
+  if(el('node-target').value)request.node_id=el('node-target').value;
+  if(el('arch-target').value)request.architecture=el('arch-target').value;
+  const hardware={};if(gpu)hardware.gpu=gpu;
+  if(usb){hardware.usb=1;request.usb_node=device.node;request.usb_device_id=device.id}
+  if(Object.keys(hardware).length)request.hardware=hardware;
+  if(vram>0)request.min_gpu_memory_mb=vram;
+  return request;
+}
+el('preview-workspace').addEventListener('click',async()=>{
+  if(!credential){el('notice').textContent='Connect first';return}
+  try{
+    const request=workspaceRequest();
+    const plan=await post('/api/projects/'+encodeURIComponent(request.project_id)+'/resource-plan',request);
+    const lines=(plan.candidates||[]).map(c=>c.node+': '+(c.eligible?'eligible':'not eligible')+
+      (c.reasons.length?' — '+c.reasons.join('; '):''));
+    el('plan-result').textContent=(plan.recommended_node?'Suggested worker: '+plan.recommended_node:'No eligible worker')+
+      '\\n'+(lines.join('\\n')||'No registered workers')+'\\nAdvisory only; no resources reserved.';
+    el('notice').textContent='';
+  }catch(error){el('notice').textContent=error.message}
+});
 el('create').addEventListener('submit',async event=>{
   event.preventDefault();
   if(!credential){el('notice').textContent='Connect first';return}
-  const usb=el('usb-toggle').checked;
-  const device=availableUSB.find(d=>d.node+'::'+d.id===el('usb-device').value);
-  if(usb&&!device){el('notice').textContent='Select the USB device to reserve';return}
-  const request={project_id:el('project-select').value,cpu:Number(el('cpu').value),
-    memory_mb:Number(el('memory').value),usb_passthrough:usb};
-  if(usb){request.hardware={usb:1};request.usb_node=device.node;request.usb_device_id=device.id}
   try{
-    const response=await fetch('/api/workspaces',{method:'POST',headers:{Authorization:'Bearer '+credential,'Content-Type':'application/json'},body:JSON.stringify(request)});
-    const body=await response.json();
-    if(!response.ok)throw new Error(body.detail||'Workspace creation failed: '+response.status);
+    const request=workspaceRequest();
+    const body=await post('/api/workspaces',request);
     await refresh();el('notice').textContent='Workspace '+body.id.slice(0,12)+' scheduled';
-  }catch(e){el('notice').textContent=e.message}
+  }catch(error){el('notice').textContent=error.message}
 });
 el('auth').addEventListener('submit',async event=>{event.preventDefault();credential=el('token').value;el('token').value='';try{await refresh()}catch(e){credential='';el('notice').textContent=e.message}});
 </script>
