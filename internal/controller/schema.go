@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS access_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,pri
 CREATE INDEX IF NOT EXISTS idx_access_audit_created ON access_audit(created);
 CREATE TABLE IF NOT EXISTS pool_images(id TEXT PRIMARY KEY,image TEXT NOT NULL,architecture TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS pool_software(id TEXT PRIMARY KEY,image_id TEXT NOT NULL,packages TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',created REAL NOT NULL,FOREIGN KEY(image_id) REFERENCES pool_images(id));
+CREATE TABLE IF NOT EXISTS pool_entry_states(kind TEXT NOT NULL,entry_id TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,reason TEXT NOT NULL,updated REAL NOT NULL,PRIMARY KEY(kind,entry_id));
+CREATE TABLE IF NOT EXISTS pool_programs(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL,version TEXT NOT NULL,platform TEXT NOT NULL,distribution TEXT NOT NULL,source_url TEXT NOT NULL,license_notes TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,pool_kind TEXT NOT NULL,pool_id TEXT NOT NULL,review_note TEXT NOT NULL,created REAL NOT NULL,updated REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS pool_events(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,entry_id TEXT NOT NULL,revision INTEGER NOT NULL,previous TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,created REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_pool_events_entry ON pool_events(kind,entry_id,created);
+
 `
 
 var (
