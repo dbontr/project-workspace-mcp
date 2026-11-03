@@ -142,7 +142,8 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 				continue
 			}
 			caps := decodeObject(asString(node["capabilities"]))
-			if req.ImagePoolID != "" && !workerHasImage(caps, req.Image) {
+			if req.ImagePoolID != "" && !workerHasImage(caps, req.Image) ||
+				req.Environment == "" && caps["images"] != nil && !workerHasImage(caps, req.Image) {
 				continue
 			}
 			if !asBool(caps["docker"]) || asFloat(caps["cpu"]) < req.CPU || asFloat(caps["memory_mb"]) < float64(req.MemoryMB) {
