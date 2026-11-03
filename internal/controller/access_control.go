@@ -84,6 +84,16 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 		s.DB.AuditAccess(who.Principal, asString(args["project_id"]), "mcp:"+name, false)
 		return false
 	}
+	if name == "task_list" || name == "task_create" || name == "task_details" ||
+		name == "task_update" || name == "task_files" || name == "task_file_info" ||
+		name == "task_save_text" || name == "task_send_base64" || name == "task_read_base64" {
+		return true
+	}
+	if name == "task_export_project" {
+		allowed := s.authorizedFor(asString(args["project_id"]), who, 2)
+		s.DB.AuditAccess(who.Principal, asString(args["project_id"]), "mcp:"+name, allowed)
+		return allowed
+	}
 	if name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" || name == "pool_list_programs" {
 		return true
 	}
@@ -117,6 +127,13 @@ func (s *Server) authorizeREST(r *http.Request, p []string, who caller) bool {
 	if who.Root {
 		if r.Method != http.MethodGet {
 			s.DB.AuditAccess(who.Principal, projectFromPath(p), "rest:"+r.Method+":"+r.URL.Path, true)
+		}
+		return true
+	}
+	if len(p) >= 2 && p[1] == "tasks" {
+		// Only identity-bound handlers can read or mutate personal tasks.
+		if r.Method != http.MethodGet {
+			s.DB.AuditAccess(who.Principal, "", "rest:"+r.Method+":"+r.URL.Path, true)
 		}
 		return true
 	}

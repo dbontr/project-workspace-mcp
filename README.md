@@ -209,6 +209,61 @@ USB access is **off by default**. The node operator enables it using `project-wo
 
 Large OS images can be streamed to `PUT /api/projects/PROJECT/artifacts/upload` with `X-Artifact-Name`, `X-Content-SHA256`, and the owner bearer credential. Use `POST /api/projects/PROJECT/workspaces/WORKSPACE/artifacts/import` to stage the verified artifact in a workspace. The artifact path is relative to the workspace, and imports refuse unintended overwrites.
 
+## Personal tasks and independent files
+
+The controller now supports owner-scoped **standalone tasks** without requiring
+a registered research project. Task metadata (title, description, tags and
+active/archived status) uses revision guards. Each task file retains every
+immutable revision rather than overwriting previous contents. The authenticated
+OIDC subject or trusted controller owner identity is attached server-side, and
+another subject cannot enumerate, read, modify, or download its files.
+
+The MCP tools are `task_create`, `task_list`, `task_details`,
+`task_update`, `task_files`, `task_file_info`, `task_save_text`,
+`task_send_base64`, `task_read_base64` and `task_export_project`.
+Small binary inputs up to 512 KiB use base64 plus a mandatory SHA-256. Larger
+inputs use authenticated streamed REST uploads with bounded size and exact
+checksum verification:
+
+```sh
+curl -fsS -X POST "$BASE/api/tasks" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Independent simulation","description":"Circuit experiments","tags":["circuits"]}'
+
+# After using the task ID returned above:
+SHA=$(sha256sum simulation.raw | cut -d ' ' -f1)
+curl -fsS -X PUT "$BASE/api/tasks/TASK_ID/files/simulation.raw" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Expected-Revision: 0" \
+  -H "X-Content-SHA256: $SHA" \
+  -H 'Content-Type: application/octet-stream' \
+  --data-binary @simulation.raw
+```
+
+The initial file revision is 1; upload another version by setting
+`X-Expected-Revision` to the latest returned revision. A stale revision,
+changed checksum, oversize payload, archived task, or different owner is
+rejected. Download the latest with
+`GET /api/tasks/TASK_ID/files/simulation.raw/download`, or provide
+`?revision=N` to retrieve a historical version. Task records are retained
+after archiving; no host files are removed.
+
+Files use the existing immutable artifact storage and therefore participate in
+the verified database-plus-artifact backup manifest. An explicitly approved
+promotion through `task_export_project` or
+`POST /api/tasks/TASK_ID/files/simulation.raw/promote` creates a durable
+project artifact; project editor permission is checked separately. The source
+task remains intact. Afterwards, the usual `workspace_import_artifact`
+can stage the promoted file onto a worker.
+
+This is the **storage and transfer API**, not automatic ChatGPT attachment
+resolution. A connected, file-capable ChatGPT client/adapter must still pass
+the real attachment bytes or call the REST stream route. The task library
+does not yet provide standalone claim leases, automatic task-to-worker
+creation, or independent native execution without project resource grants.
+Do not claim end-to-end ChatGPT attachment transfer until the actual client
+integration has been tested.
+
 ## Cooperative task claims across chats
 
 A project may have several agents or worker sessions. Before expensive or
