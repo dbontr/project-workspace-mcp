@@ -52,7 +52,7 @@ func readToken(path string) (string, error) {
 }
 func command(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: project-workspace-controller init|controller|pair")
+		return errors.New("usage: project-workspace-controller init|controller|pair|backup|restore")
 	}
 	dbPath, tokenFile := location()
 	switch args[0] {
@@ -74,6 +74,21 @@ func command(args []string) error {
 		}
 		fmt.Printf("Administrator credential created at %s\n", tokenFile)
 		return nil
+	case "backup":
+		if len(args) != 2 {
+			return errors.New("usage: project-workspace-controller backup DESTINATION_DIRECTORY")
+		}
+		db, err := controller.OpenDatabase(dbPath)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		return db.BackupTo(args[1])
+	case "restore":
+		if len(args) != 2 {
+			return errors.New("usage: project-workspace-controller restore BACKUP_DIRECTORY")
+		}
+		return controller.RestoreBackup(args[1], dbPath)
 	case "pair", "controller":
 		flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		dbFile := flags.String("db", dbPath, "SQLite project database")
