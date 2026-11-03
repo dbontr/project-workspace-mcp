@@ -117,7 +117,7 @@ spec:
       containers:
         - name: worker
           image: {{ .Values.worker.image | quote }}
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.worker.imagePullPolicy }}
           args:
             - serve
             - --backend=kubernetes
