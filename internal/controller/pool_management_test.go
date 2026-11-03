@@ -11,7 +11,7 @@ func TestProgramReviewWithoutNativeExecution(t *testing.T) {
 	request := ProgramProposal{
 		ID: "ltspice", Name: "LTspice", Version: "26",
 		Platform: "windows-native", Distribution: "native",
-		SourceURL: "https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
+		SourceURL:    "https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
 		LicenseNotes: "Operator must verify license and installation terms before use",
 	}
 	proposed, err := db.ProposeProgram(request)
@@ -129,14 +129,14 @@ func TestCatalogManagementRESTAndMCPAccess(t *testing.T) {
 	project(t, httpServer)
 	code, _ := call(t, httpServer, http.MethodPost, "/api/pool/programs", "", ProgramProposal{
 		ID: "ltspice", Name: "LTspice", Platform: "windows-native", Distribution: "native",
-		SourceURL: "https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
+		SourceURL:    "https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
 	})
 	if code != http.StatusUnauthorized {
 		t.Fatalf("pool mutation must authenticate, got %d", code)
 	}
 	code, proposal := call(t, httpServer, http.MethodPost, "/api/pool/programs", testOwner, ProgramProposal{
 		ID: "ltspice", Name: "LTspice", Platform: "windows-native", Distribution: "native",
-		SourceURL: "https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
+		SourceURL:    "https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html",
 		LicenseNotes: "Needs vendor license review",
 	})
 	wantOK(t, code, proposal)
