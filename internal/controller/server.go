@@ -240,6 +240,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.handleGitHubWorkflow(w, r, parts) {
 		return
 	}
+	if s.handleResearch(w, r, parts) {
+		return
+	}
 	if s.handleCatalog(w, r, parts) {
 		return
 	}
