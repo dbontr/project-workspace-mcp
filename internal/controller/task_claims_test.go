@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestTaskClaimConcurrencyAndFencing(t *testing.T) {
@@ -180,5 +179,4 @@ func TestTaskClaimsAPIAndMCP(t *testing.T) {
 	if _, err := server.callTool("task_claim", map[string]any{"project_id": "demo", "work_key": "work-a", "lease_seconds": 0}); err != nil {
 		t.Fatal(err)
 	}
-	_ = time.Second
 }
