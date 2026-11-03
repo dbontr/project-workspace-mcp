@@ -253,6 +253,16 @@ func (db *Database) expireLocked(now float64) error {
 	if e := db.execLocked("UPDATE workspaces SET status='failed',updated=? WHERE status='starting' AND EXISTS (SELECT 1 FROM operations WHERE workspace=workspaces.id AND action='start' AND status='expired')", now); e != nil {
 		return e
 	}
+	if e := db.execLocked(`UPDATE checkpointed_stops SET status='failed',updated=?
+		WHERE status='pending' AND EXISTS(SELECT 1 FROM operations
+		WHERE id=checkpointed_stops.snapshot_operation AND status IN ('expired','failed','cancelled'))`, now); e != nil {
+		return e
+	}
+	if e := db.execLocked(`UPDATE checkpointed_stops SET status='expired',updated=?
+		WHERE status IN ('pending','failed') AND workspace IN(SELECT id FROM workspaces
+		WHERE expires<? AND status IN ('starting','ready'))`, now, now); e != nil {
+		return e
+	}
 	rows, e := db.queryLocked("SELECT id,node FROM workspaces WHERE expires<? AND status IN ('starting','ready')", now)
 	if e != nil {
 		return e
@@ -374,12 +384,14 @@ func (db *Database) FinishOperation(node, id, token string, success bool, result
 				return e
 			}
 		}
+		var snapshotID string
 		if action == "snapshot" && success {
 			artifact, _ := result["artifact"].(map[string]any)
 			if artifact == nil {
 				return errors.New("snapshot requires durable artifact")
 			}
-			if e := db.execLocked("INSERT INTO workspace_snapshots VALUES(?,?,?,?)", randomHex(16), ws["id"], artifact["id"], stamp()); e != nil {
+			snapshotID = randomHex(16)
+			if e := db.execLocked("INSERT INTO workspace_snapshots VALUES(?,?,?,?)", snapshotID, ws["id"], artifact["id"], stamp()); e != nil {
 				return e
 			}
 		}
@@ -433,6 +445,9 @@ func (db *Database) FinishOperation(node, id, token string, success bool, result
 			status = "succeeded"
 		}
 		if e := db.execLocked("UPDATE operations SET status=?,result=?,updated=?,token_hash=NULL WHERE id=?", status, encode(result), stamp(), id); e != nil {
+			return e
+		}
+		if e := db.finishCheckpointStopLocked(ws, op, success, snapshotID); e != nil {
 			return e
 		}
 		if action == "start" || action == "stop" {

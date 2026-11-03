@@ -225,6 +225,17 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, p []string)
 					send(w, v, e)
 					return
 				}
+			case "checkpoint-stop":
+				if method == "POST" {
+					v, e := db.CheckpointStopWorkspace(project, ws)
+					send(w, v, e)
+					return
+				}
+				if method == "GET" {
+					v, e := db.CheckpointStopStatus(project, ws)
+					send(w, v, e)
+					return
+				}
 			case "snapshots":
 				if method == "GET" {
 					v, e := db.SnapshotList(project, ws)

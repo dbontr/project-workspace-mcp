@@ -70,6 +70,10 @@ jobs:
         run: |
           gofmt -d internal/controller/research_topics.go internal/controller/research_topics_test.go
           test -z "$(gofmt -l internal/controller/research_topics.go internal/controller/research_topics_test.go)"
+      - name: Format checkpointed stop components
+        run: |
+          gofmt -d internal/controller/checkpoint_stop.go internal/controller/checkpoint_stop_test.go internal/controller/workspaces.go internal/controller/state.go
+          test -z "$(gofmt -l internal/controller/checkpoint_stop.go internal/controller/checkpoint_stop_test.go internal/controller/workspaces.go internal/controller/state.go)"
       - name: Static analysis
         run: go vet ./...
       - name: Build native executables

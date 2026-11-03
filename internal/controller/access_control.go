@@ -48,7 +48,7 @@ var readableTools = map[string]bool{
 	"list_project_jobs": true, "list_github_repositories": true,
 	"task_claim_list": true, "task_claim_status": true, "resource_plan": true,
 	"workspace_list": true, "workspace_operation": true,
-	"environment_list": true, "workspace_snapshot_list": true,
+	"environment_list": true, "workspace_snapshot_list": true, "workspace_checkpoint_stop_status": true,
 	"list_project_artifacts": true, "artifact_info": true, "artifact_read_base64": true,
 	"github_repository": true, "github_read_file": true,
 	"github_list_issues": true, "github_list_pull_requests": true,

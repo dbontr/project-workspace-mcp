@@ -179,6 +179,21 @@ independent recovery host. Never treat a local repository or CI test as
 proof of off-site resilience. Never send repository keys to compute workers.
 Recovery does not restore running processes or uncollected workspace files.
 
+## Checkpoint-preserving workspace stop
+
+For mutable workspaces that contain results not yet exported, use
+`workspace_checkpoint_stop` rather than ordinary
+`workspace_destroy`. Poll `workspace_checkpoint_stop_status` and
+the named snapshot/stop operations. Only a `stopped` status with a
+verified snapshot ID establishes successful checkpoint-before-stop;
+an enqueued snapshot is not durable evidence. A failed checkpoint
+does not authorize teardown and can be retried while the workspace
+lease remains valid. An expired workspace may still require cleanup,
+so checkpoint well before expiry. Restore the recorded snapshot to a
+separate ready workspace in the same project, check the terminal
+restore result, and verify the files. Do not confuse a controller-local
+checkpoint with an independently restorable off-host backup.
+
 ## Advisory resource planning
 
 Call `resource_plan` before a resource-intensive workspace. Supply CPU,
