@@ -145,8 +145,8 @@ func (k *Kubernetes) saveOutput(ctx context.Context, r *Runner, op Operation, c 
 	digest := sha256.New()
 	runCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
-	args := append(append(k.baseArgs(), "exec"),
-		"pod/" + kubePodName(op.Workspace), "-c", "workspace", "--"}, command...)
+	args := append(k.baseArgs(), "exec", "pod/" + kubePodName(op.Workspace), "-c", "workspace", "--")
+	args = append(args, command...)
 	cmd := exec.CommandContext(runCtx, k.Binary, args...)
 	cmd.Stdout = &maxWriter{Writer: io.MultiWriter(f, digest), Limit: r.MaxArtifact}
 	var stderr bytes.Buffer
