@@ -104,6 +104,15 @@ func TestOIDCProjectPermissions(t *testing.T) {
 	if code != 403 {
 		t.Fatal("revoked user must immediately lose project access")
 	}
+	code, _ = call(t, httpServer, "POST", "/api/revocations", testOwner,
+		map[string]any{"sha256": hashToken(token), "expires": time.Now().Add(time.Hour).Unix()})
+	if code != 200 {
+		t.Fatal("administrator fingerprint revocation failed")
+	}
+	code, _ = call(t, httpServer, "GET", "/api/whoami", token, nil)
+	if code != 401 {
+		t.Fatal("revoked bearer token must be rejected immediately")
+	}
 	wrong := signedTestToken(t, key, issuer, "different-audience", "researcher", time.Now().Add(time.Hour).Unix())
 	code, _ = call(t, httpServer, "GET", "/api/whoami", wrong, nil)
 	if code != 401 {
