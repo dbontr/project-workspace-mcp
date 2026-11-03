@@ -201,6 +201,7 @@ func TestCatalogProgramsListedWithStableMetadata(t *testing.T) {
 	project(t, httpServer)
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/pool/programs", nil)
+	request.Host = "127.0.0.1"
 	request.Header.Set("Authorization", "Bearer "+testOwner)
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
