@@ -217,7 +217,7 @@ func termsForResearch(query string) (string, error) {
 	for _, word := range terms {
 		// RE2 strips all FTS5 query operators, so the user controls only
 		// term values rather than SQLite MATCH syntax.
-		clauses = append(clauses, "\"" + word + "\"")
+		clauses = append(clauses, "\""+word+"\"")
 	}
 	return strings.Join(clauses, " AND "), nil
 }
