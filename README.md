@@ -140,6 +140,43 @@ USB access is **off by default**. The node operator enables it using `project-wo
 
 Large OS images can be streamed to `PUT /api/projects/PROJECT/artifacts/upload` with `X-Artifact-Name`, `X-Content-SHA256`, and the owner bearer credential. Use `POST /api/projects/PROJECT/workspaces/WORKSPACE/artifacts/import` to stage the verified artifact in a workspace. The artifact path is relative to the workspace, and imports refuse unintended overwrites.
 
+## Cooperative task claims across chats
+
+A project may have several agents or worker sessions. Before expensive or
+duplicate-prone work, derive a stable `work_key` from the exact source
+revision, objective and method. Call `task_claim` (or
+`POST /api/projects/PROJECT/claims`) to reserve that unit of work.
+A claim has an expiring lease and a one-time, secret `lease_token`, distinct
+from the worker's resource lease and GitHub credentials.
+
+The returned `status` is `claimed`, `busy`, or `completed`. Only a
+`claimed` response authorizes this client to execute the work. If it is
+`busy`, inspect `task_claim_status` instead of running the same job. If
+`completed`, reuse the saved result artifact IDs instead of repeating the
+task. The default lease is 900 seconds, with a supported interval of
+60–3600 seconds. Renew before expiry:
+
+```sh
+curl -fsS -X POST "$BASE/api/projects/research/claims" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"work_key":"compile-revision-123","lease_seconds":900}'
+```
+
+Keep the returned `lease_token` private. Pass the same
+`lease_token`, `generation`, and work key to `task_claim_renew`, then
+`task_claim_finish(status="completed", artifact_ids=[...])` after verifying
+the output. The controller verifies that every output artifact belongs to
+the project. `status="released"` abandons the claim without recording a
+completion. On expiry, another client may claim the work, with a strictly
+higher generation; an earlier claimant cannot finish or renew the replacement
+claim. Claims and completion survive controller restarts.
+
+This coordinates cooperating agents. It does not reserve CPU, memory,
+hardware, GitHub branches or remote workers. Use separate workspace
+leases, Git revision guards and the scheduler for those resources. An agent
+that still holds a process after its task lease expires must stop it before
+another claimant resumes equivalent work.
+
 ## Approved images and software packages
 
 The controller has an administrator-managed image and software pool. A pool

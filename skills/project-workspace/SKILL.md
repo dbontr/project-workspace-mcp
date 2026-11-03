@@ -20,6 +20,20 @@ Treat the project, not the machine or chat, as the unit of work. The installed S
 
 The controller and worker are implemented in Go. Python is an optional application inside an approved workspace image, not a service dependency. The controller currently has one privileged administrator identity. Never put its token, GitHub credentials, or host SSH keys inside worker command payloads, project notes, snapshots, or image recipes. Docker is not a hostile-tenant security boundary. Report physical hardware integrations as unverified unless exercised on authorized devices.
 
+## Cooperative project work
+
+Before beginning a long or duplicate-prone operation, derive a stable
+`work_key` from the project, exact source revision and operation. Call
+`task_claim_list` and `task_claim`, then distinguish `claimed`,
+`busy`, and `completed`. A busy task is not permission to repeat the
+work. Renew a claim with its secret token and generation before expiry.
+A completed claim returns artifact references to inspect and reuse.
+After collecting and verifying outputs, call `task_claim_finish` with
+`status="completed"` and project-owned artifact IDs. Use
+`status="released"` if work is abandoned. Never persist the lease token
+in GitHub, notes, logs, artifacts or a worker command. A task claim does
+not itself allocate compute or serialize unrelated repository writes.
+
 ## GitHub development workflow
 
 Use GitHub's live issues, branches, pull requests, reviews, and check results
