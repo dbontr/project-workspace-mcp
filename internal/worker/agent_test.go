@@ -425,6 +425,41 @@ func TestInterruptedJobContainerCleanup(t *testing.T) {
 	}
 }
 
+func TestDockerClientFailureRemovesManagedJob(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "docker.log")
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$*\" >> " + shellQuote(logFile) + "\n" +
+		"if [ \"$1\" = run ]; then exit 125; fi\n" +
+		"if [ \"$1\" = rm ] || [ \"$1\" = ps ]; then exit 0; fi\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	jobID := strings.Repeat("a", 32)
+	status, result := NewRunner(nil).ExecuteJob(context.Background(), Job{
+		ID: jobID, Image: "debian:bookworm-slim", CPU: 1, MemoryMB: 128, Command: "echo test",
+	})
+	if status != "failed" || !strings.Contains(result, "docker exit 125") {
+		t.Fatalf("docker failure result: status=%s result=%s", status, result)
+	}
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logged := string(data)
+	for _, part := range []string{
+		"run --rm --name pwm-job-" + jobID + " --label project-workspace=job",
+		"rm -f pwm-job-" + jobID,
+		"ps -a --filter name=^/pwm-job-" + jobID + "$ --format {{.Names}}",
+	} {
+		if !strings.Contains(logged, part) {
+			t.Fatalf("Docker operation %q missing from trace:\n%s", part, logged)
+		}
+	}
+}
+
 func TestJobContainerIdentityAndCleanupVerification(t *testing.T) {
 	if status, result := NewRunner(nil).ExecuteJob(context.Background(), Job{
 		ID: "bad/name", Image: "debian:bookworm-slim",
