@@ -56,7 +56,8 @@ func run(args []string) error {
 	code := flags.String("code", "", "single-use worker pairing code")
 	codeStdin := flags.Bool("code-stdin", false, "read the pairing code from standard input")
 	tokenFile := flags.String("token-file", "", "worker credential file (owner read-only)")
-	deviceFile := flags.String("devices", os.Getenv("PWM_DEVICE_MANIFEST"), "approved hardware manifest")
+	deviceFile := flags.String("devices", os.Getenv("PWM_DEVICE_MANIFEST"), "approved host hardware manifest for Docker compatibility")
+	kubeDeviceFile := flags.String("kube-devices", os.Getenv("PWM_KUBE_DEVICE_MANIFEST"), "operator-approved Kubernetes device-plugin inventory")
 	enableUSB := flags.Bool("enable-usb", os.Getenv("PWM_ENABLE_USB_PASSTHROUGH") == "1", "allow operator-approved USB passthrough (disabled by default)")
 	backendDefault := os.Getenv("PWM_EXECUTION_BACKEND")
 	if backendDefault == "" {
@@ -98,6 +99,12 @@ func run(args []string) error {
 		if cmd == "doctor" && *node == "" {
 			k.Worker = "doctor"
 		}
+		inventory, err := worker.LoadKubernetesDevices(*kubeDeviceFile)
+		if err != nil {
+			k.Close()
+			return err
+		}
+		k.Devices = inventory
 		runner.Kube = k
 	}
 	if runner.Kube != nil {
