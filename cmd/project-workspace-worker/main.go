@@ -148,18 +148,25 @@ func run(args []string) error {
 		fmt.Printf("Worker %s paired; credential stored in %s\n", *node, *tokenFile)
 		return nil
 	}
-	mode, err := os.Stat(*tokenFile)
-	if err != nil {
-		return err
+	if credential := os.Getenv("PWM_WORKER_TOKEN"); credential != "" {
+		if len(credential) < 32 || strings.ContainsAny(credential, "\x00\r\n\t ") {
+			return errors.New("invalid worker credential environment value")
+		}
+		c.Token = credential
+	} else {
+		mode, err := os.Stat(*tokenFile)
+		if err != nil {
+			return err
+		}
+		if mode.Mode().Perm()&0077 != 0 {
+			return errors.New("worker token must not be accessible by other users")
+		}
+		secret, err := os.ReadFile(*tokenFile)
+		if err != nil {
+			return err
+		}
+		c.Token = strings.TrimSpace(string(secret))
 	}
-	if mode.Mode().Perm()&0077 != 0 {
-		return errors.New("worker token must not be accessible by other users")
-	}
-	secret, err := os.ReadFile(*tokenFile)
-	if err != nil {
-		return err
-	}
-	c.Token = strings.TrimSpace(string(secret))
 	if c.Token == "" {
 		return errors.New("empty worker credential")
 	}
