@@ -63,3 +63,6 @@
 - [Kubernetes ResourceQuota](https://kubernetes.io/docs/concepts/policy/resource-quotas/) — Kubernetes. Used for: namespace capacity enforcement and storage limits.
 - [Helm chart template guide](https://helm.sh/docs/chart_template_guide/) — Helm. Used for: Kubernetes controller and project-worker release templates.
 - [kubectl CLI installation and version skew](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/) — Kubernetes. Used for: verifying worker client compatibility and checksum-based installation.
+- [Kubernetes device plugins](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/) — Kubernetes. Used for: assigning GPU, NPU, and FPGA devices through registered extended resources instead of host-device mounts.
+- [Kubernetes extended resources](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#extended-resources) — Kubernetes. Used for: schedulable integer resource requests, limits, and workload admission.
+- [Kubernetes object annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/) — Kubernetes. Used for: preserving canonical workspace-specification fingerprints across interrupted creation retries.
