@@ -31,6 +31,7 @@ type Kubernetes struct {
 	OwnsConfig   bool
 	Storage      string
 	StorageClass string
+	Devices      []KubernetesDevice
 	CPU          float64
 	MemoryMB     int
 	MaxJobs      int
@@ -384,52 +385,41 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 // hardwareResources translates leased device-plugin resources into Kubernetes
 // extended resources. Host-device paths and direct USB mapping are forbidden.
 func (k *Kubernetes) hardwareResources(p map[string]any) (map[string]string, error) {
+	if p["usb_passthrough"] == true {
+		return nil, errors.New("USB passthrough requires a separately approved Kubernetes device-plugin adapter")
+	}
 	var selected []DeviceClaim
 	if p["devices"] != nil {
-		encoded, _ := json.Marshal(p["devices"])
-		if err := json.Unmarshal(encoded, &selected); err != nil {
+		data, err := json.Marshal(p["devices"])
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(data, &selected); err != nil {
 			return nil, err
 		}
 	}
-	if len(selected) > 8 || p["usb_passthrough"] == true {
-		return nil, errors.New("Kubernetes USB passthrough requires a separately approved device-plugin adapter")
+	if len(selected) > 8 {
+		return nil, errors.New("too many Kubernetes device allocations")
+	}
+	approved := make(map[string]KubernetesDevice, len(k.Devices))
+	for _, device := range k.Devices {
+		approved[device.ID] = device
 	}
 	resources := map[string]string{}
 	counts := map[string]int{}
-	for _, item := range selected {
-		if !deviceID.MatchString(item.ID) || item.Kind == "usb" ||
-			(item.Kind != "gpu" && item.Kind != "npu" && item.Kind != "fpga") {
-			return nil, errors.New("invalid Kubernetes device lease")
+	used := map[string]bool{}
+	for _, lease := range selected {
+		device, ok := approved[lease.ID]
+		if !ok || used[lease.ID] || device.Kind != lease.Kind || device.Resource == "" {
+			return nil, errors.New("hardware lease does not match Kubernetes device-plugin policy")
 		}
-		counts[item.Kind]++
+		used[lease.ID] = true
+		counts[device.Resource]++
 	}
-	for kind, count := range counts {
-		resource := os.Getenv("PWM_KUBE_RESOURCE_" + strings.ToUpper(kind))
-		if !regexp.MustCompile("^[a-z0-9.-]+/[A-Za-z0-9_.-]+$").MatchString(resource) {
-			return nil, fmt.Errorf("Kubernetes %s device-plugin resource is not configured", kind)
-		}
+	for resource, count := range counts {
 		resources[resource] = strconv.Itoa(count)
 	}
 	return resources, nil
-}
-
-// requireWorkspace guards each Kubernetes exec path against a Pod whose
-// name matches a workspace ID but whose ownership labels do not.
-func (k *Kubernetes) requireWorkspace(ctx context.Context, id string) error {
-	if !workspaceID.MatchString(id) {
-		return errors.New("invalid workspace ID")
-	}
-	pod, err := k.get(ctx, "pod", kubePodName(id))
-	if err != nil {
-		return fmt.Errorf("inspect workspace Pod: %w", err)
-	}
-	if !k.owns(pod, id, "workspace") {
-		return errors.New("workspace Pod does not belong to this worker and project")
-	}
-	if kubeObject(pod, "metadata")["deletionTimestamp"] != nil {
-		return errors.New("workspace Pod is terminating")
-	}
-	return nil
 }
 
 func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
