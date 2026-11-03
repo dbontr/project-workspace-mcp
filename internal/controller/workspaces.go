@@ -22,6 +22,9 @@ type WorkspaceRequest struct {
 	USBPassthrough  bool           `json:"usb_passthrough"`
 	USBNode         string         `json:"usb_node"`
 	USBDeviceID     string         `json:"usb_device_id"`
+	Display         bool           `json:"display"`
+	DisplayWidth    int            `json:"display_width"`
+	DisplayHeight   int            `json:"display_height"`
 }
 
 func (r *WorkspaceRequest) defaults() {
@@ -37,12 +40,29 @@ func (r *WorkspaceRequest) defaults() {
 	if r.DurationMinutes == 0 {
 		r.DurationMinutes = 120
 	}
+	if r.Display {
+		if r.DisplayWidth == 0 {
+			r.DisplayWidth = 1440
+		}
+		if r.DisplayHeight == 0 {
+			r.DisplayHeight = 900
+		}
+	}
 }
 func (r WorkspaceRequest) validatedHardware() (map[string]int, error) {
 	if !validImage.MatchString(r.Image) || r.CPU < 0.1 || r.CPU > 32 ||
 		r.MemoryMB < 64 || r.MemoryMB > 131072 ||
 		r.DurationMinutes < 1 || r.DurationMinutes > 1440 {
 		return nil, errors.New("invalid workspace limits")
+	}
+	if r.Display {
+		if r.DisplayWidth < 320 || r.DisplayWidth > 3840 ||
+			r.DisplayHeight < 240 || r.DisplayHeight > 2160 ||
+			r.DisplayWidth*r.DisplayHeight > 8_000_000 {
+			return nil, errors.New("invalid virtual display dimensions")
+		}
+	} else if r.DisplayWidth != 0 || r.DisplayHeight != 0 {
+		return nil, errors.New("display dimensions require an enabled virtual display")
 	}
 	hardware, err := validHardwareRequest(r.Hardware)
 	if err != nil {
@@ -231,11 +251,11 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 				return e
 			}
 		}
-		_, e = db.EnqueueLocked(id, nodeID, "start", map[string]any{"image": req.Image, "cpu": req.CPU, "memory_mb": req.MemoryMB, "devices": devices, "usb_passthrough": req.USBPassthrough})
+		_, e = db.EnqueueLocked(id, nodeID, "start", map[string]any{"image": req.Image, "cpu": req.CPU, "memory_mb": req.MemoryMB, "devices": devices, "usb_passthrough": req.USBPassthrough, "display": req.Display, "display_width": req.DisplayWidth, "display_height": req.DisplayHeight})
 		if e != nil {
 			return e
 		}
-		out = map[string]any{"id": id, "project": req.ProjectID, "node": nodeID, "status": "starting", "expires": expires, "hardware": devices, "environment": nil}
+		out = map[string]any{"id": id, "project": req.ProjectID, "node": nodeID, "status": "starting", "expires": expires, "hardware": devices, "environment": nil, "display": req.Display, "display_width": req.DisplayWidth, "display_height": req.DisplayHeight}
 		if req.Environment != "" {
 			out["environment"] = req.Environment
 		}
