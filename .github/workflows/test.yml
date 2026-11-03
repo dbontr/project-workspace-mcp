@@ -119,12 +119,10 @@ jobs:
           RUN_DOCKER_INTEGRATION: '1'
         run: |
           docker pull python:3.12-slim
-          go test -count=1 -timeout 240s -run '^TestDockerControllerWorker
- ./internal/controller
+          go test -count=1 -timeout 240s -run '^TestDockerControllerWorker$' ./internal/controller
       - name: Build a graphical workspace image
         run: docker build -t pwm-env-display:v1 -f examples/display/Dockerfile .
       - name: Verify graphical workspace screenshot capture
         env:
           RUN_DISPLAY_INTEGRATION: '1'
-        run: go test -count=1 -timeout 240s -run '^TestDockerVirtualDisplayCapture
- ./internal/controller
+        run: go test -count=1 -timeout 240s -run '^TestDockerVirtualDisplayCapture$' ./internal/controller
