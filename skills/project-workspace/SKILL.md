@@ -37,6 +37,20 @@ from a recorded handoff. The controller binds the authenticated principal
 automatically. Parallel workers contribute immutable records rather than
 editing a shared context file without a revision guard.
 
+## Independent personal tasks and file revisions
+
+Use `task_list` and `task_details` to resume owner-scoped work that is not
+part of a research project. Create with `task_create` and use
+`task_update(expected_version=...)` to change metadata or archive tasks.
+`task_save_text` and `task_send_base64` preserve immutable file revisions.
+A new revision requires the previous revision number. For files larger than
+512 KiB, use authenticated REST streaming with independently computed SHA-256,
+and inspect `task_file_info` or download the actual verified bytes. An
+authenticated personal task can be promoted to a project artifact only with
+`task_export_project` and project editor authority. Do not conflate
+standalone task file storage with project-scoped task claims or native ChatGPT
+attachment delivery; the latter requires a separate file-capable connector.
+
 ## Cooperative project work
 
 Before beginning a long or duplicate-prone operation, derive a stable
