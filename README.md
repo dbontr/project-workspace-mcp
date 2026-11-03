@@ -240,6 +240,70 @@ curl -fsS -X POST "$BASE/api/workspaces" -H "Authorization: Bearer $TOKEN" \
 
 Workspace creation queues a `start` operation; it is not synchronous. Poll `GET /api/projects/research/workspaces` until the workspace is `ready`. Use `workspace_call` to run commands and edit files; poll `workspace_operation` for worker-confirmed results. `exit_code != 0` means a command failed even when the operation itself completed. Export important artifacts before stopping the workspace. Named volumes are retained for deliberate recovery and cleanup.
 
+## Virtual display capture and UI review
+
+A graphical workspace runs its own Xvfb display (`DISPLAY=:99`) inside the
+isolated Docker container. Capture never reads a worker's physical screen, host
+desktop, or another workspace. Display support is optional; CPU-only workspaces
+continue without a graphical server.
+
+An operator can build a display-capable image, provision it on an approved
+Linux Docker worker, and allow it in `PWM_ALLOWED_IMAGES`:
+
+```sh
+docker build -t pwm-env-display:v1 -f examples/display/Dockerfile .
+# Configure the worker with:
+# PWM_ALLOWED_IMAGES=debian:bookworm-slim,pwm-env-display:v1
+```
+
+The example image contains Xvfb, FFmpeg's X11 capture tools, basic X11
+applications, and Chromium. It is a starting point; other GUI applications
+can be added through an operator-approved image or environment definition.
+Workers must have the image locally before workspace creation.
+
+To create a graphical workspace, use `workspace_create` with `display: true`,
+an approved image, and optional `display_width` and `display_height`.
+The default is 1440 × 900. Dimensions are restricted to 320–3840 pixels
+wide, 240–2160 pixels high, and at most eight million pixels.
+
+```json
+{
+  "project_id": "research",
+  "image": "pwm-env-display:v1",
+  "cpu": 2,
+  "memory_mb": 2048,
+  "display": true,
+  "display_width": 1440,
+  "display_height": 900
+}
+```
+
+After the workspace is reported `ready`, launch an approved GUI application
+through `workspace_call` with `action: "command"`, for example,
+`xclock >/tmp/xclock.log 2>&1 &`. The container inherits `DISPLAY=:99`.
+For web development, run the application and its browser within the same
+workspace; `--network none` remains in force, so this workflow does not
+expose an application port or permit arbitrary Internet browsing.
+
+Call `workspace_capture_display` with `project_id` and `workspace_id`.
+This queues a capture; it does not immediately return an image. Poll
+`workspace_operation` for success, then use the returned
+`result.artifact.id` with `artifact_view_image`. The latter returns a
+native MCP PNG image content item for visual inspection, as well as image
+dimensions and a SHA-256 reference. Every capture is stored as a distinct,
+immutable, project-scoped artifact and can be downloaded through the
+authenticated artifact endpoint. MCP image inspection accepts PNGs up to
+4 MiB; larger screenshots remain available by authenticated download.
+Capture output is capped at 8 MiB and must pass PNG validation.
+
+The development loop is: **run UI → capture → inspect → edit → capture again**.
+Use the normal workspace commands and repository publication workflows for
+changes; no screenshot is itself evidence that a UI is accessible, correct,
+or free of defects. Captures may contain application secrets and must be
+handled under the project's usual grants and artifact retention policy.
+A virtual display cannot capture host-native macOS/Windows applications or
+hardware consoles; those require explicitly authorized platform adapters.
+
 ## Resource feasibility and worker selection
 
 `resource_plan` and `POST /api/projects/PROJECT/resource-plan` inspect current
