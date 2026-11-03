@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS project_libraries(project TEXT NOT NULL,library TEXT 
 CREATE TABLE IF NOT EXISTS library_objects(library TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,kind TEXT NOT NULL,created REAL NOT NULL,PRIMARY KEY(library,name),FOREIGN KEY(library) REFERENCES libraries(id));
 CREATE TABLE IF NOT EXISTS library_uploads(id TEXT PRIMARY KEY,library TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,kind TEXT NOT NULL,received INTEGER NOT NULL,created REAL NOT NULL,expires REAL NOT NULL,FOREIGN KEY(library) REFERENCES libraries(id));
 CREATE TABLE IF NOT EXISTS project_grants(project TEXT NOT NULL,principal TEXT NOT NULL,role TEXT NOT NULL,created REAL NOT NULL,PRIMARY KEY(project,principal),FOREIGN KEY(project) REFERENCES projects(id));
+CREATE TABLE IF NOT EXISTS task_claims(project TEXT NOT NULL,work_key TEXT NOT NULL,generation INTEGER NOT NULL,token_hash TEXT,status TEXT NOT NULL,expires REAL NOT NULL,results TEXT NOT NULL DEFAULT '[]',created REAL NOT NULL,updated REAL NOT NULL,PRIMARY KEY(project,work_key),FOREIGN KEY(project) REFERENCES projects(id));
+CREATE INDEX IF NOT EXISTS idx_task_claims_status ON task_claims(project,status,expires);
 CREATE TABLE IF NOT EXISTS revoked_tokens(digest TEXT PRIMARY KEY,expires REAL NOT NULL,created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS access_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,principal TEXT NOT NULL,project TEXT NOT NULL,action TEXT NOT NULL,allowed INTEGER NOT NULL,created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_access_audit_created ON access_audit(created);
