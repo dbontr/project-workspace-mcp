@@ -23,9 +23,10 @@ func (s *Server) authenticate(r *http.Request) (caller, error) {
 	if s.OIDC == nil || !strings.HasPrefix(header, "Bearer ") {
 		return caller{}, errors.New("invalid controller credential")
 	}
-	principal, err := s.OIDC.Verify(strings.TrimPrefix(header, "Bearer "))
-	if err != nil {
-		return caller{}, errors.New("invalid OIDC credential")
+	token := strings.TrimPrefix(header, "Bearer ")
+	principal, err := s.OIDC.Verify(token)
+	if err != nil || s.DB.TokenRevoked(hashToken(token)) {
+		return caller{}, errors.New("invalid or revoked OIDC credential")
 	}
 	return caller{Principal: principal}, nil
 }
@@ -176,12 +177,45 @@ func projectFromPath(p []string) string {
 
 func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request, p []string, who caller) bool {
 	if len(p) == 2 && p[1] == "whoami" && r.Method == http.MethodGet {
-		reply(w, 200, map[string]any{"principal": who.Principal, "administrator": who.Root})
+		response := map[string]any{"principal": who.Principal, "administrator": who.Root}
+		if !who.Root {
+			response["token_sha256"] = hashToken(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		}
+		reply(w, 200, response)
 		return true
 	}
 	if len(p) == 2 && p[1] == "projects" && r.Method == http.MethodGet && !who.Root {
 		rows, err := s.DB.ProjectsForPrincipal(who.Principal)
 		send(w, rows, err)
+		return true
+	}
+
+	if len(p) == 2 && p[1] == "revocations" {
+		if !who.Root {
+			fail(w, 403, "administrator permission required")
+			return true
+		}
+		switch r.Method {
+		case http.MethodGet:
+			rows, err := s.DB.TokenRevocations()
+			send(w, rows, err)
+		case http.MethodPost:
+			var in struct {
+				SHA256  string `json:"sha256"`
+				Expires int64  `json:"expires"`
+			}
+			if err := bodyJSON(r, &in); err != nil {
+				fail(w, 400, err.Error())
+				return true
+			}
+			if err := s.DB.RevokeToken(in.SHA256, in.Expires); err != nil {
+				fail(w, 400, err.Error())
+				return true
+			}
+			reply(w, 200, map[string]any{"revoked": true, "sha256": in.SHA256})
+		default:
+			fail(w, 405, "method not allowed")
+		}
 		return true
 	}
 	if len(p) == 2 && p[1] == "access-audit" && r.Method == http.MethodGet {
