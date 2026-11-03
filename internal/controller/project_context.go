@@ -177,6 +177,6 @@ func (db *Database) ProjectContext(project string) (map[string]any, error) {
 		"project_document": projectDoc, "context_document": contextDoc,
 		"latest_handoff": latestHandoff, "recent_decisions": decisions,
 		"repositories": repositories,
-		"note_keys": map[string]string{"Project.md": "project", "Context.md": "context"},
+		"note_keys":    map[string]string{"Project.md": "project", "Context.md": "context"},
 	}, nil
 }
