@@ -6,6 +6,10 @@
 - [SQLite C interface](https://www.sqlite.org/cintro.html) — SQLite. Used for: durable transactional project state, prepared statements, and WAL.
 - [Go language specification](https://go.dev/ref/spec) — Go team. Used for: Go controller and worker implementation.
 - [Go net/http documentation](https://pkg.go.dev/net/http) — Go team. Used for: authenticated controller HTTP service and worker transport.
+- [Git fetch](https://git-scm.com/docs/git-fetch) — Git maintainers. Used for: exact-commit retrieval and generic Git remote transport requirements.
+- [Git push](https://git-scm.com/docs/git-push) — Git maintainers. Used for: revision-guarded publication and supported HTTPS/SSH Git remote formats.
+- [Git credentials](https://git-scm.com/docs/gitcredentials) — Git maintainers. Used for: safe provider-neutral Git authentication and credential helper restrictions.
+- [GitLab Git transport](https://docs.gitlab.com/topics/git/project/) — GitLab. Used for: distinguishing generic Git push/fetch from provider-specific project-management APIs.
 - [GitHub REST API, Git objects](https://docs.github.com/en/rest/git) — GitHub. Used for: revision-guarded commits, blobs, branches, and draft PRs.
 - [GitHub REST API, repository contents](https://docs.github.com/en/rest/repos/contents) — GitHub. Used for: file retrieval and immutable checkout archives.
 - [Docker container run](https://docs.docker.com/reference/cli/docker/container/run/) — Docker. Used for: isolated workspaces and quotas.
