@@ -32,6 +32,14 @@ namespace-scoped RBAC, and workload namespaces require `worker.enabled=true`
 after one-time pairing and creation of the worker credential Secret. Do not
 provide an unpaired worker credential or rely on the chart to enroll workers.
 
+Choose a dedicated DNS-label workload namespace for each project. The Helm
+chart refuses worker installation in the controller namespace or Kubernetes
+system namespaces. Worker and project identifiers must fit Kubernetes resource
+name limits. Kubernetes StorageClass names may contain DNS subdomain labels.
+Each worker rejects a workspace or batch Job that requests more CPU or memory
+than that worker advertises; Kubernetes ResourceQuota and the scheduler remain
+responsible for aggregate capacity and actual placement.
+
 The controller records project state and artifact revisions in SQLite on its
 own persistent volume. Workspace files use separate PVCs in project namespaces.
 A Pod can be rescheduled only if its PVC is attachable on the replacement node;
