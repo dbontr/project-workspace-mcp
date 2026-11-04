@@ -21,6 +21,16 @@ import (
 
 var kubernetesName = regexp.MustCompile("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
+// A project worker must not operate against infrastructure namespaces, even
+// if invoked outside the Helm installation path.
+func protectedKubernetesNamespace(name string) bool {
+	switch name {
+	case "default", "kube-system", "kube-public", "kube-node-lease", "pwm-system":
+		return true
+	}
+	return false
+}
+
 // StorageClass names use DNS subdomains and may contain several labels.
 func validKubernetesStorageClass(name string) bool {
 	if len(name) == 0 || len(name) > 253 {
@@ -53,7 +63,8 @@ type Kubernetes struct {
 }
 
 func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*Kubernetes, error) {
-	if !kubernetesName.MatchString(namespace) || !kubernetesName.MatchString(project) ||
+	if !kubernetesName.MatchString(namespace) || protectedKubernetesNamespace(namespace) ||
+		!kubernetesName.MatchString(project) ||
 		cpu <= 0 || cpu > 1024 || memory < 64 || memory > 1048576 ||
 		jobs < 1 || jobs > 256 {
 		return nil, errors.New("invalid Kubernetes worker namespace, project, or capacity")
