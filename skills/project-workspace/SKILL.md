@@ -1,67 +1,28 @@
 ---
 name: project-workspace
-description: Use an authorized, self-hosted Project Workspace MCP controller to work on durable projects through linked GitHub repositories, distributed Go/Linux workers, versioned software environments, exclusive GPU/NPU/FPGA and opt-in USB leases, isolated Kubernetes Pod workspaces with PVCs and optional Docker compatibility, snapshots, and durable artifacts. Apply to multi-step coding, research, scientific computing, and hardware development when the user's Project Workspace MCP tools are connected.
+description: Use an authorized, self-hosted Project Workspace MCP controller for distributed Go/Linux workers, versioned software environments, exclusive GPU/NPU/FPGA and opt-in USB leases, isolated Kubernetes Pod workspaces with PVCs and optional Docker compatibility, snapshots, and durable artifacts. Apply to multi-step coding, engineering, scientific computing, and hardware development when connected to Project Workspace MCP. GitHub integration and the separate Project Knowledge skill are optional, never prerequisites for workspace execution.
 ---
 
 # Project Workspace
 
 Treat the project, not the machine or chat, as the unit of work. The installed Skill does not establish a connection, grant credentials, enroll devices, or execute code. Discover live MCP tools and their authorization before starting.
 
-1. **Resolve the project.** List projects and their repository memberships, including roles and preferred refs. When `github_project_board` has a linked board, read planning items from GitHub Projects V2 with `github_project_items` and follow cursors; discover selectable fields with `github_project_fields`; never substitute old local task notes for a live GitHub planning status. Use `github_project_add_item` only for an explicitly linked repository, and update a Project field by its verified item, field, and option IDs. Projects without GitHub remain valid. Retrieve versioned notes and search project knowledge before repeating work.
-2. **Resolve shared libraries.** List the catalog with `library_list`, then use `library_resolve` only for libraries explicitly linked to the project. Library sources are pinned to immutable Git revisions and can span several GitHub repositories. Read source files from their pinned revisions, not arbitrary moving branches. Large binary datasets and compiled Lean caches live in the content-addressed library object store; import through `library_import_object` or retrieve a pinned source using `library_checkout_source`. A library link does not grant generic GitHub repository write access.
+1. **Resolve the project.** List authorized projects and inspect their ownership, permitted resources and any linked source repositories. GitHub accounts, repositories, dedicated knowledge repositories and GitHub Projects boards are optional. When an explicit planning operation uses a linked GitHub Project, read live items and fields and respect exact IDs. Do not create or link a repository for a compute-only project.
+2. **Resolve task inputs.** Use uploaded artifacts, controller-managed files, explicitly linked source repositories, or opt-in libraries as needed. For a linked library, use `library_resolve` and verify exact source revisions or object SHA-256. A compute-only task can run without the library catalog, project notes, or a GitHub connection.
 3. **Choose the environment.** List environment definitions and their status. Select an approved, versioned environment matching the application/toolchain and CPU architecture. An environment is a *container image*; a workspace contains project files. On the Kubernetes backend, applications come from approved registry images; local `environment_build` and image export/import require a separately approved registry builder. Defining an image does not install applications until the matching Pod becomes ready. Proprietary software such as Vivado must be supplied by the authorized operator under its license. Never put license secrets or credentials in image layers.
 4. **Reserve hardware deliberately.** Inspect `list_compute_nodes` and `list_hardware`. Request explicit GPU, NPU, or FPGA counts with `workspace_create(hardware={...})`. USB passthrough requires explicit operator permission, a user-selected worker and device ID, and `workspace_create(usb_passthrough=true, usb_node=..., usb_device_id=..., hardware={"usb":1})`. It is disabled by default. Never choose a USB target on the user's behalf or infer authorization to erase it; confirm device identity before any destructive flashing command. Treat inventory as advisory and only a confirmed workspace reservation as allocated. A missing device mapping is not permission to access host `/dev` paths. A compilation-only FPGA job need not reserve the physical board.
 5. **Wait for a ready workspace.** `workspace_create` queues the start. Poll `workspace_list` until the selected workspace is ready; do not execute against a pending or failed lease. Use only its workspace-scoped operations. Node administration is a separate, explicitly authorized action.
-6. **Checkout exact repository revisions.** Invoke `github_checkout_repository` only for linked repositories and wait for the import operation result. Record the exact resolved commit SHA. Repositories are placed under `/workspace/repos/OWNER__REPO`; they do not contain controller GitHub credentials.
+6. **Import optional repositories.** If source code is needed and a repository is explicitly linked, invoke `github_checkout_repository` and wait for its import result; record the exact resolved commit SHA. Repositories reside under `/workspace/repos/OWNER__REPO` without controller credentials. Otherwise use approved artifacts or create a workspace from an approved environment with no repository.
 7. **Execute and inspect.** Use `workspace_call` for commands, reads, writes, directory listings, and search. For large binary inputs (such as OS images), use the controller's authenticated streamed artifact-upload endpoint and `workspace_import_artifact`, then verify the checksum in the workspace before acting on hardware. Poll `workspace_operation` until its terminal result. A successful operation with `exit_code != 0` is a failed command. Use `expected_sha256` to prevent blind file overwrites, and record test outcomes rather than inferring success from queued tasks.
 8. **Preserve distinct artifacts.** Save key output files with `export_file`; save the workspace file tree with `workspace_snapshot`, then verify its recorded artifact. Save the application/toolchain image independently with `environment_export`. Restore workspace files by choosing an authorized snapshot; load a saved image on another node with `environment_import`. Neither operation snapshots running process memory. Inspect artifact hashes and environment versions before relying on them.
-9. **Publish and record.** Create a revision-guarded draft PR with `github_publish_artifacts` using the exact expected base SHA. Confirm provider evidence; never claim publication or merge based only on an enqueued request. Write project notes with `expected_version`, and reconcile conflicts. Separate proposals, measurements, and verified results.
+9. **Publish requested outputs.** Collect and verify durable controller artifacts and output hashes before releasing the workspace. When GitHub publication is explicitly requested and linked, create a revision-guarded PR with `github_publish_artifacts` and verify provider evidence. Project notes, research indexing and handoffs belong to the separate, opt-in `project-knowledge` skill; their absence must not block compute. Distinguish proposals, tests and verified results.
 10. **Release safely.** Request `workspace_destroy` and verify confirmed termination. Hardware reservations remain held when cleanup fails or the worker disappears. Do not represent an expired lease as a safely released GPU or FPGA. Do not delete worker volumes before the required snapshot has been retained.
 
 The controller and worker are implemented in Go. Python is an optional application inside an approved workspace image, not a service dependency. The controller currently has one privileged administrator identity. Never put its token, GitHub credentials, or host SSH keys inside worker command payloads, project notes, snapshots, or image recipes. Kubernetes namespaces, RBAC, workload admission, and Pod Security Standards require operator verification; Pod sandboxing is not a substitute for a hostile-tenant security audit. Report physical hardware integrations as unverified unless exercised on authorized devices.
 
-## Research source passages and citations
+## Optional knowledge workflows
 
-Before indexing, register the **original** under a shared library as an
-immutable object with verified SHA-256, or select a Git source already pinned
-to an exact commit SHA. Use `research_register_source` for its stable
-identity, then `research_ingest_passages` with a revision-guarded batch of
-text, page/section/line locators, and optional topics. `append` adds to
-the current index epoch; `replace` starts a new visible epoch without
-deleting prior records. Do not invent location metadata or claim automatic
-PDF understanding; a trusted preprocessor must derive the text.
-
-To explore the available research subjects, call `research_topics` for
-the authorized project and `research_browse_topic` to read passages
-associated with a selected label. Report source count and cited passages,
-not a fabricated consensus. Reindexing replaces the visible topic set
-while preserving historical citations.
-
-For retrieval, select the authenticated project and use
-`research_sources`, `research_search`, and `research_read_passage`.
-Only the project's explicitly linked shared libraries are visible. Search
-excerpts include the immutable source provenance and locators; verify
-a passage by reading the full record before quoting or publishing it.
-Lexical SQLite FTS search is not semantic reasoning or a substitute for
-original-source inspection. Large ingest batches are bounded; concurrent
-updates require exact expected index revisions.
-
-## Project context and contribution records
-
-Use `knowledge_context` to inspect canonical `project` and `context`
-notes, the latest handoff, recent decisions, and exact repository links.
-These local records do not supersede an external authoritative Project
-Knowledge system unless the operator has explicitly designated this
-controller as that system. Update canonical notes through
-`write_project_note(expected_version=...)`; never overwrite them blindly.
-Use `knowledge_contribute` to append a decision, finding, note, or handoff,
-including a linked repository at an exact commit SHA or a verified project
-artifact ID when available. Search with
-`knowledge_search_contributions`, inspect the full immutable record with
-`knowledge_contribution`, and do not infer implementation success merely
-from a recorded handoff. The controller binds the authenticated principal
-automatically. Parallel workers contribute immutable records rather than
-editing a shared context file without a revision guard.
+Install and use `skills/project-knowledge` separately when the user wants persistent project notes, provenance-rich research evidence, decisions, or handoffs. The controller's local note and contribution APIs remain available but are not part of normal compute execution. Neither skill requires GitHub, and invoking one does not automatically invoke the other.
 
 ## Cooperative claims on personal tasks
 
