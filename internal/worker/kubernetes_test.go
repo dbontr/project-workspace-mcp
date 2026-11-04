@@ -177,3 +177,53 @@ func TestKubernetesWorkloadsUseNamespaceImagePullSecrets(t *testing.T) {
 		}
 	}
 }
+
+func TestKubernetesDNSNamesAndStorageClasses(t *testing.T) {
+	for _, name := range []string{"a", "0", "project-9", strings.Repeat("a", 63)} {
+		if !kubernetesName.MatchString(name) {
+			t.Fatalf("rejected valid Kubernetes DNS label %q", name)
+		}
+	}
+	for _, name := range []string{"", "-project", "project-", "Project", "a.b", strings.Repeat("a", 64)} {
+		if kubernetesName.MatchString(name) {
+			t.Fatalf("accepted invalid Kubernetes DNS label %q", name)
+		}
+	}
+	for _, name := range []string{"fast.ssd", "longhorn", "0.storage", "a." + strings.Repeat("a", 63)} {
+		if !validKubernetesStorageClass(name) {
+			t.Fatalf("rejected valid StorageClass %q", name)
+		}
+	}
+	for _, name := range []string{"", "fast..ssd", "fast.", ".fast", "fast/-ssd", strings.Repeat("a", 254)} {
+		if validKubernetesStorageClass(name) {
+			t.Fatalf("accepted invalid StorageClass %q", name)
+		}
+	}
+}
+
+func TestKubernetesRejectsRequestsBeyondWorkerCapacity(t *testing.T) {
+	k, trace := testKubernetes(t)
+	r := NewRunner(nil)
+	r.Kube = k
+	r.Images = map[string]bool{"debian:bookworm-slim": true}
+	id := strings.Repeat("a", 32)
+	for _, resources := range []map[string]any{
+		{"image": "debian:bookworm-slim", "cpu": 8.5, "memory_mb": 512.0},
+		{"image": "debian:bookworm-slim", "cpu": 1.0, "memory_mb": 16385.0},
+	} {
+		if _, err := k.Start(context.Background(), r, id, resources); err == nil {
+			t.Fatalf("created workspace beyond declared worker capacity: %v", resources)
+		}
+	}
+	for _, job := range []Job{
+		{ID: strings.Repeat("b", 32), Image: "debian:bookworm-slim", CPU: 8.5, MemoryMB: 512},
+		{ID: strings.Repeat("b", 32), Image: "debian:bookworm-slim", CPU: 1, MemoryMB: 16385},
+	} {
+		if status, _ := k.ExecuteJob(context.Background(), r, job); status != "failed" {
+			t.Fatalf("admitted job beyond declared worker capacity: %+v", job)
+		}
+	}
+	if _, err := os.Stat(trace); !os.IsNotExist(err) {
+		t.Fatalf("rejected work reached Kubernetes API: %v", err)
+	}
+}
