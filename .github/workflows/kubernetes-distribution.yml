@@ -49,6 +49,24 @@ jobs:
             exit 1
           fi
           grep -q 'encrypted backups require' /tmp/restic-error
+      - name: Validate controller node placement
+        run: |
+          cat > /tmp/controller-placement-values.yaml <<'EOF'
+          controller:
+            nodeSelector:
+              kubernetes.io/hostname: control-host
+          worker:
+            enabled: false
+          EOF
+          helm template pwm-controller deploy/helm/project-workspace \
+            -f /tmp/controller-placement-values.yaml > /tmp/controller-placement.yaml
+          grep -A2 'nodeSelector:' /tmp/controller-placement.yaml | grep -q 'kubernetes.io/hostname: control-host'
+          helm template pwm-controller deploy/helm/project-workspace \
+            --set worker.enabled=false > /tmp/controller-default.yaml
+          if grep -q 'nodeSelector:' /tmp/controller-default.yaml; then
+            echo "Unexpected controller node selector in default chart" >&2
+            exit 1
+          fi
       - name: Load packaged application images
         run: |
           kind load docker-image pwm-controller:ci --name chart-testing

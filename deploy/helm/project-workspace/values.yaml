@@ -12,6 +12,7 @@ controller:
   allowedOrigins: "https://pwm-controller.pwm-system.svc.cluster.local"
   databaseSize: 50Gi
   storageClass: ""
+  nodeSelector: {}
   githubPATSecretName: ""
   backupInterval: ""
   offsite:

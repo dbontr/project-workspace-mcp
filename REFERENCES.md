@@ -53,6 +53,7 @@
 - [REST API: Get the authenticated user](https://docs.github.com/en/rest/users/users#get-the-authenticated-user) — GitHub. Used for: deriving Git author and committer identity from the PAT owner.
 - [REST API: Git commits](https://docs.github.com/en/rest/git/commits#create-a-commit) — GitHub. Used for: explicit Git author and committer fields and provider-confirmed commit creation.
 - [GitHub no-reply email address reference](https://docs.github.com/en/account-and-profile/reference/email-addresses-reference) — GitHub. Used for: privacy-preserving ID-based commit attribution to the authenticated account.
+- [Kubernetes assigning Pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) — Kubernetes. Used for: controller nodeSelector placement with node-local persistent storage.
 - [Kubernetes Pods](https://kubernetes.io/docs/concepts/workloads/pods/) — Kubernetes. Used for: workspace Pod lifecycle and container-level security contexts.
 - [Kubernetes Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) — Kubernetes. Used for: finite batch execution, deadline, retry and cleanup semantics.
 - [Kubernetes persistent volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) — Kubernetes. Used for: durable workspace PVCs and CSI StorageClass provisioning.

@@ -20,6 +20,13 @@ The controller, worker credentials, and GitHub PAT live in the separate
 `pwm-system` namespace. Workloads never receive these credentials, the
 Kubernetes API token, or a host Docker socket.
 
+For a node-local StorageClass, set `controller.nodeSelector` to select the
+storage-owning control-plane host. For example, a values file may contain
+`controller: {nodeSelector: {kubernetes.io/hostname: control-host}}`.
+Without this constraint, replacement Pods may be scheduled away from the
+persistent volume. Replicated storage should be preferred for host failure
+recovery, with independent encrypted backups in either case.
+
 The controller records project state and artifact revisions in SQLite on its
 own persistent volume. Workspace files use separate PVCs in project namespaces.
 A Pod can be rescheduled only if its PVC is attachable on the replacement node;
