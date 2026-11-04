@@ -5,6 +5,9 @@
 - [SQLite FTS5 extension](https://www.sqlite.org/fts5.html) — SQLite. Used for: Unicode-aware indexed passage search with project-scoped source joins and bounded results.
 - [SQLite C interface](https://www.sqlite.org/cintro.html) — SQLite. Used for: durable transactional project state, prepared statements, and WAL.
 - [Go language specification](https://go.dev/ref/spec) — Go team. Used for: Go controller and worker implementation.
+- [Go release history and support policy](https://go.dev/doc/devel/release) — Go team. Used for: selecting a maintained, security-patched toolchain for distribution.
+- [Go 1.27 release notes](https://go.dev/doc/go1.27) — Go team. Used for: compatibility and build validation against Go 1.27.
+- [Kubernetes 1.35 release branch](https://kubernetes.io/releases/1.35/) — Kubernetes. Used for: selecting a supported kubectl minor version and patch release for the worker image.
 - [Go net/http documentation](https://pkg.go.dev/net/http) — Go team. Used for: authenticated controller HTTP service and worker transport.
 - [Git fetch](https://git-scm.com/docs/git-fetch) — Git maintainers. Used for: exact-commit retrieval and generic Git remote transport requirements.
 - [Git push](https://git-scm.com/docs/git-push) — Git maintainers. Used for: revision-guarded publication and supported HTTPS/SSH Git remote formats.

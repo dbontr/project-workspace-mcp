@@ -44,7 +44,7 @@ ready. GitHub remains the configured authoritative remote for this installation.
 
 ## Requirements
 
-- Go 1.23 or later at build time, and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation.
+- Go 1.27.3 or later at build time (a security-patched Go release), and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation. The OCI builds use Go 1.27.3 and a pinned Kubernetes `kubectl` v1.35.9 client by default; update both deliberately with security releases and cluster version-skew requirements.
 - A supported Kubernetes cluster (including K3s), a dynamic CSI StorageClass for PVCs, and RBAC permissions scoped to the project's workload namespace. The worker image includes `kubectl`; no Docker daemon or host Docker socket is required for Kubernetes execution. Network-policy enforcement depends on the cluster CNI.
 - The Kubernetes controller runs as a single-writer process over durable SQLite and artifact storage. Conventional Linux Docker workers remain an optional compatibility backend selected with `--backend docker`.
 - A trusted MCP client. The HTTP MCP endpoint implements stateless Streamable HTTP with the 2025-06-18 protocol, including `initialize`, `tools/list`, and `tools/call`.
