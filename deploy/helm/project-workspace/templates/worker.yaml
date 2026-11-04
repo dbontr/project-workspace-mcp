@@ -116,6 +116,10 @@ spec:
         pwm-project: {{ .Values.worker.projectID }}
     spec:
       serviceAccountName: pwm-worker-{{ .Values.worker.projectID }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.worker.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

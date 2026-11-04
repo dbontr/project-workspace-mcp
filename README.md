@@ -81,6 +81,12 @@ cd /existing/output-parent/project-workspace-release
 sha256sum -c SHA256SUMS
 ```
 
+For imported local images, set `worker.nodeSelector` to a node that has the
+worker image, or import the verified archive on every eligible worker node.
+This selector places the **worker service**; it does not override Kubernetes
+scheduling, volume node affinity, or device-plugin placement for workspaces.
+The default remains scheduler-selected placement when no selector is set.
+
 The bundle records the complete source commit, local image tags, image IDs,
 and checksums. It refuses dirty source trees, paths within the repository,
 and existing output directories. Import the image archive into the

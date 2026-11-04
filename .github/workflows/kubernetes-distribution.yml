@@ -98,6 +98,25 @@ jobs:
             echo "Unexpected controller node selector in default chart" >&2
             exit 1
           fi
+      - name: Validate restricted worker deployment placement
+        run: |
+          cat > /tmp/worker-placement-values.yaml <<'EOF'
+          controller:
+            enabled: false
+          worker:
+            enabled: true
+            nodeSelector:
+              kubernetes.io/hostname: compute-worker
+          EOF
+          helm template pwm-research deploy/helm/project-workspace \
+            -f /tmp/worker-placement-values.yaml > /tmp/worker-placement.yaml
+          grep -A2 'nodeSelector:' /tmp/worker-placement.yaml | grep -q 'kubernetes.io/hostname: compute-worker'
+          helm template pwm-research deploy/helm/project-workspace \
+            --set controller.enabled=false --set worker.enabled=true > /tmp/worker-default.yaml
+          if grep -q 'nodeSelector:' /tmp/worker-default.yaml; then
+            echo 'Unexpected worker nodeSelector without an explicit choice' >&2
+            exit 1
+          fi
       - name: Load packaged application images
         run: |
           kind load docker-image pwm-controller:ci --name chart-testing
