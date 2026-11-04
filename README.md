@@ -4,6 +4,44 @@ A self-hosted, project-aware distributed computing system for MCP clients. Its G
 
 The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Project Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
 
+## Git source authority and optional knowledge
+
+Project Workspace is a Git-centered development system. Every **code project**
+must designate at least one authoritative Git remote. Workers may check out
+temporary copies of source code for builds and tests, but uncommitted local
+copies and controller disks are not durable code publication. A task is not
+finished until its code is committed and verified on the designated remote.
+
+GitHub is the active source provider for the Saturn deployment. The current
+controller implements its repository checkout, publication and GitHub-specific
+project-management operations through GitHub APIs. Ordinary Git transports
+also work with GitLab, Gitea and self-hosted servers, but **the controller's
+generic Git provider adapter is not yet implemented**. Do not claim those
+providers are supported by the current release or substitute a local-only
+repository. A provider-agnostic adapter must separately implement authenticated
+fetch, exact-commit checkout, protected publication and remote verification,
+with provider-specific PR/issue features remaining optional.
+
+Knowledge persistence is separately opt-in:
+
+| Knowledge policy | Durable destination | Behavior |
+| --- | --- | --- |
+| `none` | None | No intentional project note, finding, decision or handoff writes |
+| `git` | Chosen Git remote and subdirectory | Explicitly selected knowledge is committed and verified in Git |
+
+The independently installable `skills/project-knowledge` describes the
+knowledge lifecycle; `skills/project-workspace` remains responsible for
+source-backed compute. A knowledge repository may be the existing source
+repository or an explicitly chosen separate repository. No project needs a
+second repository just for notes. These are design-level policies; the current
+controller retains legacy local note APIs and does **not** yet enforce the
+two-mode storage policy. Operators must not treat a local note record as a
+verified Git knowledge commit.
+
+GitLab and self-hosted Git require an authenticated and tested generic Git
+adapter before provider-independent workflows can be considered production
+ready. GitHub remains the configured authoritative remote for this installation.
+
 ## Requirements
 
 - Go 1.23 or later at build time, and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation.
