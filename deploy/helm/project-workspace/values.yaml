@@ -32,6 +32,7 @@ worker:
   image: ghcr.io/dbontr/project-workspace-worker:main
   imagePullPolicy: Always
   imagePullSecrets: []
+  nodeSelector: {}
   name: research-agent
   projectID: research
   workloadNamespace: pwm-research
