@@ -201,6 +201,16 @@ func TestKubernetesDNSNamesAndStorageClasses(t *testing.T) {
 	}
 }
 
+func TestKubernetesRejectsSystemNamespacesWithoutHelm(t *testing.T) {
+	for _, namespace := range []string{
+		"default", "kube-system", "kube-public", "kube-node-lease", "pwm-system",
+	} {
+		if _, err := NewKubernetes(namespace, "research", 2, 2048, 1); err == nil {
+			t.Fatalf("worker accepted protected namespace %q", namespace)
+		}
+	}
+}
+
 func TestKubernetesRejectsRequestsBeyondWorkerCapacity(t *testing.T) {
 	k, trace := testKubernetes(t)
 	r := NewRunner(nil)
