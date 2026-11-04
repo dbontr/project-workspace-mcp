@@ -62,6 +62,24 @@ jobs:
             echo "Default chart created a workload namespace" >&2
             exit 1
           fi
+      - name: Reject unsafe worker namespaces and identities
+        run: |
+          for namespace in pwm-system default kube-system kube-public kube-node-lease invalid.; do
+            if helm template pwm-research deploy/helm/project-workspace \
+               --namespace pwm-system \
+               --set controller.enabled=false --set worker.enabled=true \
+               --set worker.workloadNamespace="$namespace" > /tmp/unsafe-worker.yaml 2>/tmp/unsafe-worker.err; then
+              echo "Chart accepted unsafe worker namespace $namespace" >&2
+              exit 1
+            fi
+          done
+          if helm template pwm-research deploy/helm/project-workspace \
+             --namespace pwm-system \
+             --set controller.enabled=false --set worker.enabled=true \
+             --set worker.projectID="$(printf '%060d' 1)" > /tmp/unsafe-worker.yaml 2>/tmp/unsafe-worker.err; then
+            echo "Chart accepted a worker identity that exceeds Kubernetes name limits" >&2
+            exit 1
+          fi
       - name: Validate controller node placement
         run: |
           cat > /tmp/controller-placement-values.yaml <<'EOF'

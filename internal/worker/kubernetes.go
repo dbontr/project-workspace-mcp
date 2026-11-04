@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -18,7 +19,30 @@ import (
 	"time"
 )
 
-var kubernetesName = regexp.MustCompile("^[a-z][a-z0-9-]{0,62}$")
+var kubernetesName = regexp.MustCompile("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+// A project worker must not operate against infrastructure namespaces, even
+// if invoked outside the Helm installation path.
+func protectedKubernetesNamespace(name string) bool {
+	switch name {
+	case "default", "kube-system", "kube-public", "kube-node-lease", "pwm-system":
+		return true
+	}
+	return false
+}
+
+// StorageClass names use DNS subdomains and may contain several labels.
+func validKubernetesStorageClass(name string) bool {
+	if len(name) == 0 || len(name) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if !kubernetesName.MatchString(label) {
+			return false
+		}
+	}
+	return true
+}
 
 // Kubernetes executes workspace Pods, persistent claims, and batch Jobs via
 // the Kubernetes API. A worker serves one dedicated project namespace.
@@ -39,7 +63,8 @@ type Kubernetes struct {
 }
 
 func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*Kubernetes, error) {
-	if !kubernetesName.MatchString(namespace) || !kubernetesName.MatchString(project) ||
+	if !kubernetesName.MatchString(namespace) || protectedKubernetesNamespace(namespace) ||
+		!kubernetesName.MatchString(project) ||
 		cpu <= 0 || cpu > 1024 || memory < 64 || memory > 1048576 ||
 		jobs < 1 || jobs > 256 {
 		return nil, errors.New("invalid Kubernetes worker namespace, project, or capacity")
@@ -56,7 +81,7 @@ func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*K
 		return nil, errors.New("invalid Kubernetes workspace storage request")
 	}
 	class := os.Getenv("PWM_KUBE_STORAGE_CLASS")
-	if class != "" && !kubernetesName.MatchString(class) {
+	if class != "" && !validKubernetesStorageClass(class) {
 		return nil, errors.New("invalid Kubernetes storage class")
 	}
 	pullSecret := os.Getenv("PWM_KUBE_IMAGE_PULL_SECRET")
@@ -357,7 +382,9 @@ func (k *Kubernetes) Start(ctx context.Context, r *Runner, id string, p map[stri
 		return nil, errors.New("Kubernetes Pod image is not in the approved OCI registry pool")
 	}
 	cpu, memory := getFloat(p, "cpu"), getFloat(p, "memory_mb")
-	if cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 || float64(int(memory)) != memory {
+	if math.IsNaN(cpu) || math.IsInf(cpu, 0) || cpu < 0.1 || cpu > 32 || cpu > k.CPU ||
+		memory < 64 || memory > 131072 || memory > float64(k.MemoryMB) ||
+		float64(int(memory)) != memory {
 		return nil, errors.New("invalid Kubernetes resource request")
 	}
 	display := p["display"] == true
@@ -562,7 +589,8 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 }
 func (k *Kubernetes) ExecuteJob(ctx context.Context, r *Runner, job Job) (string, string) {
 	if !workspaceID.MatchString(job.ID) || !r.Images[job.Image] || job.CPU < 0.1 ||
-		job.CPU > 32 || job.MemoryMB < 64 || job.MemoryMB > 131072 {
+		job.CPU > 32 || job.CPU > k.CPU || math.IsNaN(job.CPU) || math.IsInf(job.CPU, 0) ||
+		job.MemoryMB < 64 || job.MemoryMB > 131072 || job.MemoryMB > k.MemoryMB {
 		return "failed", "invalid or unapproved Kubernetes job"
 	}
 	if !kubernetesName.MatchString(k.Worker) {
