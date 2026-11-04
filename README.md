@@ -27,6 +27,11 @@ Without this constraint, replacement Pods may be scheduled away from the
 persistent volume. Replicated storage should be preferred for host failure
 recovery, with independent encrypted backups in either case.
 
+The Helm chart installs the controller only by default. Worker resources,
+namespace-scoped RBAC, and workload namespaces require `worker.enabled=true`
+after one-time pairing and creation of the worker credential Secret. Do not
+provide an unpaired worker credential or rely on the chart to enroll workers.
+
 The controller records project state and artifact revisions in SQLite on its
 own persistent volume. Workspace files use separate PVCs in project namespaces.
 A Pod can be rescheduled only if its PVC is attachable on the replacement node;
