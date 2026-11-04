@@ -123,6 +123,8 @@ jobs:
           kind load docker-image pwm-worker:ci --name chart-testing
       - name: Verify Helm deployment and paired workspace lifecycle
         run: bash scripts/ci-kubernetes-smoke.sh
+      - name: Verify encrypted network backup and clean PVC recovery
+        run: bash scripts/ci-kubernetes-backup.sh
 
   publish:
     needs: helm-smoke
