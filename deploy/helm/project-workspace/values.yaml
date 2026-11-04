@@ -28,7 +28,7 @@ controller:
       memory: 2Gi
 
 worker:
-  enabled: true
+  enabled: false
   image: ghcr.io/dbontr/project-workspace-worker:main
   imagePullPolicy: Always
   imagePullSecrets: []
