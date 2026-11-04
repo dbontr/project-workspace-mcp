@@ -49,6 +49,19 @@ jobs:
             exit 1
           fi
           grep -q 'encrypted backups require' /tmp/restic-error
+      - name: Keep default installation controller-only
+        run: |
+          helm template pwm-controller deploy/helm/project-workspace > /tmp/default-install.yaml
+          grep -q 'kind: Deployment' /tmp/default-install.yaml
+          grep -q 'name: pwm-controller' /tmp/default-install.yaml
+          if grep -q 'name: pwm-worker-research' /tmp/default-install.yaml; then
+            echo "Worker deployed without explicit enrollment" >&2
+            exit 1
+          fi
+          if grep -q 'kind: Namespace' /tmp/default-install.yaml; then
+            echo "Default chart created a workload namespace" >&2
+            exit 1
+          fi
       - name: Validate controller node placement
         run: |
           cat > /tmp/controller-placement-values.yaml <<'EOF'
