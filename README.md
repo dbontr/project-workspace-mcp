@@ -69,6 +69,36 @@ These Docker commands **package container images** on the operator's build
 machine. Kubernetes runs those images through the cluster container runtime;
 the Kubernetes worker does not invoke Docker.
 
+### Source-pinned OCI bundle without a registry
+
+To build a portable Linux/amd64 controller, worker, source, and Helm bundle
+without relying on GitHub Actions or a container registry, use Docker Buildx
+and Helm from a **clean committed source tree**:
+
+```sh
+bash scripts/package-kubernetes.sh /existing/output-parent/project-workspace-release
+cd /existing/output-parent/project-workspace-release
+sha256sum -c SHA256SUMS
+```
+
+The bundle records the complete source commit, local image tags, image IDs,
+and checksums. It refuses dirty source trees, paths within the repository,
+and existing output directories. Import the image archive into the
+`k8s.io` containerd namespace **on every node eligible to run the controller
+or workers**; K3s operators can use:
+
+```sh
+gzip -dc project-workspace-images-linux-amd64.tar.gz | sudo k3s ctr --namespace k8s.io images import -
+```
+
+Use the recorded image tags with `imagePullPolicy=IfNotPresent` only after
+verifying each import. A local Docker image ID is not a registry manifest
+digest, and a source commit does not pin mutable upstream base images.
+Production environments with a registry should publish the tested images and
+deploy by verified `@sha256:` manifest digests. The bundle does not
+provision Kubernetes credentials, authorize worker enrollment, or replace
+independent PVC and controller-state recovery tests.
+
 For private OCI packages, configure `controller.imagePullSecrets` and
 `worker.imagePullSecrets` with the names of Kubernetes `dockerconfigjson`
 pull Secrets in `pwm-system`. Runtime workspace Pods and Jobs use a separate
