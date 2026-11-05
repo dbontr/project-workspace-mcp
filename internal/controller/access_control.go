@@ -70,7 +70,7 @@ var rootTools = map[string]bool{
 	"library_attachment_send": true,
 	"link_github_repository": true, "github_repository_api": true, "github_pat_readiness": true,
 	"github_account_search": true, "github_account_repositories": true, "github_account_repository": true,
-	"github_account_rename": true, "github_account_transfer": true,
+	"github_account_rename": true, "github_account_transfer": true, "github_account_reconcile": true,
 	"external_resource_register": true, "external_resource_list": true, "external_resource_leases": true,
 	"external_resource_reserve": true, "external_resource_release": true,
 	"knowledge_configure": true, "knowledge_git_publish": true,
