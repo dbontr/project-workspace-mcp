@@ -13,7 +13,7 @@ Use this reference for Project Workspace MCP, Kubernetes, external systems, arti
 
 ## Project workspaces
 
-Use the live `project-workspace` skill and MCP schemas for exact tool arguments. Wait for the workspace to report ready. Import code at a verified Git commit and check artifact digests. A remote asynchronous operation is not complete until its own terminal status, exit code and output are inspected.
+Use this repository's [MCP operations reference](mcp-operations.md) and the live MCP schemas for exact tool arguments. Wait for the workspace to report ready. Import code at a verified Git commit and check artifact digests. A remote asynchronous operation is not complete until its own terminal status, exit code and output are inspected.
 
 Before a destructive or costly job, confirm inputs, target, expected side effects, recovery path and capacity. Keep builds, temporary clones and caches inside the workspace; publish source to the Git authority and retained outputs to the approved artifact store. A snapshot of files does not save live memory or prove external board state.
 
