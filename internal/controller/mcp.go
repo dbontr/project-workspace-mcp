@@ -33,6 +33,8 @@ var tools = []toolDefinition{
 	{"knowledge_search_contributions", "Search project handoffs, decisions and findings", []string{"project_id", "query"}, nil},
 	{"list_compute_nodes", "List workers and availability", nil, nil},
 	{"worker_revoke", "Revoke a worker credential while retaining its active leases and recovery records; administrator only", []string{"node_id"}, nil},
+	{"task_worker_authorize", "Grant or revoke a worker's access to independent personal task execution", []string{"node_id", "allowed", "confirm"}, nil},
+	{"task_worker_access", "List controller-approved worker access to standalone personal tasks", nil, nil},
 	{"submit_compute_job", "Queue a one-shot command", []string{"project_id", "command"}, []string{"image", "cpu", "memory_mb"}},
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
@@ -432,6 +434,12 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.Nodes()
 	case "worker_revoke":
 		return db.RevokeNode(get("node_id"))
+	case "task_worker_authorize":
+		result, err := db.AuthorizePersonalTaskWorker(get("node_id"), a["allowed"] == true, a["confirm"] == true)
+		db.AuditAccess(who.Principal, get("node_id"), "task-worker-authorization", err == nil)
+		return result, err
+	case "task_worker_access":
+		return db.PersonalTaskWorkerAccess()
 	case "submit_compute_job":
 		image := get("image")
 		if image == "" {
