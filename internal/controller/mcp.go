@@ -44,6 +44,8 @@ var tools = []toolDefinition{
 	{"task_files", "List all immutable task file revisions", []string{"task_id"}, nil},
 	{"task_file_info", "Inspect a task file revision, latest by default", []string{"task_id", "name"}, []string{"revision"}},
 	{"task_save_text", "Save a new immutable task text-file revision up to 512 KiB", []string{"task_id", "name", "body", "expected_revision"}, nil},
+	{"task_attach_base64", "Accept a ChatGPT-transferred attachment with real bytes, MIME type and SHA-256 for an owner task", []string{"task_id", "name", "media_type", "sha256", "data_base64", "expected_revision"}, nil},
+	{"task_study_pack_import", "Store a structured, source-referenced study pack as an explicit task file", []string{"task_id", "name", "pack", "expected_revision"}, nil},
 	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
 	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
 	{"task_compute_submit", "Run an independent task on an authorized worker without a project or knowledge destination", []string{"task_id", "command"}, []string{"image", "cpu", "memory_mb"}},
@@ -165,7 +167,7 @@ func kindFor(key string) string {
 		return "boolean"
 	case "packages", "software_ids", "artifact_ids", "tags", "passages", "passage_ids", "questions":
 		return "array"
-	case "hardware", "payload", "params", "changes":
+	case "hardware", "payload", "params", "changes", "pack":
 		return "object"
 	}
 	return "string"
@@ -404,6 +406,13 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			return nil, err
 		}
 		return s.GitHub.PATReadiness(repositories)
+	case "task_attach_base64":
+		return db.AdmitTaskAttachment(who.Principal, get("task_id"), get("name"), get("media_type"),
+			get("sha256"), get("data_base64"), asInt(a["expected_revision"]))
+	case "task_study_pack_import":
+		var pack StudyPack
+		if err := JSONRequest(a["pack"], &pack); err != nil { return nil, err }
+		return db.SaveTaskStudyPack(who.Principal, get("task_id"), get("name"), pack, asInt(a["expected_revision"]))
 	case "task_create":
 		var tags []string
 		if a["tags"] != nil {
