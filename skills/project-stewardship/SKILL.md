@@ -1,6 +1,6 @@
 ---
 name: project-stewardship
-description: Repository-owned operating standard for Project Workspace MCP. Use for MCP project or standalone task workflows, provider-aware GitHub and local Git source control, optional Git-backed project knowledge and its record format, Issues/PRs/Projects planning, distributed Kubernetes workspaces, hardware leases, external resource boundaries, artifacts, research provenance, professional implementation, release verification and durable handoffs. Covers the MCP-specific instructions formerly split across Project Workspace and Project Knowledge. Compose with professional-code for software quality when available.
+description: Repository-owned operating standard for Project Workspace MCP. Use for MCP project or standalone task workflows, provider-aware GitHub and local Git source control, optional Git-backed project knowledge and its record format, Issues/PRs/Projects planning, distributed Kubernetes workspaces, hardware leases, external resource boundaries, artifacts, research provenance, professional implementation, release verification and durable handoffs. Compose with the general professional-code skill for software quality when available.
 ---
 
 # Project Stewardship
