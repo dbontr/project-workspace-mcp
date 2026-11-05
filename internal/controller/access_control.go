@@ -73,7 +73,7 @@ var rootTools = map[string]bool{
 	"link_github_repository": true, "github_repository_api": true, "github_pat_readiness": true,
 	"github_account_search": true, "github_account_repositories": true, "github_account_repository": true,
 	"github_account_rename": true, "github_account_transfer": true, "github_account_reconcile": true,
-	"git_link_repository": true, "git_provider_capabilities": true,
+	"git_link_repository": true,
 	"external_resource_register": true, "external_resource_list": true, "external_resource_leases": true,
 	"external_resource_reserve": true, "external_resource_release": true,
 	"knowledge_configure": true, "knowledge_git_publish": true,
@@ -113,7 +113,7 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 		s.DB.AuditAccess(who.Principal, asString(args["project_id"]), "mcp:"+name, allowed)
 		return allowed
 	}
-	if name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" || name == "pool_list_programs" {
+	if name == "git_provider_capabilities" || name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" || name == "pool_list_programs" {
 		return true
 	}
 	project := asString(args["project_id"])
