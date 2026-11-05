@@ -102,6 +102,7 @@ var tools = []toolDefinition{
 	{"github_account_repository", "Inspect a repository accessible to the administrator by exact name", []string{"repository"}, nil},
 	{"github_account_rename", "Rename an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
 	{"github_account_transfer", "Transfer an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
+	{"github_account_reconcile", "Reconcile links after confirming a provider-side repository change by immutable ID", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
 	{"github_repository_api", "Call a repository-scoped GitHub endpoint", []string{"project_id", "repository", "method", "endpoint"}, []string{"params", "payload"}},
 	{"github_pat_readiness", "Inspect the user-owned PAT identity and reported permissions for repositories linked to a project without exposing credentials", []string{"project_id"}, nil},
 	{"github_repository", "Read repository metadata", []string{"project_id", "repository"}, nil},
@@ -744,14 +745,54 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return s.GitHub.AccountRepository(get("repository"))
 	case "github_account_rename", "github_account_transfer":
 		operation := "rename"
-		if name == "github_account_transfer" { operation = "transfer" }
+		if name == "github_account_transfer" {
+			operation = "transfer"
+		}
+		if a["confirm"] != true {
+			return nil, errors.New("explicit repository mutation confirmation is required")
+		}
+		after, err := accountRepositoryDestination(get("repository"), operation, get("destination"))
+		if err != nil {
+			return nil, err
+		}
+		if err := db.CheckRepositoryRebind(get("repository"), after); err != nil {
+			return nil, err
+		}
 		result, err := s.GitHub.AccountRepositoryChange(get("repository"), operation,
-			get("destination"), int64(asFloat(a["expected_repo_id"])), a["confirm"] == true)
+			get("destination"), int64(asFloat(a["expected_repo_id"])), true)
+		if err == nil && asString(result["status"]) == "verified" {
+			var references map[string]any
+			references, err = db.RebindRepositoryReferences(get("repository"), after)
+			if err != nil {
+				err = fmt.Errorf("provider changed repository but controller references require reconciliation: %w", err)
+			} else {
+				result["references"] = references
+			}
+		}
 		status := "rejected"
-		if err == nil { status = asString(result["status"]) }
+		if err == nil {
+			status = asString(result["status"])
+		}
 		db.AuditAccess(who.Principal, get("repository"),
-			"github-account-"+operation+":"+get("destination")+":"+status, err == nil)
+			"github-account-"+operation+":"+after+":"+status, err == nil)
 		return result, err
+	case "github_account_reconcile":
+		if a["confirm"] != true || asFloat(a["expected_repo_id"]) <= 0 {
+			return nil, errors.New("explicit confirmation and repository identity required")
+		}
+		if err := db.CheckRepositoryRebind(get("repository"), get("destination")); err != nil {
+			return nil, err
+		}
+		remote, err := s.GitHub.AccountRepository(get("destination"))
+		if err != nil {
+			return nil, err
+		}
+		if int64(asFloat(remote["id"])) != int64(asFloat(a["expected_repo_id"])) {
+			return nil, errors.New("repository ID differs at proposed destination")
+		}
+		references, err := db.RebindRepositoryReferences(get("repository"), get("destination"))
+		db.AuditAccess(who.Principal, get("repository"), "github-account-reconcile:"+get("destination"), err == nil)
+		return references, err
 	}
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {
