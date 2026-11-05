@@ -115,10 +115,18 @@ func TestProjectKnowledgeRESTAndMCPIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	editor := signedTestToken(t, key, issuer, "project-workspace", "researcher", time.Now().Add(time.Hour).Unix())
-	code, created := call(t, httpServer, http.MethodPost, "/api/projects/demo/knowledge/contributions", editor, ContributionRequest{
+	code, _ := call(t, httpServer, http.MethodPost, "/api/projects/demo/knowledge/contributions", editor, ContributionRequest{
 		Kind: "finding", Title: "New result", Body: "Result with fixed scope",
 	})
-	wantOK(t, code, created)
+	if code != http.StatusConflict {
+		t.Fatal("REST accepted a non-Git knowledge write")
+	}
+	created, err := db.ContributeProject("demo", ContributionRequest{
+		Kind: "finding", Title: "Historical result", Body: "Result with fixed scope",
+	}, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if created["principal"] != principal {
 		t.Fatalf("REST must bind authenticated user, got %v", created)
 	}
@@ -143,16 +151,15 @@ func TestProjectKnowledgeRESTAndMCPIdentity(t *testing.T) {
 	})
 	wantOK(t, code, rpc)
 	result, _ := rpc["result"].(map[string]any)
-	if asBool(result["isError"]) {
-		t.Fatalf("MCP contribution failed: %v", result)
+	if !asBool(result["isError"]) {
+		t.Fatalf("MCP accepted a local knowledge contribution: %v", result)
 	}
 	latest, err := db.ProjectContext("demo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	handoff, _ := latest["latest_handoff"].(map[string]any)
-	if asString(handoff["principal"]) != principal {
-		t.Fatalf("MCP must bind authenticated caller, not supplied identity: %v", handoff)
+	if latest["latest_handoff"] != nil {
+		t.Fatal("rejected contribution created a handoff")
 	}
 	code, _ = call(t, httpServer, http.MethodGet, "/api/projects/other/knowledge/context", editor, nil)
 	if code != http.StatusForbidden {
