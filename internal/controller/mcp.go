@@ -56,7 +56,8 @@ var tools = []toolDefinition{
 	{"task_study_pack_import", "Store a structured, source-referenced study pack as an explicit task file", []string{"task_id", "name", "pack", "expected_revision"}, nil},
 	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
 	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
-	{"task_compute_submit", "Run an independent task on an authorized worker without a project or knowledge destination", []string{"task_id", "command"}, []string{"image", "cpu", "memory_mb"}},
+	{"task_compute_submit", "Run an independent task on an authorized worker without a project or knowledge destination", []string{"task_id", "command"}, []string{"image", "cpu", "memory_mb", "hardware", "min_gpu_memory_mb"}},
+	{"task_hardware_recover", "Release an uncertain device lease only after independent cleanup verification", []string{"job_id", "cleanup_verified", "confirm"}, nil},
 	{"task_compute_jobs", "Inspect only this owner\u0027s independent task compute results", []string{"task_id"}, nil},
 	{"task_export_project", "Promote an immutable task file into an editor-authorized project artifact", []string{"task_id", "name", "project_id"}, []string{"revision"}},
 	{"personal_task_claim_list", "List owner-scoped cooperative claims without lease tokens", []string{"task_id"}, nil},
@@ -172,7 +173,7 @@ func kindFor(key string) string {
 		return "number"
 	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page":
 		return "integer"
-	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
+	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled", "allowed", "cleanup_verified":
 		return "boolean"
 	case "packages", "software_ids", "artifact_ids", "tags", "passages", "passage_ids", "questions":
 		return "array"
@@ -440,6 +441,10 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return result, err
 	case "task_worker_access":
 		return db.PersonalTaskWorkerAccess()
+	case "task_hardware_recover":
+		result, err := db.RecoverTaskHardware(get("job_id"), a["confirm"] == true, a["cleanup_verified"] == true)
+		db.AuditAccess(who.Principal, get("job_id"), "task-hardware-recovery", err == nil)
+		return result, err
 	case "submit_compute_job":
 		image := get("image")
 		if image == "" {
@@ -490,7 +495,8 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		if cpu == 0 { cpu = 1 }
 		mem := asInt(a["memory_mb"])
 		if mem == 0 { mem = 512 }
-		return db.SubmitPersonalTaskJob(who.Principal, get("task_id"), get("command"), image, cpu, mem)
+		return db.SubmitPersonalTaskJobWithHardware(who.Principal, get("task_id"), get("command"), image, cpu, mem,
+			decodeAnyObject(a["hardware"]), asInt(a["min_gpu_memory_mb"]))
 	case "task_compute_jobs":
 		return db.PersonalTaskJobs(who.Principal, get("task_id"))
 	case "task_details":
