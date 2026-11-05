@@ -33,10 +33,12 @@ The independently installable `skills/project-knowledge` describes the
 knowledge lifecycle; `skills/project-workspace` remains responsible for
 source-backed compute. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
-second repository just for notes. These are design-level policies; the current
-controller retains legacy local note APIs and does **not** yet enforce the
-two-mode storage policy. Operators must not treat a local note record as a
-verified Git knowledge commit.
+second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`, and
+`knowledge_git_publish` for explicit policy selection and revision-guarded
+GitHub commits with remote read-back. Git publication requires a user-owned
+PAT and repository write permission. Legacy local note APIs remain for
+compatibility; they are not automatically synchronized to Git and must not be
+regarded as Git-backed knowledge.
 
 GitLab and self-hosted Git require an authenticated and tested generic Git
 adapter before provider-independent workflows can be considered production
@@ -824,9 +826,13 @@ but do not admit new work.
 
 This is the **storage and transfer API**, not automatic ChatGPT attachment
 resolution. A connected, file-capable ChatGPT client/adapter must still pass
-the real attachment bytes or call the REST stream route. The task library
-does not yet provide standalone claim leases, automatic task-to-worker
-creation, or independent native execution without project resource grants.
+the real attachment bytes or call the REST stream route. The task library includes standalone claim leases and can submit project-free
+one-shot jobs with `task_compute_submit` and `task_compute_jobs`. The
+execution-only worker scope `personal-tasks` must be deployed separately for
+Kubernetes; a trusted Docker compatibility worker can also accept those jobs.
+No project, repository or knowledge record is created. Interactive task
+workspaces and automatic hardware allocation for finite task jobs require
+separate worker support and are not yet accepted.
 Do not claim end-to-end ChatGPT attachment transfer until the actual client
 integration has been tested.
 
@@ -988,6 +994,36 @@ The content hash is mandatory. The current MCP attachment tool takes base64
 text; an integration that converts ChatGPT's native file attachments to this
 transport requires a separate client-side file-capable connector. It is not
 automatically established by installing this repository.
+
+## External resources and account-level GitHub operations
+
+`external_resource_register` registers named machines, EDA guests, boards and
+clusters outside the ordinary worker pool. Explicit owner-controlled requests
+use `external_resource_reserve` and `external_resource_release`. A local
+reservation remains `pending_external_adapter` until its independently
+managed remote scheduler or device adapter confirms real allocation. These
+records never grant SSH access or silently join external clusters to K3s.
+
+The administrator may inspect accessible GitHub repositories without linking
+them to a project using `github_account_repositories` and
+`github_account_repository`. Repository rename and transfer use separate
+administrator-only tools requiring the exact provider repository ID,
+provider-confirmed permissions and `confirm=true`; a successful API response
+is not treated as verified until the destination is read back.
+
+## MCP attachment and study-pack ingestion
+
+`library_attachment_send` receives up to 512 KiB of real base64-encoded
+attachment bytes, verifies SHA-256 and stores the original in an approved shared
+library. Large originals use existing authenticated chunked REST uploads.
+`study_pack_prepare` composes a non-persistent packet from project-authorized
+research passages and their verified source locators. It never generates
+invented page numbers. A ChatGPT client must explicitly forward native
+attachment bytes; a server cannot read them from the conversation implicitly.
+
+See [Execution and Git knowledge contract](docs/execution-and-knowledge-contract.md)
+for execution scopes, external-resource policy and the knowledge repository
+layout.
 
 ## Source-linked research ingestion and search
 
