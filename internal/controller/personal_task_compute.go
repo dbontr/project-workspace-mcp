@@ -157,7 +157,9 @@ func (db *Database) PersonalTaskJobs(owner, task string) ([]map[string]any, erro
 	if found == nil {
 		return nil, errors.New("personal task not found")
 	}
-	if err := db.ExpirePersonalJobResults(); err != nil { return nil, err }
+	if err := db.ExpirePersonalJobResults(); err != nil {
+		return nil, err
+	}
 	return db.query(`SELECT j.id,j.status,j.node,j.created,j.updated,j.result,
 		coalesce(h.requirements,'{}') hardware,h.min_gpu_memory_mb
 		FROM personal_task_jobs x JOIN jobs j ON j.id=x.job

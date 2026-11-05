@@ -9,7 +9,9 @@ func TestIndependentTaskComputeDoesNotCreateProjectOrKnowledge(t *testing.T) {
 		t.Fatal("standalone worker allowed without explicit authorization confirmation")
 	}
 	task, err := db.CreatePersonalTask("controller-owner", "Compile test", "", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	taskID := asString(task["id"])
 	if _, err := db.SubmitPersonalTaskJob("someone-else", taskID, "echo test",
 		"debian:bookworm-slim", 1, 256); err == nil {
@@ -36,7 +38,9 @@ func TestIndependentTaskComputeDoesNotCreateProjectOrKnowledge(t *testing.T) {
 	}
 	_, err = db.FinishJob("worker-one", asString(row["id"]),
 		asString(row["lease_token"]), "succeeded", "completed")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	jobs, err := db.PersonalTaskJobs("controller-owner", taskID)
 	if err != nil || len(jobs) != 1 || jobs[0]["status"] != "succeeded" {
 		t.Fatalf("task result missing: %v %v", jobs, err)

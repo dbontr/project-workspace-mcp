@@ -53,7 +53,7 @@ func TestRepositoryRebindPreservesSourceIdentityAndKnowledgeDestination(t *testi
 		t.Fatalf("knowledge destination is stale: %v %v", policy, err)
 	}
 	for query, want := range map[string]string{
-		"SELECT repository FROM library_sources WHERE library='archive'": "example/renamed",
+		"SELECT repository FROM library_sources WHERE library='archive'":      "example/renamed",
 		"SELECT repository FROM workspace_repositories WHERE workspace='ws1'": "example/renamed",
 	} {
 		if want == "" {

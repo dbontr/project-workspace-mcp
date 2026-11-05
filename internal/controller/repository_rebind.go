@@ -12,7 +12,7 @@ func (db *Database) repositoryRebindPreflightLocked(before, after string) error 
 		return errors.New("invalid repository name transition")
 	}
 	conflicts := []struct {
-		query string
+		query   string
 		message string
 	}{
 		{`SELECT 1 FROM repositories a JOIN repositories b ON a.project=b.project
@@ -64,7 +64,7 @@ func (db *Database) RebindRepositoryReferences(before, after string) (map[string
 			return err
 		}
 		tables := []struct {
-			name string
+			name  string
 			query string
 		}{
 			{"linked_projects", "SELECT count(*) n FROM repositories WHERE full_name=?"},
@@ -86,7 +86,7 @@ func (db *Database) RebindRepositoryReferences(before, after string) (map[string
 		// SQLite enforces the composite repository foreign key immediately.
 		statements := []struct {
 			query string
-			args []any
+			args  []any
 		}{
 			{`INSERT INTO repositories(project,full_name)
 				SELECT project,? FROM repositories WHERE full_name=?`, []any{after, before}},
