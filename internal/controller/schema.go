@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS external_resource_leases(id TEXT PRIMARY KEY,resource
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_resource_exclusive ON external_resource_leases(resource) WHERE released IS NULL;
 CREATE INDEX IF NOT EXISTS idx_external_resource_lease_expiry ON external_resource_leases(expires,released);
 CREATE TABLE IF NOT EXISTS project_knowledge_policies(project TEXT PRIMARY KEY,mode TEXT NOT NULL,repository TEXT NOT NULL,branch TEXT NOT NULL,prefix TEXT NOT NULL,version INTEGER NOT NULL,updated REAL NOT NULL,FOREIGN KEY(project) REFERENCES projects(id));
+CREATE TABLE IF NOT EXISTS personal_task_jobs(task TEXT NOT NULL,job TEXT PRIMARY KEY,owner TEXT NOT NULL,created REAL NOT NULL,FOREIGN KEY(task) REFERENCES personal_tasks(id),FOREIGN KEY(job) REFERENCES jobs(id));
+CREATE INDEX IF NOT EXISTS idx_personal_task_jobs_task ON personal_task_jobs(task,owner,created);
 
 `
 
