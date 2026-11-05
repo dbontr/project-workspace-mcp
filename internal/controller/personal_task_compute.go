@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"math"
 	"strings"
 )
 
@@ -29,7 +30,7 @@ func (db *Database) SubmitPersonalTaskJobWithHardware(owner, task, command, imag
 	}
 	if !validTaskOwner(owner) || !contributionArtifactID.MatchString(task) ||
 		strings.TrimSpace(command) == "" || len(command) > 16000 ||
-		!validImage.MatchString(image) || cpu < 0.1 || cpu > 32 ||
+		!validImage.MatchString(image) || math.IsNaN(cpu) || math.IsInf(cpu, 0) || cpu < 0.1 || cpu > 32 ||
 		memory < 64 || memory > 131072 {
 		return nil, errors.New("invalid independent compute job")
 	}
