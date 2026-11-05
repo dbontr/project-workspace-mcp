@@ -1210,13 +1210,30 @@ Project notes use `expected_version` to reject conflicting writes. Search, artif
 
 ## Verification
 
+Run the native offline verification workflow from a clean source checkout. It does
+not require GitHub Actions or contact the production Kubernetes cluster.
+
 ```sh
-go test ./...
-go test -race ./internal/controller ./internal/worker
-go vet ./...
+bash scripts/verify-local.sh --full
 ```
 
-GitHub Actions runs Go unit and protocol tests, cross-architecture builds, and an optional Docker controller/worker integration. The latter requires Docker and a `python:3.12-slim` test image **inside the container only**; no Python interpreter runs on the controller or worker host.
+The verifier requires Go, `pkg-config`, SQLite development headers and Helm.
+It checks Go formatting, vet, unit/race tests, controller and worker builds,
+Helm linting and the default/local Git manifest renders. On NixOS, enter a
+shell with `go_1_27`, `pkg-config`, `sqlite` and `kubernetes-helm` first.
+Use `--quick` for the faster unit/build checks or `--images` for full
+verification plus local container image builds. Neither mode proves live
+hardware execution, authenticated client integration or independent recovery;
+those require separate tests on approved resources.
+
+The repository-owned Project Stewardship skill uses the native Go checker
+`go run ./skills/project-stewardship/scripts/check_knowledge.go --strict ./knowledge`
+for the optional Git knowledge layout. A missing knowledge directory is valid
+without `--strict` when persistence is disabled.
+
+GitHub Actions also defines verification jobs. Its Docker tests may use a
+`python:3.12-slim` **test container**, but the controller, worker and
+repository-maintained validation tools require no Python service runtime.
 
 ## Checkpoint-preserving workspace shutdown
 
