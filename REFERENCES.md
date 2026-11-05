@@ -87,3 +87,4 @@
 - [GitHub REST API: Transfer a repository](https://docs.github.com/en/rest/repos/repos#transfer-a-repository) — GitHub. Used for: explicitly confirmed account-level repository transfers and destination verification.
 - [GitHub REST API: Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository) — GitHub. Used for: repository identity, permission and destination checks.
 - [SQLite partial indexes](https://www.sqlite.org/partialindex.html) — SQLite. Used for: excluding concurrent active reservations on externally managed resources.
+- [GitHub REST API: Search repositories](https://docs.github.com/en/rest/search/search#search-repositories) — GitHub. Used for: bounded account-authorized repository discovery across linked and unlinked repositories.
