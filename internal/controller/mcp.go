@@ -45,6 +45,8 @@ var tools = []toolDefinition{
 	{"task_save_text", "Save a new immutable task text-file revision up to 512 KiB", []string{"task_id", "name", "body", "expected_revision"}, nil},
 	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
 	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
+	{"task_compute_submit", "Run an independent task on an authorized worker without a project or knowledge destination", []string{"task_id", "command"}, []string{"image", "cpu", "memory_mb"}},
+	{"task_compute_jobs", "Inspect only this owner\u0027s independent task compute results", []string{"task_id"}, nil},
 	{"task_export_project", "Promote an immutable task file into an editor-authorized project artifact", []string{"task_id", "name", "project_id"}, []string{"revision"}},
 	{"personal_task_claim_list", "List owner-scoped cooperative claims without lease tokens", []string{"task_id"}, nil},
 	{"personal_task_claim_status", "Inspect a personal task claim and durable completion", []string{"task_id", "work_key"}, nil},
@@ -393,6 +395,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.CreatePersonalTask(who.Principal, get("title"), get("description"), tags)
 	case "task_list":
 		return db.PersonalTasks(who.Principal, get("query"))
+	case "task_compute_submit":
+		image := get("image")
+		if image == "" { image = "debian:bookworm-slim" }
+		cpu := asFloat(a["cpu"])
+		if cpu == 0 { cpu = 1 }
+		mem := asInt(a["memory_mb"])
+		if mem == 0 { mem = 512 }
+		return db.SubmitPersonalTaskJob(who.Principal, get("task_id"), get("command"), image, cpu, mem)
+	case "task_compute_jobs":
+		return db.PersonalTaskJobs(who.Principal, get("task_id"))
 	case "task_details":
 		return db.PersonalTaskInfo(who.Principal, get("task_id"))
 	case "task_update":
