@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -78,11 +79,40 @@ func (g *GitHub) SnapshotReader(repo, ref string) (string, io.ReadCloser, error)
 	return sha, response.Body, nil
 }
 
+// SourceSnapshotReader returns a verified, immutable gzip-compressed Git
+// archive from either GitHub or an operator-mounted local bare repository.
+func (s *Server) SourceSnapshotReader(repository, ref string) (string, io.ReadCloser, error) {
+	name, local := localRepoName(repository)
+	if !local {
+		if strings.HasPrefix(repository, "local:") {
+			return "", nil, errors.New("invalid local Git repository")
+		}
+		return s.GitHub.SnapshotReader(repository, ref)
+	}
+	if s.LocalGit == nil {
+		return "", nil, errors.New("local Git storage is not configured")
+	}
+	sha, err := s.LocalGit.Resolve(name, ref)
+	if err != nil {
+		return "", nil, err
+	}
+	reader, writer := io.Pipe()
+	go func() {
+		gzipWriter := gzip.NewWriter(writer)
+		_, err := s.LocalGit.Archive(name, sha, gzipWriter)
+		if closeErr := gzipWriter.Close(); err == nil {
+			err = closeErr
+		}
+		writer.CloseWithError(err)
+	}()
+	return sha, reader, nil
+}
+
 func (s *Server) CheckoutArchive(project, workspace, repo, ref string) (map[string]any, error) {
 	if !s.DB.RepositoryLinked(project, repo) {
 		return nil, errors.New("repository is not linked to project")
 	}
-	sha, reader, e := s.GitHub.SnapshotReader(repo, ref)
+	sha, reader, e := s.SourceSnapshotReader(repo, ref)
 	if e != nil {
 		return nil, e
 	}
@@ -108,7 +138,7 @@ func (s *Server) CheckoutLibrarySource(project, workspace, library, repo, path s
 		return nil, e
 	}
 	sha := asString(source["revision"])
-	confirmed, reader, e := s.GitHub.SnapshotReader(repo, sha)
+	confirmed, reader, e := s.SourceSnapshotReader(repo, sha)
 	if e != nil {
 		return nil, e
 	}
