@@ -252,12 +252,8 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			if project == "" {
 				return errors.New("Kubernetes worker must be scoped to one project")
 			}
-			if asBool(caps["task_pool"]) && project == "task-pool" {
-				query += " AND project=''"
-			} else {
-				query += " AND project=?"
-				arguments = append(arguments, project)
-			}
+			query += " AND project=?"
+			arguments = append(arguments, project)
 		}
 		row, e := db.lockedOne(query+" ORDER BY created,id LIMIT 1", arguments...)
 		if e != nil || row == nil {
