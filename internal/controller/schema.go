@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS external_resources(id TEXT PRIMARY KEY,kind TEXT NOT 
 CREATE TABLE IF NOT EXISTS external_resource_leases(id TEXT PRIMARY KEY,resource TEXT NOT NULL,scope TEXT NOT NULL,scope_id TEXT NOT NULL,principal TEXT NOT NULL,expires REAL NOT NULL,released REAL,created REAL NOT NULL,FOREIGN KEY(resource) REFERENCES external_resources(id));
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_resource_exclusive ON external_resource_leases(resource) WHERE released IS NULL;
 CREATE INDEX IF NOT EXISTS idx_external_resource_lease_expiry ON external_resource_leases(expires,released);
+CREATE TABLE IF NOT EXISTS project_knowledge_policies(project TEXT PRIMARY KEY,mode TEXT NOT NULL,repository TEXT NOT NULL,branch TEXT NOT NULL,prefix TEXT NOT NULL,version INTEGER NOT NULL,updated REAL NOT NULL,FOREIGN KEY(project) REFERENCES projects(id));
 
 `
 
