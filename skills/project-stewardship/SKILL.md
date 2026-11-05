@@ -33,7 +33,7 @@ Read `references/github-workflow.md` for Issues, Projects V2, branches, PRs, rev
 
 Use the canonical, human-readable layout in `references/knowledge-standard.md`. Prefer one source of truth for each claim: source code in Git; project status in the canonical work tracker; decisions and evidence in versioned knowledge; large binary evidence in the designated artifact store with a digest-linked manifest. Existing repositories may use equivalent conventions; adapt deliberately instead of making competing hierarchies.
 
-Read `references/knowledge-standard.md` before creating or changing a knowledge repository. An independent task may retain explicitly saved task files without enabling project knowledge. Use `scripts/check_knowledge.py` on a local checkout when the standard layout is in use; it is a structural precheck, not a proof of evidence or scientific validity.
+Read `references/knowledge-standard.md` before creating or changing a knowledge repository. An independent task may retain explicitly saved task files without enabling project knowledge. Use `go run ./skills/project-stewardship/scripts/check_knowledge.go --strict ./knowledge` from a local repository checkout when the standard layout is in use. The Go validator checks structure, not the truth of research evidence.
 
 ## Cluster and delivery discipline
 
