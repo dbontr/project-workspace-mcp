@@ -9,7 +9,7 @@ func TestLocalSourceCanAttachIndependentGitHubPlanningRepository(t *testing.T) {
 	}
 	for _, item := range []struct {
 		repository string
-		role string
+		role       string
 	}{
 		{"local:lab/source", "source"},
 		{"local:lab/notes", "research"},
