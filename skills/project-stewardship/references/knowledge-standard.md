@@ -93,6 +93,15 @@ Angle brackets in the sample are placeholders, not actual evidence. Replace them
 4. Publish to Git. Read back the exact commit and file content and compare their hashes. Report the new immutable revision.
 5. For migrations, read old controller-local notes, map records into this layout with their real provenance, verify the Git commit and restore ability, then retire legacy writes. Do not silently reinterpret operational cache entries as accepted findings.
 
+## Access control and independent recovery
+
+- `knowledge_policy` begins at `none`. Only the project owner may approve a change to `git`; use `knowledge_configure` with the expected policy version, explicit repository, branch and prefix. Configuration is separate from publication and must not create records automatically.
+- Verify the connected provider's repository permission before a write. GitHub requires a scoped authorized credential; `local:OWNER/REPOSITORY` requires an operator-approved bare Git root and defined author identity. Do not expose controller credentials to workspaces, notebooks, Git records, logs or external resource adapters.
+- For `knowledge_git_publish`, supply the expected branch head and verify the returned commit ID, then independently read back the document. A revision conflict requires examining both versions and an intentional merge. Never overwrite a concurrent author's `Context.md` or force-push to resolve it.
+- A locally hosted bare Git repository is not an independent off-host backup. Periodically verify both repository restoration and any Git LFS or external artifact objects it references. GitHub or GitLab hosting does not itself prove an independent organizational backup. Preserve the original knowledge source until the chosen destination and referenced objects pass an actual restore check.
+- Treat indexed passages, search caches, workspace snapshots and operational task files as auxiliary records. Unless the project specifically authorizes their durable publication in the configured Git repository, they are not canonical project knowledge. Maintain exact source identity and revision for reproducible claims.
+- When knowledge is `none`, do not populate this layout as a side effect of task completion or cluster operation. A user-requested portable handoff may still be returned in the current conversation without creating permanent project knowledge.
+
 ## Example: decision
 
 ```markdown
