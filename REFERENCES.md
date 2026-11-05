@@ -88,6 +88,9 @@
 - [GitHub REST API: Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository) — GitHub. Used for: repository identity, permission and destination checks.
 - [SQLite partial indexes](https://www.sqlite.org/partialindex.html) — SQLite. Used for: excluding concurrent active reservations on externally managed resources.
 - [GitHub REST API: Search repositories](https://docs.github.com/en/rest/search/search#search-repositories) — GitHub. Used for: bounded account-authorized repository discovery across linked and unlinked repositories.
+- [GitHub Projects best practices](https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/best-practices-for-projects) — GitHub. Used for: project status authority, field selection, board views and planning workflow guidance.
+- [Linking a pull request to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue) — GitHub. Used for: accurate issue linkage and branch-target-dependent automatic closing behavior.
+- [GitHub repository rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) — GitHub. Used for: protecting branch publication and respecting layered review requirements.
 
 - [Git reference updates](https://git-scm.com/docs/git-update-ref) — Git. Used for: atomic compare-and-swap publication of local bare Git branch heads without force-updating a concurrent writer.
 - [Git commit-tree](https://git-scm.com/docs/git-commit-tree) — Git. Used for: creating source-controlled knowledge commits from staged trees without a persistent working tree.
