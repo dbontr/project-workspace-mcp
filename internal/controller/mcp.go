@@ -465,7 +465,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "list_project_jobs":
 		return db.Jobs(project)
 	case "link_github_repository":
-		return db.LinkRepositoryWithRole(project, get("repository"), get("role"), get("default_ref"))
+		repository := get("repository")
+		if strings.HasPrefix(repository, "local:") {
+			return nil, errors.New("GitHub repository linking requires an actual GitHub repository")
+		}
+		if get("role") == "planning" {
+			if _, err := s.GitHub.AccountRepository(repository); err != nil {
+				return nil, fmt.Errorf("GitHub planning repository must be accessible: %w", err)
+			}
+		}
+		return db.LinkRepositoryWithRole(project, repository, get("role"), get("default_ref"))
 	case "list_github_repositories":
 		return db.Repositories(project)
 	case "github_pat_readiness":
