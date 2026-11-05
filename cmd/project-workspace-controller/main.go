@@ -52,6 +52,32 @@ func readToken(path string) (string, error) {
 	}
 	return token, nil
 }
+// Capture a baseline on startup. A failed remote backup is retried sooner
+// than the normal schedule so a transient outage does not leave new state
+// unprotected for an entire backup interval.
+func runScheduledOffsiteBackups(ctx context.Context, interval time.Duration,
+	backup func(context.Context) (string, error), report func(string, error)) {
+	for ctx.Err() == nil {
+		backupCtx, cancel := context.WithTimeout(ctx, 12*time.Hour)
+		snapshot, err := backup(backupCtx)
+		cancel()
+		if ctx.Err() != nil {
+			return
+		}
+		report(snapshot, err)
+		delay := interval
+		if err != nil && delay > 5*time.Minute {
+			delay = 5 * time.Minute
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
 func command(args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: project-workspace-controller init|controller|pair|backup|restore|backup-offsite|restore-offsite|verify-offsite")
@@ -171,23 +197,15 @@ func command(args []string) error {
 			offsite.Add(1)
 			go func() {
 				defer offsite.Done()
-				ticker := time.NewTicker(interval)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						backupCtx, cancel := context.WithTimeout(ctx, 12*time.Hour)
-						snapshot, err := db.BackupOffsite(backupCtx, config)
-						cancel()
-						if err != nil {
-							log.Printf("scheduled offsite backup failed: %v", err)
-						} else {
-							log.Printf("scheduled encrypted backup snapshot: %s", snapshot)
-						}
+				runScheduledOffsiteBackups(ctx, interval, func(backupCtx context.Context) (string, error) {
+					return db.BackupOffsite(backupCtx, config)
+				}, func(snapshot string, err error) {
+					if err != nil {
+						log.Printf("scheduled offsite backup failed: %v", err)
+					} else {
+						log.Printf("scheduled encrypted backup snapshot: %s", snapshot)
 					}
-				}
+				})
 			}()
 		}
 		go func() {
