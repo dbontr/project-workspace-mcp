@@ -7,12 +7,12 @@ description: Use an authorized, self-hosted Project Workspace MCP controller for
 
 Treat the project, not the machine or chat, as the unit of work. The installed Skill does not establish a connection, grant credentials, enroll devices, or execute code. Discover live MCP tools and their authorization before starting.
 
-1. **Resolve the project and Git authority.** List authorized projects and confirm the Git remote(s) that own their source. Code projects require at least one configured Git repository. The remote may be GitHub, GitLab, or an operator-approved self-hosted Git server; never assume those providers share APIs or authentication. For this deployment, use GitHub. An optional project board or knowledge repository is not a prerequisite. Never create an additional knowledge repository automatically.
+1. **Resolve the project and Git authority.** List authorized projects and confirm the Git remote(s) that own their source. Code projects require at least one configured Git repository. The remote may be GitHub or an operator-mounted `local:OWNER/REPOSITORY` bare Git repository. GitLab and Gitea require tested remote adapters before use. Do not assume Git is itself an issue tracker or project-planning service. For the Saturn deployment, use GitHub. An optional project board or knowledge repository is not a prerequisite. Never create an additional knowledge repository automatically.
 2. **Resolve task inputs.** For code, obtain the exact authorized Git commit, ref and remote; transient workspace clones are not canonical storage. Non-code inputs can come from uploaded artifacts or explicitly approved libraries. For a linked library, use `library_resolve` and verify exact source revisions or object SHA-256. A workspace may run non-code jobs, but never represent uncommitted local source as durable project code.
 3. **Choose the environment.** List environment definitions and their status. Select an approved, versioned environment matching the application/toolchain and CPU architecture. An environment is a *container image*; a workspace contains project files. On the Kubernetes backend, applications come from approved registry images; local `environment_build` and image export/import require a separately approved registry builder. Defining an image does not install applications until the matching Pod becomes ready. Proprietary software such as Vivado must be supplied by the authorized operator under its license. Never put license secrets or credentials in image layers.
 4. **Reserve hardware deliberately.** Inspect `list_compute_nodes` and `list_hardware`. Request explicit GPU, NPU, or FPGA counts with `workspace_create(hardware={...})`. USB passthrough requires explicit operator permission, a user-selected worker and device ID, and `workspace_create(usb_passthrough=true, usb_node=..., usb_device_id=..., hardware={"usb":1})`. It is disabled by default. Never choose a USB target on the user's behalf or infer authorization to erase it; confirm device identity before any destructive flashing command. Treat inventory as advisory and only a confirmed workspace reservation as allocated. A missing device mapping is not permission to access host `/dev` paths. A compilation-only FPGA job need not reserve the physical board.
 5. **Wait for a ready workspace.** `workspace_create` queues the start. Poll `workspace_list` until the selected workspace is ready; do not execute against a pending or failed lease. Use only its workspace-scoped operations. Node administration is a separate, explicitly authorized action.
-6. **Import the exact Git revision.** Resolve a linked repository with an approved provider adapter. Use `github_checkout_repository` only for GitHub repositories when that is the available method; for another Git provider, use a verified generic Git operation if exposed, otherwise report that provider integration is unavailable. Record the resolved commit SHA. Workspace clones are ephemeral execution copies, not the authoritative repository, and must not contain controller credentials.
+6. **Import the exact Git revision.** Resolve a linked repository with an approved provider adapter. Use `git_checkout_repository` with GitHub or an approved `local:OWNER/REPOSITORY` source. GitHub-specific operations remain available for linked GitHub repositories. GitLab and Gitea require a separately tested adapter; do not claim ordinary Git checkout grants GitHub Issues or Projects. Record the resolved commit SHA. Workspace clones are ephemeral execution copies, not the authoritative repository, and must not contain controller credentials.
 7. **Execute and inspect.** Use `workspace_call` for commands, reads, writes, directory listings, and search. For large binary inputs (such as OS images), use the controller's authenticated streamed artifact-upload endpoint and `workspace_import_artifact`, then verify the checksum in the workspace before acting on hardware. Poll `workspace_operation` until its terminal result. A successful operation with `exit_code != 0` is a failed command. Use `expected_sha256` to prevent blind file overwrites, and record test outcomes rather than inferring success from queued tasks.
 8. **Preserve distinct artifacts.** Save key output files with `export_file`; save the workspace file tree with `workspace_snapshot`, then verify its recorded artifact. Save the application/toolchain image independently with `environment_export`. Restore workspace files by choosing an authorized snapshot; load a saved image on another node with `environment_import`. Neither operation snapshots running process memory. Inspect artifact hashes and environment versions before relying on them.
 9. **Publish source to Git.** For code changes, verify a commit or reviewed branch has reached the configured authoritative Git remote, with the expected base revision checked before write; never count a local clone or an unpushed commit as durable publication. GitHub can use `github_publish_artifacts` and a reviewed PR; other hosts require their own verified Git adapter and permissions. Save and verify separate binary artifacts as requested. Do not write project notes or knowledge commits unless the separate, optional `project-knowledge` skill is explicitly enabled. Distinguish proposals, tests and verified results.
@@ -25,16 +25,21 @@ The controller and worker are implemented in Go. Python is an optional applicati
 A standalone task is an execution context, not a project. Use `task_create`
 and `task_compute_submit` to queue a one-shot task on an authorized worker
 without registering a project or writing project knowledge. Inspect completion
-through `task_compute_jobs`. An approved `personal-tasks` Kubernetes worker
-or a trusted Docker compatibility worker must be online; do not claim that an
-unregistered node can execute the task. Task coordination records and
+through `task_compute_jobs`. An administrator must first authorize a worker with `task_worker_authorize`.
+Kubernetes workers must use a `personal-tasks` execution namespace; approved
+Docker compatibility workers may also run finite tasks. Never infer that
+an unregistered or merely advertising node is approved. Task coordination records and
 explicitly saved task file revisions may persist, but project notes and Git
 knowledge do not.
 
-Interactive task workspaces and hardware-accelerated one-shot task jobs are
-not yet implemented by these tools. Use the existing project workspace
-workflow only when a real project is selected. Never silently create a
-placeholder project merely to obtain hardware.
+Finite independent jobs accept `hardware` quantities for GPU, NPU or FPGA
+and optional `min_gpu_memory_mb`, using existing approved device manifests
+and exclusive device leases. Do not request direct USB mapping for a standalone
+job. A failed or expired hardware job retains uncertain leases until an
+administrator has independently verified host cleanup and called
+`task_hardware_recover(confirm=true, cleanup_verified=true)`. Interactive
+standalone task workspaces are not implemented; do not silently register a
+placeholder project to obtain a persistent workspace.
 
 Use `external_resource_list` to inspect outside clusters, boards, and EDA
 guests. They are excluded from free worker scheduling. Register them with
@@ -53,8 +58,11 @@ list accessible repositories using `github_account_repositories` or inspect
 one with `github_account_repository`. Use `github_account_rename` and
 `github_account_transfer` only with the exact repository ID, the proposed
 destination, administrator rights reported by GitHub, and explicit
-`confirm=true`. Read the returned verification status. Do not automatically
-rewrite project links or assume every private GitHub repository is accessible.
+`confirm=true`. Read the returned verification status. The controller reconciles linked project,
+library and knowledge destinations after a confirmed provider change, but
+preserves immutable historical provenance. Conflicts or active workspaces
+block the operation; a pending transfer requires verified `github_account_reconcile`.
+Do not assume every private GitHub repository is accessible.
 
 ## Attachments and study packs
 
