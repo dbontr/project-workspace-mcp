@@ -36,6 +36,12 @@ var tools = []toolDefinition{
 	{"submit_compute_job", "Queue a one-shot command", []string{"project_id", "command"}, []string{"image", "cpu", "memory_mb"}},
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
+	{"git_provider_capabilities", "Discover supported storage and optional provider features", []string{"provider"}, nil},
+	{"git_link_repository", "Attach a verified GitHub or approved local Git repository to a project", []string{"project_id", "repository", "ref"}, []string{"role"}},
+	{"git_repository_head", "Resolve a project-linked Git repository reference to an exact commit", []string{"project_id", "repository", "ref"}, nil},
+	{"git_read_file", "Read a project-linked Git file at an exact resolved commit", []string{"project_id", "repository", "ref", "path"}, nil},
+	{"git_publish_file", "Publish an explicit text file to a linked Git repository with a revision guard", []string{"project_id", "repository", "ref", "path", "expected_head", "body", "message", "confirm"}, nil},
+	{"git_checkout_repository", "Import an exact linked Git source into an authorized workspace", []string{"project_id", "repository", "workspace_id", "ref"}, nil},
 	{"list_github_repositories", "List linked repositories", []string{"project_id"}, nil},
 	{"task_create", "Create a standalone owner-scoped task independent of research projects", []string{"title"}, []string{"description", "tags"}},
 	{"task_list", "Search the authenticated owner's standalone tasks", nil, []string{"query"}},
@@ -305,6 +311,23 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	workspace := get("workspace_id")
 	db := s.DB
 	switch name {
+	case "git_provider_capabilities":
+		return s.GitProviderCapabilities(get("provider"))
+	case "git_link_repository":
+		repository := get("repository")
+		if name, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			if _, err := s.LocalGit.Resolve(name, get("ref")); err != nil {
+				return nil, err
+			}
+		} else {
+			if _, err := s.GitHub.Commit(repository, get("ref")); err != nil {
+				return nil, err
+			}
+		}
+		return db.LinkRepositoryWithRole(project, repository, get("role"), get("ref"))
 	case "list_projects":
 		return db.Projects()
 	case "create_project":
@@ -320,13 +343,30 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "knowledge_configure":
 		mode := get("mode")
 		if mode == "git" {
-			remote, err := s.GitHub.AccountRepository(get("repository"))
-			if err != nil { return nil, err }
-			perms := gitObj(remote["permissions"])
-			if !asBool(perms["push"]) && !asBool(perms["admin"]) {
-				return nil, errors.New("Git knowledge destination requires provider write permission")
+			repository := get("repository")
+			if name, ok := localRepoName(repository); ok {
+				if s.LocalGit == nil {
+					return nil, errors.New("local Git storage is not configured")
+				}
+				if _, err := s.LocalGit.branchHead(name, get("branch")); err != nil {
+					return nil, err
+				}
+			} else {
+				if strings.HasPrefix(repository, "local:") {
+					return nil, errors.New("invalid local Git repository identifier")
+				}
+				remote, err := s.GitHub.AccountRepository(repository)
+				if err != nil {
+					return nil, err
+				}
+				perms := gitObj(remote["permissions"])
+				if !asBool(perms["push"]) && !asBool(perms["admin"]) {
+					return nil, errors.New("Git knowledge destination requires provider write permission")
+				}
+				if _, err := s.GitHub.Commit(repository, get("branch")); err != nil {
+					return nil, err
+				}
 			}
-			if _, err := s.GitHub.Commit(get("repository"), get("branch")); err != nil { return nil, err }
 		}
 		return db.ConfigureKnowledgePolicy(project, mode, get("repository"), get("branch"), get("prefix"), asInt(a["expected_version"]))
 	case "knowledge_git_read":
@@ -339,9 +379,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		}
 		repository := asString(policy["repository"])
 		branch := asString(policy["branch"])
+		fullPath := strings.TrimRight(asString(policy["prefix"]), "/") + "/" + path
+		if name, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.ReadFile(name, branch, fullPath)
+		}
 		revision, err := s.GitHub.Commit(repository, branch)
 		if err != nil { return nil, err }
-		remote, err := s.GitHub.File(repository, strings.TrimRight(asString(policy["prefix"]), "/")+"/"+path, revision)
+		remote, err := s.GitHub.File(repository, fullPath, revision)
 		if err != nil { return nil, err }
 		result := gitObj(remote)
 		result["repository"], result["branch"], result["commit_sha"] = repository, branch, revision
@@ -357,7 +404,15 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			return nil, errors.New("knowledge path must be a relative Markdown or JSON file")
 		}
 		prefix := strings.TrimRight(asString(policy["prefix"]), "/")
-		return s.GitHub.CommitKnowledgeDocument(asString(policy["repository"]), asString(policy["branch"]),
+		repository := asString(policy["repository"])
+		if name, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.Publish(name, asString(policy["branch"]), prefix+"/"+path,
+				get("expected_head"), get("body"), get("message"))
+		}
+		return s.GitHub.CommitKnowledgeDocument(repository, asString(policy["branch"]),
 			prefix+"/"+path, get("expected_head"), get("body"), get("message"))
 	case "knowledge_context":
 		return db.ProjectContext(project)
@@ -690,12 +745,21 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "library_list":
 		return db.Libraries()
 	case "library_add_source":
-		if _, e := db.Library(get("library_id")); e != nil {
-			return nil, e
+		if _, err := db.Library(get("library_id")); err != nil {
+			return nil, err
 		}
-		revision, e := s.GitHub.Commit(get("repository"), get("ref"))
-		if e != nil {
-			return nil, e
+		var revision string
+		var err error
+		if name, ok := localRepoName(get("repository")); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			revision, err = s.LocalGit.Resolve(name, get("ref"))
+		} else {
+			revision, err = s.GitHub.Commit(get("repository"), get("ref"))
+		}
+		if err != nil {
+			return nil, err
 		}
 		return db.AddLibrarySource(get("library_id"), get("repository"), revision, get("path"), get("kind"))
 	case "library_sources":
@@ -714,6 +778,12 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		}
 		if !libraryFileAllowed(get("file"), get("source_path")) {
 			return nil, errors.New("file outside pinned library source")
+		}
+		if name, ok := localRepoName(get("repository")); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.ReadAtCommit(name, asString(source["revision"]), get("file"))
 		}
 		return s.GitHub.File(get("repository"), get("file"), asString(source["revision"]))
 	case "library_import_object":
@@ -797,6 +867,48 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {
 		return nil, errors.New("repository is not linked to this project")
+	}
+	switch name {
+	case "git_repository_head":
+		if localName, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			sha, err := s.LocalGit.Resolve(localName, get("ref"))
+			if err != nil { return nil, err }
+			return map[string]any{"repository": repository, "ref": get("ref"), "commit_sha": sha}, nil
+		}
+		sha, err := s.GitHub.Commit(repository, get("ref"))
+		if err != nil { return nil, err }
+		return map[string]any{"repository": repository, "ref": get("ref"), "commit_sha": sha}, nil
+	case "git_read_file":
+		if localName, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.ReadFile(localName, get("ref"), get("path"))
+		}
+		sha, err := s.GitHub.Commit(repository, get("ref"))
+		if err != nil { return nil, err }
+		return s.GitHub.File(repository, get("path"), sha)
+	case "git_publish_file":
+		if a["confirm"] != true {
+			return nil, errors.New("explicit Git publication confirmation required")
+		}
+		if localName, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.Publish(localName, get("ref"), get("path"), get("expected_head"),
+				get("body"), get("message"))
+		}
+		return s.GitHub.CommitKnowledgeDocument(repository, get("ref"), get("path"),
+			get("expected_head"), get("body"), get("message"))
+	case "git_checkout_repository":
+		return s.CheckoutArchive(project, workspace, repository, get("ref"))
+	}
+	if strings.HasPrefix(repository, "local:") {
+		return nil, errors.New("Git provider capability unavailable: local bare Git has no GitHub Issues, Pull Requests, Projects or account administration; use the git_* tools")
 	}
 	g := s.GitHub
 	switch name {
