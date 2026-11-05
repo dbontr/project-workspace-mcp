@@ -88,3 +88,9 @@
 - [GitHub REST API: Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository) — GitHub. Used for: repository identity, permission and destination checks.
 - [SQLite partial indexes](https://www.sqlite.org/partialindex.html) — SQLite. Used for: excluding concurrent active reservations on externally managed resources.
 - [GitHub REST API: Search repositories](https://docs.github.com/en/rest/search/search#search-repositories) — GitHub. Used for: bounded account-authorized repository discovery across linked and unlinked repositories.
+
+- [Git reference updates](https://git-scm.com/docs/git-update-ref) — Git. Used for: atomic compare-and-swap publication of local bare Git branch heads without force-updating a concurrent writer.
+- [Git commit-tree](https://git-scm.com/docs/git-commit-tree) — Git. Used for: creating source-controlled knowledge commits from staged trees without a persistent working tree.
+- [Git archive](https://git-scm.com/docs/git-archive) — Git. Used for: streaming exact local repository revisions into isolated workspace artifact transfers.
+- [Git hooks](https://git-scm.com/docs/githooks) — Git. Used for: ensuring repository-controlled hooks do not execute during controller-owned Git plumbing.
+- [Git rev-parse](https://git-scm.com/docs/git-rev-parse) — Git. Used for: resolving approved local bare Git branch references into immutable commit IDs.
