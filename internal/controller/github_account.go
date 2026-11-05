@@ -1,0 +1,100 @@
+package controller
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// AccountRepositories enumerates one bounded page of repositories visible to
+// the connected GitHub identity; access does not imply permission to modify.
+func (g *GitHub) AccountRepositories(page int) (any, error) {
+	if page < 1 || page > 100 {
+		return nil, errors.New("invalid repository page")
+	}
+	return g.request("GET", "/user/repos", map[string]any{
+		"affiliation": "owner,collaborator,organization_member",
+		"per_page": 100, "page": page, "sort": "full_name",
+	}, nil)
+}
+
+func (g *GitHub) AccountRepository(repo string) (map[string]any, error) {
+	p, err := repoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	value, err := g.request("GET", p, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	record := gitObj(value)
+	if asString(record["full_name"]) != repo || asFloat(record["id"]) <= 0 {
+		return nil, errors.New("GitHub returned a different repository")
+	}
+	return record, nil
+}
+
+var githubRepositoryName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
+var githubAccountName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`)
+
+// AccountRepositoryChange requires exact provider identity, provider-confirmed
+// administration permission, and operation-specific confirmation. Transfers
+// may require asynchronous acceptance by the destination organization.
+func (g *GitHub) AccountRepositoryChange(repo, operation, destination string, expectedID int64, confirm bool) (map[string]any, error) {
+	if !confirm || expectedID <= 0 {
+		return nil, errors.New("explicit confirmation and repository ID required")
+	}
+	path, err := repoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(repo, "/")
+	next := ""
+	method := ""
+	body := map[string]any{}
+	switch operation {
+	case "rename":
+		if !githubRepositoryName.MatchString(destination) || destination == parts[1] {
+			return nil, errors.New("invalid replacement repository name")
+		}
+		next, method = parts[0]+"/"+destination, "PATCH"
+		body["name"] = destination
+	case "transfer":
+		if !githubAccountName.MatchString(destination) || destination == parts[0] {
+			return nil, errors.New("invalid destination account")
+		}
+		next, method = destination+"/"+parts[1], "POST"
+		path += "/transfer"
+		body["new_owner"] = destination
+	default:
+		return nil, errors.New("invalid repository operation")
+	}
+
+	current, err := g.AccountRepository(repo)
+	if err != nil {
+		return nil, err
+	}
+	if int64(asFloat(current["id"])) != expectedID ||
+		!asBool(gitObj(current["permissions"])["admin"]) {
+		return nil, errors.New("repository identity conflict or administrator permission missing")
+	}
+	modified, err := g.request(method, path, nil, body)
+	if err != nil {
+		return nil, err
+	}
+	provider := gitObj(modified)
+	if int64(asFloat(provider["id"])) != expectedID ||
+		asString(provider["full_name"]) != next {
+		return nil, fmt.Errorf("GitHub did not confirm %s destination; inspect provider state", operation)
+	}
+	result := map[string]any{
+		"operation": operation, "before": repo, "after": next,
+		"repository_id": expectedID, "confirmed": false, "status": "pending_verification",
+	}
+	verified, verifyErr := g.AccountRepository(next)
+	if verifyErr == nil && int64(asFloat(verified["id"])) == expectedID {
+		result["confirmed"], result["status"] = true, "verified"
+	}
+	return result, nil
+}
