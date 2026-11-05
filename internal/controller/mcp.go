@@ -22,6 +22,9 @@ var tools = []toolDefinition{
 	{"read_project_note", "Read a versioned note", []string{"project_id", "name"}, nil},
 	{"write_project_note", "Write a note with a revision guard", []string{"project_id", "name", "body", "expected_version"}, nil},
 	{"search_project_knowledge", "Search project notes", []string{"project_id", "query"}, nil},
+	{"knowledge_policy", "Read the project\u0027s selected knowledge persistence policy", []string{"project_id"}, nil},
+	{"knowledge_configure", "Choose disabled knowledge or an authorized GitHub knowledge repository", []string{"project_id", "mode", "expected_version"}, []string{"repository", "branch", "prefix"}},
+	{"knowledge_git_publish", "Publish an explicitly selected project knowledge document with exact Git revision verification", []string{"project_id", "path", "body", "expected_head", "message"}, nil},
 	{"knowledge_context", "Read canonical project and context notes, latest handoff, decisions and linked repositories", []string{"project_id"}, nil},
 	{"knowledge_contribute", "Append an immutable project handoff, decision, finding or note with source provenance", []string{"project_id", "kind", "title", "body"}, []string{"repository", "revision", "artifact_id"}},
 	{"knowledge_contributions", "List immutable project contributions and provenance", []string{"project_id"}, []string{"kind", "limit"}},
@@ -303,6 +306,33 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.WriteNote(project, get("name"), get("body"), asInt(a["expected_version"]))
 	case "search_project_knowledge":
 		return db.SearchNotes(project, get("query"))
+	case "knowledge_policy":
+		return db.KnowledgePolicy(project)
+	case "knowledge_configure":
+		mode := get("mode")
+		if mode == "git" {
+			remote, err := s.GitHub.AccountRepository(get("repository"))
+			if err != nil { return nil, err }
+			perms := gitObj(remote["permissions"])
+			if !asBool(perms["push"]) && !asBool(perms["admin"]) {
+				return nil, errors.New("Git knowledge destination requires provider write permission")
+			}
+			if _, err := s.GitHub.Commit(get("repository"), get("branch")); err != nil { return nil, err }
+		}
+		return db.ConfigureKnowledgePolicy(project, mode, get("repository"), get("branch"), get("prefix"), asInt(a["expected_version"]))
+	case "knowledge_git_publish":
+		policy, err := db.KnowledgePolicy(project)
+		if err != nil { return nil, err }
+		if asString(policy["mode"]) != "git" {
+			return nil, errors.New("Git project knowledge is not enabled")
+		}
+		path := get("path")
+		if !validRelativePath(path) || !(strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json")) {
+			return nil, errors.New("knowledge path must be a relative Markdown or JSON file")
+		}
+		prefix := strings.TrimRight(asString(policy["prefix"]), "/")
+		return s.GitHub.CommitKnowledgeDocument(asString(policy["repository"]), asString(policy["branch"]),
+			prefix+"/"+path, get("expected_head"), get("body"), get("message"))
 	case "knowledge_context":
 		return db.ProjectContext(project)
 	case "knowledge_contribute":
