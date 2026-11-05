@@ -1,4 +1,4 @@
 interface:
   display_name: Project Stewardship
-  short_description: Govern Git, research knowledge, reviews, and cluster work
-  default_prompt: Organize this project using the established Git, knowledge, review, and cluster practices.
+  short_description: Operate Project Workspace MCP, Git, knowledge, and clusters
+  default_prompt: Use Project Workspace MCP and its repository-owned standards to manage this project's source, optional knowledge, planning, compute, and delivery.
