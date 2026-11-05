@@ -311,7 +311,7 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "read_project_note":
 		return db.ReadNote(project, get("name"))
 	case "write_project_note":
-		return db.WriteNote(project, get("name"), get("body"), asInt(a["expected_version"]))
+		return nil, errors.New("local project note writes are disabled; configure Git knowledge and use knowledge_git_publish")
 	case "search_project_knowledge":
 		return db.SearchNotes(project, get("query"))
 	case "knowledge_policy":
@@ -361,11 +361,7 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "knowledge_context":
 		return db.ProjectContext(project)
 	case "knowledge_contribute":
-		var request ContributionRequest
-		if err := JSONRequest(a, &request); err != nil {
-			return nil, err
-		}
-		return db.ContributeProject(project, request, who.Principal)
+		return nil, errors.New("local project contributions are read-only; publish a versioned document to the configured Git knowledge remote")
 	case "knowledge_contributions":
 		limit := asInt(a["limit"])
 		if limit == 0 {
