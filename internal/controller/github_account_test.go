@@ -29,6 +29,8 @@ func TestAccountRepositoryChangesRequireIdentityAndPermission(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "full_name": "example/target"})
 		case r.Method == "GET" && path == "/repos/newowner/source":
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "full_name": "newowner/source"})
+		case r.Method == "GET" && path == "/search/repositories":
+			fmt.Fprint(w, `{"total_count":1,"items":[{"id":42,"full_name":"example/source","private":true}]}`)
 		case r.Method == "GET" && path == "/user/repos":
 			_ = json.NewEncoder(w).Encode([]any{map[string]any{"id": 42, "full_name": "example/source"}})
 		default:
@@ -53,6 +55,13 @@ func TestAccountRepositoryChangesRequireIdentityAndPermission(t *testing.T) {
 		t.Fatal("unexpected provider mutation")
 	}
 	admin = true
+	if _, err := g.SearchGitHubRepositories("", 1); err == nil {
+		t.Fatal("accepted empty repository search")
+	}
+	if found, err := g.SearchGitHubRepositories("example", 1); err != nil ||
+		len(found["repositories"].([]map[string]any)) != 1 {
+		t.Fatalf("repository search: %v %v", found, err)
+	}
 	if _, err := g.AccountRepositories(0); err == nil {
 		t.Fatal("accepted invalid page")
 	}
