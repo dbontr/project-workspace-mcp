@@ -12,15 +12,14 @@ temporary copies of source code for builds and tests, but uncommitted local
 copies and controller disks are not durable code publication. A task is not
 finished until its code is committed and verified on the designated remote.
 
-GitHub is the active source provider for the Saturn deployment. The current
-controller implements its repository checkout, publication and GitHub-specific
-project-management operations through GitHub APIs. Ordinary Git transports
-also work with GitLab, Gitea and self-hosted servers, but **the controller's
-generic Git provider adapter is not yet implemented**. Do not claim those
-providers are supported by the current release or substitute a local-only
-repository. A provider-agnostic adapter must separately implement authenticated
-fetch, exact-commit checkout, protected publication and remote verification,
-with provider-specific PR/issue features remaining optional.
+GitHub remains the configured provider on Saturn. The controller also accepts
+operator-mounted bare Git repositories using `local:OWNER/REPOSITORY` identifiers
+when `PWM_GIT_LOCAL_ROOT` is configured. The local Git adapter resolves exact
+commits, reads files, publishes with non-forced revision guards, and streams
+source archives into approved workspaces. It does not require GitHub or create
+GitHub planning entities. GitLab, Gitea, and other remote Git transports still
+require separately authenticated provider adapters and cannot be represented
+as active implementations.
 
 Knowledge persistence is separately opt-in:
 
@@ -34,15 +33,32 @@ knowledge lifecycle; `skills/project-workspace` remains responsible for
 source-backed compute. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
 second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`,
-`knowledge_git_read` and `knowledge_git_publish` for explicit policy selection and revision-guarded
-GitHub commits with remote read-back. Git publication requires a user-owned
-PAT and repository write permission. Legacy local note APIs remain for
-compatibility; they are not automatically synchronized to Git and must not be
-regarded as Git-backed knowledge.
+`knowledge_git_read`, and `knowledge_git_publish` with exact branch revision
+verification for GitHub or explicitly mounted local bare Git. GitHub writes
+require a user-owned PAT and repository permission; local writes require an
+operator-controlled storage root and configured Git author identity.
+Legacy SQLite notes and immutable contributions remain readable for deliberate
+migration, but public REST and MCP writes to those local knowledge stores are
+disabled. They do not silently fall back when Git storage is disabled or
+unavailable.
 
-GitLab and self-hosted Git require an authenticated and tested generic Git
-adapter before provider-independent workflows can be considered production
-ready. GitHub remains the configured authoritative remote for this installation.
+### Provider capability boundary
+
+| Provider | Code Git operations | Git knowledge | Issues / PRs | Project boards |
+| --- | --- | --- | --- | --- |
+| GitHub | Available with scoped credentials | Available with explicit policy | GitHub APIs, with permission | GitHub Projects V2, with permission |
+| Local bare Git | Available when approved storage is mounted | Available with explicit policy | Unavailable; never emulated | Unavailable; never emulated |
+| GitLab, Gitea, other remotes | Adapter required | Adapter required | Provider adapter required | Provider adapter required |
+
+Call `git_provider_capabilities` to inspect support. Use `git_link_repository`,
+`git_repository_head`, `git_read_file`, `git_publish_file`, and
+`git_checkout_repository` for provider-neutral Git operations. GitHub-only
+tools fail explicitly for local Git identities. Repository rename or transfer
+preflights controller references, checks GitHub's immutable repository ID, and
+reconciles project/library/knowledge locators after provider confirmation.
+`github_account_reconcile` permits a confirmed pending transfer or a
+recovered partial operation to reconcile references without changing historical
+source provenance.
 
 ## Requirements
 
@@ -51,6 +67,31 @@ ready. GitHub remains the configured authoritative remote for this installation.
 - The Kubernetes controller runs as a single-writer process over durable SQLite and artifact storage. Conventional Linux Docker workers remain an optional compatibility backend selected with `--backend docker`.
 - A trusted MCP client. The HTTP MCP endpoint implements stateless Streamable HTTP with the 2025-06-18 protocol, including `initialize`, `tools/list`, and `tools/call`.
 - An HTTPS ingress for remote connections; the controller listens on loopback by default. The owner credential is always available for administration. Optional OIDC bearer-token verification and per-project grants require an external identity provider.
+
+### Operator-mounted local Git repositories
+
+The local Git adapter is deliberately opt-in. Provision a persistent volume
+containing **bare**, operator-authorized repositories beneath
+`OWNER/REPOSITORY.git`. The controller must be able to write that volume;
+workers must **not** mount it. The image includes the native Git CLI. In an
+isolated Helm installation, configure:
+
+```yaml
+controller:
+  localGit:
+    existingClaimName: pwm-git-repositories
+    authorName: "Authorized Developer"
+    authorEmail: "verified-commit-identity@example.org"
+```
+
+The claim is mounted at `/git` and exposed to the controller as
+`PWM_GIT_LOCAL_ROOT`. Those settings are empty by default and do not affect
+Saturn's existing deployment. The operator remains responsible for repository
+creation, filesystem permissions, independent backups, and restricting the
+content to approved source repositories. Repository hooks and ambient Git
+configuration are disabled for controller operations. A local bare Git
+repository is persistent only to the extent that its storage survives host
+failure. It is not a substitute for independently verified off-host recovery.
 
 ## Kubernetes deployment and execution
 
@@ -839,8 +880,18 @@ type before explicit task-file storage. `task_study_pack_import` accepts a
 structured prepared pack and rejects questions referencing absent source IDs;
 client-provided provenance remains unverified until independently checked.
 Larger task files use the authenticated streaming REST endpoint described above.
-Interactive task workspaces and automatic hardware allocation for finite task
-jobs require separate worker support and are not yet accepted.
+The controller requires `task_worker_authorize` from an administrator before
+any worker may receive standalone task jobs. Kubernetes workers must use the
+isolated `personal-tasks` namespace scope. `task_compute_submit` accepts
+bounded `hardware` requests for GPU, NPU, or FPGA slots and optional
+`min_gpu_memory_mb`. Device reservations are mutually exclusive with project
+workspace leases and are conveyed to workers as validated Docker device
+mappings or Kubernetes device-plugin extended-resource requests. USB passthrough
+for independent finite jobs is not implemented. A failed or expired job retains
+an uncertain hardware lease until the administrator verifies cleanup and calls
+`task_hardware_recover` with `cleanup_verified=true` and `confirm=true`.
+Interactive independent task workspaces are not implemented; task job resources
+must not be mistaken for a persistent user workspace.
 Do not claim end-to-end ChatGPT attachment transfer until the actual client
 integration has been tested.
 
@@ -1017,7 +1068,12 @@ them to a project using `github_account_search`, `github_account_repositories` a
 `github_account_repository`. Repository rename and transfer use separate
 administrator-only tools requiring the exact provider repository ID,
 provider-confirmed permissions and `confirm=true`; a successful API response
-is not treated as verified until the destination is read back.
+is not treated as verified until the destination is read back. After a verified
+change, linked project, library, and Git knowledge locators are reconciled
+transactionally. Active workspaces and conflicting destination records
+prevent automatic changes. Historical citations retain their original source
+identity; uncertain transfers require explicit `github_account_reconcile` after
+the destination is independently verified.
 
 ## MCP attachment and study-pack ingestion
 
