@@ -68,6 +68,29 @@ func (g *GitHub) AccountRepository(repo string) (map[string]any, error) {
 var githubRepositoryName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 var githubAccountName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`)
 
+// accountRepositoryDestination validates the provider locator before a write
+// or a reconciliation preflight is attempted.
+func accountRepositoryDestination(repo, operation, destination string) (string, error) {
+	if _, err := repoPath(repo); err != nil {
+		return "", err
+	}
+	parts := strings.Split(repo, "/")
+	switch operation {
+	case "rename":
+		if !githubRepositoryName.MatchString(destination) || destination == parts[1] {
+			return "", errors.New("invalid replacement repository name")
+		}
+		return parts[0] + "/" + destination, nil
+	case "transfer":
+		if !githubAccountName.MatchString(destination) || destination == parts[0] {
+			return "", errors.New("invalid destination account")
+		}
+		return destination + "/" + parts[1], nil
+	default:
+		return "", errors.New("invalid repository operation")
+	}
+}
+
 // AccountRepositoryChange requires exact provider identity, provider-confirmed
 // administration permission, and operation-specific confirmation. Transfers
 // may require asynchronous acceptance by the destination organization.
