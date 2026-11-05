@@ -318,6 +318,9 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return s.GitProviderCapabilities(get("provider"))
 	case "git_link_repository":
 		repository := get("repository")
+		if get("role") == "planning" && strings.HasPrefix(repository, "local:") {
+			return nil, errors.New("GitHub planning capabilities require a separate GitHub repository, not a local Git locator")
+		}
 		if name, ok := localRepoName(repository); ok {
 			if s.LocalGit == nil {
 				return nil, errors.New("local Git storage is not configured")
