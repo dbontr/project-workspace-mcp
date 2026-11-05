@@ -84,6 +84,10 @@ var tools = []toolDefinition{
 	{"workspace_checkpoint_stop_status", "Inspect checkpoint-before-stop progress and snapshot reference", []string{"project_id", "workspace_id"}, nil},
 	{"workspace_prune_volume", "Prune the stopped workspace's labeled Docker volume after verifying its checkpoint; requires project owner permission and explicit confirmation", []string{"project_id", "workspace_id", "snapshot_id", "confirm"}, nil},
 	{"workspace_restore", "Restore a workspace snapshot", []string{"project_id", "workspace_id", "snapshot_id"}, nil},
+	{"github_account_repositories", "List repositories accessible to the administrator, without requiring project linkage", nil, []string{"page"}},
+	{"github_account_repository", "Inspect a repository accessible to the administrator by exact name", []string{"repository"}, nil},
+	{"github_account_rename", "Rename an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
+	{"github_account_transfer", "Transfer an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
 	{"github_repository_api", "Call a repository-scoped GitHub endpoint", []string{"project_id", "repository", "method", "endpoint"}, []string{"params", "payload"}},
 	{"github_pat_readiness", "Inspect the user-owned PAT identity and reported permissions for repositories linked to a project without exposing credentials", []string{"project_id"}, nil},
 	{"github_repository", "Read repository metadata", []string{"project_id", "repository"}, nil},
@@ -141,7 +145,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "revision", "number", "generation", "lease_seconds", "limit":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
@@ -632,6 +636,19 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.ReadMCPArtifact(project, get("artifact_id"))
 	case "artifact_view_image":
 		return db.ReadPNGImage(project, get("artifact_id"))
+	}
+	// Account-scoped operations are never converted into implicit project grants.
+	switch name {
+	case "github_account_repositories":
+		page := asInt(a["page"])
+		if page == 0 { page = 1 }
+		return s.GitHub.AccountRepositories(page)
+	case "github_account_repository":
+		return s.GitHub.AccountRepository(get("repository"))
+	case "github_account_rename", "github_account_transfer":
+		operation := "rename"
+		if name == "github_account_transfer" { operation = "transfer" }
+		return s.GitHub.AccountRepositoryChange(get("repository"), operation, get("destination"), int64(asFloat(a["expected_repo_id"])), a["confirm"] == true)
 	}
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {
