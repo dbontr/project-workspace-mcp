@@ -53,7 +53,12 @@ unavailable.
 Call `git_provider_capabilities` to inspect support. Use `git_link_repository`,
 `git_repository_head`, `git_read_file`, `git_publish_file`, and
 `git_checkout_repository` for provider-neutral Git operations. GitHub-only
-tools fail explicitly for local Git identities. Repository rename or transfer
+tools fail explicitly for local Git identities. **A local Git code/knowledge
+project may independently link an authorized GitHub repository with the
+`planning` role and attach a GitHub Projects V2 board.** Issues and PRs then
+operate on that actual GitHub planning repository; they do not become features
+of the local Git remote. Without that separate provider, return an explicit
+unavailable-capability result rather than creating counterfeit issues or boards. Repository rename or transfer
 preflights controller references, checks GitHub's immutable repository ID, and
 reconciles project/library/knowledge locators after provider confirmation.
 `github_account_reconcile` permits a confirmed pending transfer or a
