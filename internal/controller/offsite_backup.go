@@ -147,13 +147,15 @@ func RestoreOffsite(ctx context.Context, c ResticRepositoryConfig, snapshot, dat
 		return err
 	}
 	defer os.RemoveAll(temp)
-	restored := filepath.Join(temp, "snapshot")
-	if err := c.run(ctx, temp, "restore", snapshot+":/snapshot", "--target", restored); err != nil {
+	// The encrypted snapshot contains exactly one top-level "snapshot" bundle.
+	// Restoring the complete snapshot works with Restic 0.14 and newer; the
+	// SNAPSHOT:/SUBDIRECTORY syntax is unavailable in older bundled versions.
+	if err := c.run(ctx, temp, "restore", snapshot, "--target", temp); err != nil {
 		return err
 	}
 	// RestoreBackup checks every manifest hash and refuses to overwrite a
 	// database or artifact directory already in use.
-	return RestoreBackup(restored, databasePath)
+	return RestoreBackup(filepath.Join(temp, "snapshot"), databasePath)
 }
 
 // VerifyOffsite restores a selected encrypted snapshot into a disposable
