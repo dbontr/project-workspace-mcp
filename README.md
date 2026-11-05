@@ -1233,8 +1233,9 @@ PWM_RESTIC_BACKUP_INTERVAL=24h
 
 Set this in the controller's environment alongside the repository and
 password-file configuration. Intervals shorter than one hour are rejected.
-The next snapshot runs after the interval; failures are logged without
-claiming success. Do not invoke the offline CLI in parallel with the live
+The first snapshot starts when the controller starts. Subsequent backups run
+after the configured interval, and failed attempts retry after at most five
+minutes. Failures are logged without claiming success. Do not invoke the offline CLI in parallel with the live
 controller: separate processes do not share the in-memory artifact lock.
 The in-process scheduler does not provide automated retention policies or
 remote-site monitoring. Operators must secure the backup repository, manage
