@@ -34,6 +34,8 @@ task's files and results are not promoted into project knowledge automatically.
 
 ## Standard knowledge layout
 
+When `project-stewardship` is installed, follow its `references/knowledge-standard.md` for record types, frontmatter, status vocabulary, evidence sections, experiments and concise handoffs. The Git repository remains authoritative; use that standard only with an explicitly enabled knowledge policy. For projects not using the companion skill, follow the layout below and preserve existing compatible conventions.
+
 Use a conventional, explicitly configured repository subdirectory (for example `knowledge/`). Keep source trees and build outputs outside it.
 
 - `Project.md` — purpose, scope, assumptions and principal research questions.
