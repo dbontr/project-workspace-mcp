@@ -38,12 +38,12 @@ type Operation struct {
 }
 
 type Job struct {
-	ID         string  `json:"id"`
-	Command    string  `json:"command"`
-	Image      string  `json:"image"`
-	CPU        float64 `json:"cpu"`
-	MemoryMB   int     `json:"memory_mb"`
-	LeaseToken string  `json:"lease_token"`
+	ID	string	`json:"id"`
+	Command	string	`json:"command"`
+	Image	string	`json:"image"`
+	CPU	float64	`json:"cpu"`
+	MemoryMB	int	`json:"memory_mb"`
+	LeaseToken	string	`json:"lease_token"`
 	Devices    []DeviceClaim `json:"devices,omitempty"`
 }
 

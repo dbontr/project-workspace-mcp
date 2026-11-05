@@ -50,9 +50,9 @@ func (db *Database) PrepareStudyPack(project, title, objective string, ids, ques
 		items = append(items, map[string]any{
 			"citation_ref": passage["citation_ref"], "source_id": passage["source"],
 			"title": passage["title"], "original": passage["origin_name"],
-			"original_sha256": passage["origin_digest"],
+			"original_sha256":	passage["origin_digest"],
 			"repository_revision": passage["origin_revision"],
-			"page": passage["page"], "section": passage["section"],
+			"page":			passage["page"], "section": passage["section"],
 			"line_start": passage["line_start"], "line_end": passage["line_end"],
 			"body": passage["body"], "body_sha256": passage["body_sha256"],
 		})

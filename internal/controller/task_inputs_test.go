@@ -31,7 +31,7 @@ func TestTaskAttachmentsAndStudyPacksRemainOwnerScoped(t *testing.T) {
 	source := StudyPackSource{ID: "lecture", Title: "Lecture", SHA256: digest, Location: "page 1"}
 	pack := StudyPack{
 		Title: "Midterm review", Objective: "Derive the main result",
-		Sources: []StudyPackSource{source},
+		Sources:	[]StudyPackSource{source},
 		Questions: []StudyPackQuestion{{Prompt: "Explain the derivation", Answer: "Show each step", SourceIDs: []string{"missing"}}},
 	}
 	if _, err := db.SaveTaskStudyPack("controller-owner", taskID, "review.json", pack, 0); err == nil {
