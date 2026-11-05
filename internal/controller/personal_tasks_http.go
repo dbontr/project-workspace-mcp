@@ -77,12 +77,15 @@ func (s *Server) handlePersonalTasks(w http.ResponseWriter, r *http.Request, p [
 				Image string `json:"image"`
 				CPU float64 `json:"cpu"`
 				MemoryMB int `json:"memory_mb"`
+				Hardware map[string]any `json:"hardware"`
+				MinGPUMemoryMB int `json:"min_gpu_memory_mb"`
 			}
 			if err := bodyJSON(r, &in); err != nil { fail(w, 400, err.Error()); return true }
 			if in.Image == "" { in.Image = "debian:bookworm-slim" }
 			if in.CPU == 0 { in.CPU = 1 }
 			if in.MemoryMB == 0 { in.MemoryMB = 512 }
-			row, err := s.DB.SubmitPersonalTaskJob(owner, task, in.Command, in.Image, in.CPU, in.MemoryMB)
+			row, err := s.DB.SubmitPersonalTaskJobWithHardware(owner, task, in.Command, in.Image, in.CPU, in.MemoryMB,
+				in.Hardware, in.MinGPUMemoryMB)
 			send(w, row, err)
 		default:
 			fail(w, 405, "method not allowed")
