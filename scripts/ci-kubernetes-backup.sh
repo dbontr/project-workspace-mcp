@@ -250,13 +250,9 @@ if ! kubectl -n "$namespace" wait --for=condition=complete job/pwm-restic-ci-ope
   exit 1
 fi
 kubectl -n "$namespace" logs job/pwm-restic-ci-open -c controller | \
-  grep -Eq '^Pairing code \(10 min\): [0-9a-f]{48}
-kubectl -n "$namespace" rollout status deployment/pwm-controller --timeout=180s
-echo "Network Restic snapshot, integrity check, clean-PVC restore, SQLite readback and original artifact bytes verified"
+  grep -Eq '^Pairing code \(10 min\): [0-9a-f]{48}$'
 
-
-# Verify restored artifact bytes, not merely the recovered SQLite schema.
-# This Job reads exclusively from the newly created recovery PVC.
+# Verify the exact bytes from the newly restored artifact volume.
 cat <<YAML | kubectl -n "$namespace" apply -f -
 apiVersion: batch/v1
 kind: Job
@@ -308,4 +304,4 @@ fi
 
 kubectl -n "$namespace" scale deployment/pwm-controller --replicas=1
 kubectl -n "$namespace" rollout status deployment/pwm-controller --timeout=180s
-echo "Network Restic snapshot, integrity check, clean-PVC restore and controller readback verified"
+echo "Network Restic snapshot, integrity check, clean-PVC restore, SQLite readback and exact artifact bytes verified"
