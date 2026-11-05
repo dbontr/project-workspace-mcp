@@ -118,7 +118,9 @@ func (db *Database) ExpirePersonalJobResults() error {
 		cutoff := stamp() - personalJobRetentionSeconds
 		if err := db.execLocked(`DELETE FROM personal_task_jobs WHERE job IN (
 			SELECT id FROM jobs WHERE project=? AND status IN ('succeeded','failed','expired')
-			AND updated<?)`, personalComputeScope, cutoff); err != nil {
+			AND updated<?) AND NOT EXISTS (
+				SELECT 1 FROM task_job_device_leases l
+				WHERE l.job=personal_task_jobs.job AND l.released IS NULL)`, personalComputeScope, cutoff); err != nil {
 			return err
 		}
 		if err := db.execLocked(`DELETE FROM personal_task_job_hardware
@@ -155,8 +157,10 @@ func (db *Database) PersonalTaskJobs(owner, task string) ([]map[string]any, erro
 		return nil, errors.New("personal task not found")
 	}
 	if err := db.ExpirePersonalJobResults(); err != nil { return nil, err }
-	return db.query(`SELECT j.id,j.status,j.node,j.created,j.updated,j.result
+	return db.query(`SELECT j.id,j.status,j.node,j.created,j.updated,j.result,
+		coalesce(h.requirements,'{}') hardware,h.min_gpu_memory_mb
 		FROM personal_task_jobs x JOIN jobs j ON j.id=x.job
+		LEFT JOIN personal_task_job_hardware h ON h.job=j.id
 		WHERE x.task=? AND x.owner=? ORDER BY j.created DESC LIMIT 100`,
 		task, owner)
 }
