@@ -28,12 +28,13 @@ Knowledge persistence is separately opt-in:
 | `none` | None | No intentional project note, finding, decision or handoff writes |
 | `git` | Chosen Git remote and subdirectory | Explicitly selected knowledge is committed and verified in Git |
 
-The independently installable `skills/project-knowledge` describes the
-knowledge lifecycle; `skills/project-workspace` remains responsible for
-source-backed compute. `skills/project-stewardship` provides the complementary
-operating standard for provider-aware Git workflows, issue and board planning,
-project knowledge layout, cluster allocation, verification and handoffs; it
-uses `professional-code` for implementation quality rather than duplicating it. A knowledge repository may be the existing source
+The repository-owned [`skills/project-stewardship`](skills/project-stewardship/SKILL.md)
+is the single operational skill for this MCP. It governs project workspaces,
+independent tasks, cluster and hardware allocation, Git provider selection,
+opt-in versioned knowledge, GitHub planning, verification, and handoffs.
+Its references preserve specialized runbooks without separate legacy skills.
+Use the general `professional-code` skill for additional code-quality guidance
+when available; the controller remains the authority for live tool permissions. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
 second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`,
 `knowledge_git_read`, and `knowledge_git_publish` with exact branch revision
