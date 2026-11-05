@@ -47,6 +47,7 @@ var readableTools = map[string]bool{
 	"study_pack_prepare": true,
 	"knowledge_context": true, "knowledge_contributions": true, "knowledge_contribution": true, "knowledge_search_contributions": true,
 	"knowledge_policy": true,
+	"knowledge_git_read": true,
 	"list_project_jobs": true, "list_github_repositories": true,
 	"task_claim_list": true, "task_claim_status": true, "resource_plan": true,
 	"workspace_list": true, "workspace_operation": true,
