@@ -99,6 +99,7 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 		name == "task_update" || name == "task_files" || name == "task_file_info" ||
 		name == "task_compute_submit" || name == "task_compute_jobs" ||
 		name == "task_save_text" || name == "task_send_base64" || name == "task_read_base64" ||
+		name == "task_attach_base64" || name == "task_study_pack_import" ||
 		name == "personal_task_claim_list" || name == "personal_task_claim_status" ||
 		name == "personal_task_claim" || name == "personal_task_claim_renew" ||
 		name == "personal_task_claim_finish" {
