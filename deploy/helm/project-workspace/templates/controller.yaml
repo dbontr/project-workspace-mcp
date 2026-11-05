@@ -2,6 +2,12 @@
 {{- if and .Values.controller.backupInterval (or (not .Values.controller.offsite.repository) (not .Values.controller.offsite.passwordSecretName)) }}
 {{- fail "controller encrypted backups require controller.offsite.repository and controller.offsite.passwordSecretName" }}
 {{- end }}
+{{- if and .Values.controller.backupInterval (hasPrefix "sftp:" .Values.controller.offsite.repository) (not .Values.controller.offsite.sshSecretName) }}
+{{- fail "SFTP backups require controller.offsite.sshSecretName with a pinned host key and a scoped identity" }}
+{{- end }}
+{{- if and .Values.controller.offsite.sshSecretName (not .Values.controller.backupInterval) }}
+{{- fail "controller.offsite.sshSecretName requires encrypted backups to be enabled" }}
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -87,6 +93,49 @@ spec:
               readOnly: true
             - name: restic-password
               mountPath: /output
+        {{- if .Values.controller.offsite.sshSecretName }}
+        - name: restic-ssh
+          image: busybox:1.36
+          command:
+            - sh
+            - -ec
+            - |
+              umask 077
+              mkdir -p /output/.ssh
+              test -s /input/id_ed25519
+              test -s /input/known_hosts
+              cp /input/id_ed25519 /output/.ssh/id_ed25519
+              cp /input/known_hosts /output/.ssh/known_hosts
+              cat > /output/.ssh/config <<'EOF'
+              Host *
+                IdentityFile /tmp/.ssh/id_ed25519
+                UserKnownHostsFile /tmp/.ssh/known_hosts
+                StrictHostKeyChecking yes
+                BatchMode yes
+                IdentitiesOnly yes
+                ServerAliveInterval 60
+                ServerAliveCountMax 4
+              EOF
+              chmod 0700 /output/.ssh
+              chmod 0600 /output/.ssh/id_ed25519 /output/.ssh/config
+              chmod 0644 /output/.ssh/known_hosts
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: restic-ssh-input
+              mountPath: /input
+              readOnly: true
+            - name: scratch
+              mountPath: /output
+        {{- end }}
       {{- end }}
       containers:
         - name: controller
@@ -193,6 +242,17 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 1Mi
+        {{- if .Values.controller.offsite.sshSecretName }}
+        - name: restic-ssh-input
+          secret:
+            secretName: {{ .Values.controller.offsite.sshSecretName }}
+            defaultMode: 292
+            items:
+              - key: id_ed25519
+                path: id_ed25519
+              - key: known_hosts
+                path: known_hosts
+        {{- end }}
         {{- end }}
         - name: state
           persistentVolumeClaim:

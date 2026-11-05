@@ -33,6 +33,8 @@
 - [GitHub automatic deletion of merged branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches) — GitHub. Used for: opt-in native branch cleanup through repository settings.
 - [GitHub pull request reviews](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews) — GitHub. Used for: distinction between an author's self-verification and independently approving a PR.
 - [Restic backup and relative paths](https://restic.readthedocs.io/en/stable/040_backup.html) — Restic maintainers. Used for: encrypted snapshot export and relative directory layout.
+- [Restic SFTP repository configuration](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html#sftp) — Restic maintainers. Used for: authenticated SSH transport and protected SFTP repository selection.
+- [OpenSSH ssh_config](https://man.openbsd.org/ssh_config) — OpenSSH. Used for: non-interactive SSH identities, pinned host keys and strict host verification.
 - [Restic restoring snapshots](https://restic.readthedocs.io/en/stable/050_restore.html) — Restic maintainers. Used for: explicit snapshot and subdirectory restoration into clean destinations.
 - [Restic repository checks](https://restic.readthedocs.io/en/stable/045_working_with_repos.html) — Restic maintainers. Used for: repository integrity verification and full-data recovery audits.
 - [Restic scripting and environment variables](https://restic.readthedocs.io/en/stable/075_scripting.html) — Restic maintainers. Used for: environment-backed repository selection and protected password-file configuration.
