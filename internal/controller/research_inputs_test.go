@@ -20,6 +20,11 @@ func TestResearchAttachmentAdmissionAndStudyPackCitations(t *testing.T) {
 		digest, base64.StdEncoding.EncodeToString([]byte("not the same"))); err == nil {
 		t.Fatal("forged attachment accepted")
 	}
+	prepared := []byte(`{"title":"Energy review","questions":["Why conserved?"],"sources":[{"name":"notes.pdf"}]}`)
+	if _, err := db.StoreMCPResearchAttachment("science", "energy-review.json", "study-pack",
+		checksum(prepared), base64.StdEncoding.EncodeToString(prepared)); err != nil {
+		t.Fatalf("prepared study pack upload rejected: %v", err)
+	}
 	source, err := db.RegisterResearchSource(ResearchSourceRequest{
 		Library: "science", Title: "Lecture", OriginKind: "object", OriginName: "notes.pdf",
 	})
