@@ -30,7 +30,7 @@ knowledge/sources/manifest.json
 knowledge/study-packs/PACK-ID/manifest.json
 ```
 
-Knowledge commits require expected revision checks and remote read-back. Existing local notes are not evidence of Git persistence and must not be discarded before verified migration.
+Knowledge reads resolve the chosen branch to an exact commit SHA. Knowledge commits require expected revision checks and remote read-back. Existing local notes are not evidence of Git persistence and must not be discarded before verified migration.
 
 ## Acceptance
 
