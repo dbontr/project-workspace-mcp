@@ -34,6 +34,15 @@ func TestIndependentTaskComputeDoesNotCreateProjectOrKnowledge(t *testing.T) {
 	if _, err := db.PersonalTaskJobs("another-person", taskID); err == nil {
 		t.Fatal("task result exposed to another owner")
 	}
+	// Finished job output is short-lived operational state, not knowledge.
+	if err := db.exec("UPDATE jobs SET updated=? WHERE id=?",
+		stamp()-personalJobRetentionSeconds-1, row["id"]); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := db.PersonalTaskJobs("controller-owner", taskID)
+	if err != nil || len(retained) != 0 {
+		t.Fatalf("expired task result retained: %v %v", retained, err)
+	}
 	if _, err := db.CreateProject(personalComputeScope, "Impersonation"); err == nil {
 		t.Fatal("reserved compute scope accepted as a user project")
 	}
