@@ -32,7 +32,7 @@ The repository-owned [`skills/project-stewardship`](skills/project-stewardship/S
 is the single operational skill for this MCP. It governs project workspaces,
 independent tasks, cluster and hardware allocation, Git provider selection,
 opt-in versioned knowledge, GitHub planning, verification, and handoffs.
-Its references preserve specialized runbooks without separate legacy skills.
+Its references describe the specialized MCP workflows and governance contracts.
 Use the general `professional-code` skill for additional code-quality guidance
 when available; the controller remains the authority for live tool permissions. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
