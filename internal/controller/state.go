@@ -208,7 +208,7 @@ func (db *Database) Jobs(project string) ([]map[string]any, error) {
 	return db.query("SELECT id,project,node,status,created,updated,result FROM jobs WHERE project=? ORDER BY created DESC LIMIT 100", project)
 }
 func (db *Database) SubmitJob(project, command, image string, cpu float64, memory int) (map[string]any, error) {
-	if strings.TrimSpace(command) == "" || len(command) > 16000 || !validImage.MatchString(image) || cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 {
+	if strings.TrimSpace(command) == "" || len(command) > 16000 || !validImage.MatchString(image) || math.IsNaN(cpu) || math.IsInf(cpu, 0) || cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 {
 		return nil, errors.New("invalid job")
 	}
 	id := randomHex(16)
