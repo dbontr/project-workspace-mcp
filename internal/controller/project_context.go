@@ -38,7 +38,7 @@ func (db *Database) ContributeProject(project string, p ContributionRequest, pri
 	if (p.Repository == "") != (p.Revision == "") {
 		return nil, errors.New("repository provenance requires an exact revision")
 	}
-	if p.Repository != "" && (!validGitRepository(p.Repository) || !validCommitSHA.MatchString(p.Revision)) {
+	if p.Repository != "" && (!validSourceRepository(p.Repository) || !validCommitSHA.MatchString(p.Revision)) {
 		return nil, errors.New("invalid immutable repository provenance")
 	}
 	if p.ArtifactID != "" && !contributionArtifactID.MatchString(p.ArtifactID) {
