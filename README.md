@@ -33,8 +33,8 @@ The independently installable `skills/project-knowledge` describes the
 knowledge lifecycle; `skills/project-workspace` remains responsible for
 source-backed compute. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
-second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`, and
-`knowledge_git_publish` for explicit policy selection and revision-guarded
+second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`,
+`knowledge_git_read` and `knowledge_git_publish` for explicit policy selection and revision-guarded
 GitHub commits with remote read-back. Git publication requires a user-owned
 PAT and repository write permission. Legacy local note APIs remain for
 compatibility; they are not automatically synchronized to Git and must not be
