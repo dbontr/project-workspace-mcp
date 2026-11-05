@@ -329,7 +329,12 @@ func (db *Database) FinishJob(node, id, token, status, result string) (map[strin
 		if err := db.execLocked("UPDATE jobs SET status=?,result=?,updated=?,lease_until=NULL,token_hash=NULL WHERE id=?", status, result, stamp(), id); err != nil {
 			return err
 		}
-		return db.releaseJobHardwareLocked(id, node)
+		// A failed worker operation does not prove that its host device was
+		// released. The operator must verify cleanup before reuse.
+		if status == "succeeded" {
+			return db.releaseJobHardwareLocked(id, node)
+		}
+		return nil
 	})
 	return map[string]any{"id": id, "status": status}, err
 }
