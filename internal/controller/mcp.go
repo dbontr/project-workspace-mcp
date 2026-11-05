@@ -94,6 +94,7 @@ var tools = []toolDefinition{
 	{"external_resource_leases", "List local external resource reservation records", nil, []string{"resource_id"}},
 	{"external_resource_reserve", "Record an explicitly selected external resource request without implying a confirmed remote lease", []string{"resource_id", "scope", "scope_id", "duration_minutes", "confirm"}, nil},
 	{"external_resource_release", "Release an external resource reservation record", []string{"lease_id", "confirm"}, nil},
+	{"github_account_search", "Search repositories visible to the GitHub account without linking a project", []string{"query"}, []string{"page"}},
 	{"github_account_repositories", "List repositories accessible to the administrator, without requiring project linkage", nil, []string{"page"}},
 	{"github_account_repository", "Inspect a repository accessible to the administrator by exact name", []string{"repository"}, nil},
 	{"github_account_rename", "Rename an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
@@ -708,6 +709,10 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	}
 	// Account-scoped operations are never converted into implicit project grants.
 	switch name {
+	case "github_account_search":
+		page := asInt(a["page"])
+		if page == 0 { page = 1 }
+		return s.GitHub.SearchGitHubRepositories(get("query"), page)
 	case "github_account_repositories":
 		page := asInt(a["page"])
 		if page == 0 { page = 1 }
