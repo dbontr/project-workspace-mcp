@@ -97,12 +97,28 @@ func TestLocalGitArchiveHasSingleCheckoutRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer gz.Close()
-	entry, err := tar.NewReader(gz).Next()
-	if err != nil {
-		t.Fatal(err)
+	archive := tar.NewReader(gz)
+	foundFile := false
+	for {
+		entry, err := archive.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry.Typeflag == tar.TypeXGlobalHeader || entry.Typeflag == tar.TypeXHeader {
+			continue
+		}
+		if !strings.HasPrefix(entry.Name, "local-"+original[:12]+"/") {
+			t.Fatalf("archive member escapes checkout root: %q", entry.Name)
+		}
+		if entry.Typeflag == tar.TypeReg {
+			foundFile = true
+		}
 	}
-	if !strings.HasPrefix(entry.Name, "local-"+original[:12]+"/") {
-		t.Fatalf("missing single archive root: %q", entry.Name)
+	if !foundFile {
+		t.Fatal("local Git archive contains no source files")
 	}
 }
 
