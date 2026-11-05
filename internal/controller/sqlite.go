@@ -174,7 +174,7 @@ func (db *Database) query(statement string, args ...any) ([]map[string]any, erro
 }
 
 func (db *Database) CreateProject(id, title string) (map[string]any, error) {
-	if !validID.MatchString(id) || id == personalComputeScope || len(strings.TrimSpace(title)) == 0 || len(title) > 256 {
+	if !validID.MatchString(id) || id == "task-pool" || len(strings.TrimSpace(title)) == 0 || len(title) > 256 {
 		return nil, errors.New("invalid project ID or title")
 	}
 	err := db.exec("INSERT INTO projects VALUES(?,?,?)", id, title, float64(time.Now().UnixNano())/1e9)
