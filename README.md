@@ -304,6 +304,28 @@ controller:
     backendSecretName: pwm-restic-backend
 ```
 
+For SFTP repositories, the controller image includes OpenSSH. Configure a
+backup-only SSH account on the independently administered host, restrict its
+authorized key to that repository and provision a Secret containing the
+corresponding private key and a **pinned** `known_hosts` file. The host key
+must be authenticated out of band, not fetched opportunistically during
+deployment.
+
+```sh
+kubectl -n pwm-system create secret generic pwm-restic-ssh \
+  --from-file=id_ed25519=/secure/backup-only-id_ed25519 \
+  --from-file=known_hosts=/secure/backup-host-known_hosts
+```
+
+Select `controller.offsite.repository=sftp:backup@recovery-host:/srv/restic`
+and `controller.offsite.sshSecretName=pwm-restic-ssh` alongside the configured
+password Secret and interval. The chart rejects an SFTP repository without
+an SSH Secret. An isolated non-root init container copies the key and pinned
+host keys into the memory-backed controller scratch volume, with private-file
+permissions. OpenSSH uses strict host-key verification, an explicit identity,
+and non-interactive authentication. Do not use Saturn's root recovery identity,
+and do not commit keys or host credential material to Git.
+
 The password is copied by a non-root init container into a memory-backed
 volume with mode `0600`; the controller mounts only that protected copy.
 The password source Secret is not mounted into the main controller container.
