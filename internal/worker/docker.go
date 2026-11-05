@@ -1533,7 +1533,7 @@ func (r *Runner) importArchive(ctx context.Context, op Operation, c *Client) (ma
 		if total > 32*1024*1024 {
 			return nil, errors.New("repository snapshot exceeds 32 MiB")
 		}
-		entry := &tar.Header{Name: "repos/" + strings.ReplaceAll(p.Repository, "/", "__") + "/" + relative,
+		entry := &tar.Header{Name: "repos/" + strings.NewReplacer("/", "__", ":", "__").Replace(p.Repository) + "/" + relative,
 			Mode: 0644, Size: header.Size, Typeflag: tar.TypeReg, Uid: 65534, Gid: 65534}
 		if header.Mode&0111 != 0 {
 			entry.Mode = 0755
