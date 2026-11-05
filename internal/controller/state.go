@@ -229,6 +229,10 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			return errors.New("node not found")
 		}
 		caps := decodeObject(asString(n["capabilities"]))
+		personalAllowed, e := db.personalWorkerAllowedLocked(node)
+		if e != nil {
+			return e
+		}
 		if !asBool(caps["docker"]) && !asBool(caps["kubernetes"]) {
 			return nil
 		}
@@ -254,10 +258,29 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			}
 			query += " AND project=?"
 			arguments = append(arguments, project)
+		} else if project := asString(caps["project_id"]); project != "" {
+			query += " AND project=?"
+			arguments = append(arguments, project)
 		}
-		row, e := db.lockedOne(query+" ORDER BY created,id LIMIT 1", arguments...)
-		if e != nil || row == nil {
+		if !personalAllowed {
+			query += " AND project!=?"
+			arguments = append(arguments, personalComputeScope)
+		}
+		candidates, e := db.queryLocked(query+" ORDER BY created,id LIMIT 200", arguments...)
+		if e != nil {
 			return e
+		}
+		var row map[string]any
+		for _, candidate := range candidates {
+			if asString(candidate["project"]) == personalComputeScope &&
+				(!personalAllowed || !workerHasImage(caps, asString(candidate["image"]))) {
+				continue
+			}
+			row = candidate
+			break
+		}
+		if row == nil {
+			return nil
 		}
 		token := randomHex(32)
 		if e = db.execLocked("UPDATE jobs SET status='leased',node=?,token_hash=?,lease_until=?,updated=? WHERE id=?", node, hashToken(token), now+420, now, row["id"]); e != nil {
