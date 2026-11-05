@@ -95,10 +95,9 @@ func (db *Database) ReserveExternalResource(resource, scope, scopeID, principal 
 		if entry == nil || asString(entry["status"]) != "registered" {
 			return errors.New("external resource not registered")
 		}
+		// Expiration never proves the external scheduler released its allocation.
+		// Explicit reconciliation is required before the resource can be reused.
 		now := stamp()
-		if err := db.execLocked("UPDATE external_resource_leases SET released=? WHERE released IS NULL AND expires<=?", now, now); err != nil {
-			return err
-		}
 		current, err := db.lockedOne("SELECT id FROM external_resource_leases WHERE resource=? AND released IS NULL", resource)
 		if err != nil {
 			return err
