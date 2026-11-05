@@ -30,7 +30,10 @@ Knowledge persistence is separately opt-in:
 
 The independently installable `skills/project-knowledge` describes the
 knowledge lifecycle; `skills/project-workspace` remains responsible for
-source-backed compute. A knowledge repository may be the existing source
+source-backed compute. `skills/project-stewardship` provides the complementary
+operating standard for provider-aware Git workflows, issue and board planning,
+project knowledge layout, cluster allocation, verification and handoffs; it
+uses `professional-code` for implementation quality rather than duplicating it. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
 second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`,
 `knowledge_git_read`, and `knowledge_git_publish` with exact branch revision
