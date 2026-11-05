@@ -16,15 +16,15 @@ Use this skill only when the project owner chooses durable knowledge. Project Wo
 
 ## Capabilities and authorization
 
-- Inspect the connected MCP tools and selected provider. The controller exposes `knowledge_policy`, `knowledge_configure`, `knowledge_git_read`, and `knowledge_git_publish` for explicit GitHub storage. `knowledge_git_publish` uses a user-owned GitHub PAT, an exact branch head, the configured knowledge directory and remote read-back. The skill is not itself a Git backend; generic GitLab or Gitea write support still requires a verified adapter.
+- Inspect the connected MCP tools and selected provider. The controller exposes `knowledge_policy`, `knowledge_configure`, `knowledge_git_read`, and `knowledge_git_publish` for explicitly selected GitHub or operator-mounted bare Git storage. `knowledge_git_publish` uses a verified branch head and remote read-back; GitHub requires a user-owned PAT, while `local:OWNER/REPOSITORY` requires a configured approved local Git root and author identity. Generic GitLab or Gitea writes still require a tested remote adapter.
 - Resolve project ownership and a configured repository before reading or writing. Require a credential scoped to the selected repository; keep it in controller-managed secrets and never pass it to a worker Pod, file, note, output log, or shell command payload.
-- Prefer an operator-approved generic Git adapter for clone, exact-commit checkout, branch creation, revision-guarded commit, push and remote verification. GitHub-specific issue/PR methods are optional enhancements, never Git protocol requirements.
+- Prefer `git_repository_head`, `git_read_file`, and revision-guarded `git_publish_file` when the repository is linked to a project. GitHub-specific Issues, Pull Requests, and Projects are optional enhancements, not Git protocol requirements. Use `git_provider_capabilities` to inspect whether they are available before invoking them.
 - Reject unknown remote hosts, redirects, credential-in-URL inputs, local filesystem escape paths, Git command-option injection and unreviewed remote hooks. Do not weaken network or credential restrictions merely to make a remote accessible.
 
 ## Explicit policy
 
 A project starts with knowledge mode `none`. Use `knowledge_configure` with
-the expected policy version to enable `git` and select a GitHub repository,
+the expected policy version to enable `git` and select an authorized GitHub or local bare Git repository,
 branch and directory. Do not invoke local notes or contributions as a
 substitute for remote publication. Publish a document relative to the
 configured directory with `knowledge_git_publish`, supplying the expected
