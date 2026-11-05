@@ -740,7 +740,13 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "github_account_rename", "github_account_transfer":
 		operation := "rename"
 		if name == "github_account_transfer" { operation = "transfer" }
-		return s.GitHub.AccountRepositoryChange(get("repository"), operation, get("destination"), int64(asFloat(a["expected_repo_id"])), a["confirm"] == true)
+		result, err := s.GitHub.AccountRepositoryChange(get("repository"), operation,
+			get("destination"), int64(asFloat(a["expected_repo_id"])), a["confirm"] == true)
+		status := "rejected"
+		if err == nil { status = asString(result["status"]) }
+		db.AuditAccess(who.Principal, get("repository"),
+			"github-account-"+operation+":"+get("destination")+":"+status, err == nil)
+		return result, err
 	}
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {
