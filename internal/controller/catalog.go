@@ -117,7 +117,7 @@ func (db *Database) AddLibrarySource(id, repo, revision, path, kind string) (map
 	if e := requireID(id); e != nil {
 		return nil, e
 	}
-	if !validGitRepository(repo) || !validCommitSHA.MatchString(revision) {
+	if !validSourceRepository(repo) || !validCommitSHA.MatchString(revision) {
 		return nil, errors.New("library sources require a repository and immutable commit SHA")
 	}
 	if path != "" && (!validRelativePath(path) || strings.Contains(path, "\\")) {
