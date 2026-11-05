@@ -1004,8 +1004,8 @@ reservation remains `pending_external_adapter` until its independently
 managed remote scheduler or device adapter confirms real allocation. These
 records never grant SSH access or silently join external clusters to K3s.
 
-The administrator may inspect accessible GitHub repositories without linking
-them to a project using `github_account_repositories` and
+The administrator may search and inspect accessible GitHub repositories without linking
+them to a project using `github_account_search`, `github_account_repositories` and
 `github_account_repository`. Repository rename and transfer use separate
 administrator-only tools requiring the exact provider repository ID,
 provider-confirmed permissions and `confirm=true`; a successful API response
@@ -1015,7 +1015,9 @@ is not treated as verified until the destination is read back.
 
 `library_attachment_send` receives up to 512 KiB of real base64-encoded
 attachment bytes, verifies SHA-256 and stores the original in an approved shared
-library. Large originals use existing authenticated chunked REST uploads.
+library. Prepared study-pack JSON can be admitted directly as an immutable
+`study-pack` object with its supplied digest. An accepted object is an intact
+original, not proof that its source references have been validated. Large originals use existing authenticated chunked REST uploads.
 `study_pack_prepare` composes a non-persistent packet from project-authorized
 research passages and their verified source locators. It never generates
 invented page numbers. A ChatGPT client must explicitly forward native
