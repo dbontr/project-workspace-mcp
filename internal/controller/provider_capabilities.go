@@ -31,6 +31,7 @@ func (s *Server) GitProviderCapabilities(provider string) (map[string]any, error
 			"project_boards": "unavailable",
 			"repository_administration": "operator-managed",
 			"authorization": "Operator-mounted bare repositories and explicit project grants required",
+			"optional_planning_bridge": "Link an authorized GitHub planning repository separately for Issues, Pull Requests and Projects",
 		}, nil
 	case "gitlab", "gitea", "remote-git":
 		return map[string]any{
