@@ -13,11 +13,11 @@ import (
 )
 
 var recordKinds = map[string]string{
-	"decisions": "decision",
-	"findings": "finding",
+	"decisions":   "decision",
+	"findings":    "finding",
 	"experiments": "experiment",
-	"handoffs": "handoff",
-	"sources": "source",
+	"handoffs":    "handoff",
+	"sources":     "source",
 }
 
 var requiredSections = map[string][]string{
