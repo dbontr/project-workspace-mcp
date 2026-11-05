@@ -5,12 +5,22 @@ import "testing"
 func TestIndependentTaskComputeDoesNotCreateProjectOrKnowledge(t *testing.T) {
 	db, _, srv := fixture(t)
 	pairWorker(t, srv)
+	if _, err := db.AuthorizePersonalTaskWorker("worker-one", true, false); err == nil {
+		t.Fatal("standalone worker allowed without explicit authorization confirmation")
+	}
 	task, err := db.CreatePersonalTask("controller-owner", "Compile test", "", nil)
 	if err != nil { t.Fatal(err) }
 	taskID := asString(task["id"])
 	if _, err := db.SubmitPersonalTaskJob("someone-else", taskID, "echo test",
 		"debian:bookworm-slim", 1, 256); err == nil {
 		t.Fatal("different task owner accepted")
+	}
+	if _, err := db.SubmitPersonalTaskJob("controller-owner", taskID, "echo test",
+		"debian:bookworm-slim", 1, 256); err == nil {
+		t.Fatal("standalone task accepted a worker without administrator approval")
+	}
+	if _, err := db.AuthorizePersonalTaskWorker("worker-one", true, true); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := db.SubmitPersonalTaskJob("controller-owner", taskID, "echo test",
 		"debian:bookworm-slim", 1, 256); err != nil {
