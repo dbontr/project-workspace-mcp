@@ -10,7 +10,7 @@ import (
 var validCommitSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 var repositoryRoles = map[string]bool{
-	"source": true, "research": true, "lean": true, "hardware": true, "documentation": true,
+	"source": true, "research": true, "lean": true, "hardware": true, "documentation": true, "planning": true,
 }
 
 // RepositoryMemberships exposes a project's repositories without duplicating Git history.
