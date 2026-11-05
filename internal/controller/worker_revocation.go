@@ -39,6 +39,9 @@ func (db *Database) RevokeNode(name string) (map[string]any, error) {
 			rotated, name); err != nil {
 			return err
 		}
+		if err := db.execLocked("UPDATE personal_task_worker_access SET allowed=0,updated=? WHERE node=?", stamp(), name); err != nil {
+			return err
+		}
 		result = map[string]any{"worker_id": name, "revoked": true,
 			"active_workspaces": workspaces, "active_hardware_leases": hardware,
 			"unfinished_operations": operations,
