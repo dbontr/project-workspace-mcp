@@ -117,6 +117,32 @@ jobs:
             echo 'Unexpected worker nodeSelector without an explicit choice' >&2
             exit 1
           fi
+      - name: Render distinct workers for one project
+        run: |
+          for instance in alpha beta; do
+            helm template "pwm-$instance" deploy/helm/project-workspace \
+              --namespace pwm-system \
+              --set controller.enabled=false --set worker.enabled=true \
+              --set worker.projectID=research \
+              --set "worker.name=research-$instance" \
+              --set "worker.instanceID=research-$instance" \
+              --set "worker.workloadNamespace=pwm-research-$instance" > "/tmp/worker-$instance.yaml"
+            grep -q "name: pwm-worker-research-$instance" "/tmp/worker-$instance.yaml"
+            grep -q "pwm-instance: research-$instance" "/tmp/worker-$instance.yaml"
+          done
+          if helm template pwm-invalid deploy/helm/project-workspace \
+               --set controller.enabled=false --set worker.enabled=true \
+               --set worker.instanceID=-invalid >/dev/null 2>&1; then
+            echo "Helm accepted invalid worker identity" >&2
+            exit 1
+          fi
+          helm template pwm-legacy deploy/helm/project-workspace \
+            --set controller.enabled=false --set worker.enabled=true > /tmp/worker-legacy.yaml
+          grep -q 'name: pwm-worker-research' /tmp/worker-legacy.yaml
+          if grep -q 'pwm-instance:' /tmp/worker-legacy.yaml; then
+            echo "Chart altered existing worker label selector" >&2
+            exit 1
+          fi
       - name: Load packaged application images
         run: |
           kind load docker-image pwm-controller:ci --name chart-testing
