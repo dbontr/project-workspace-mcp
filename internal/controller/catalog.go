@@ -25,7 +25,7 @@ func (db *Database) RepositoryMemberships(project string) ([]map[string]any, err
 }
 
 func (db *Database) LinkRepositoryWithRole(project, repo, role, ref string) (map[string]any, error) {
-	if !validGitRepository(repo) {
+	if !validSourceRepository(repo) {
 		return nil, errors.New("invalid repository")
 	}
 	if role == "" {
