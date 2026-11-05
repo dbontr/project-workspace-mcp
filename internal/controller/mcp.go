@@ -131,6 +131,8 @@ var tools = []toolDefinition{
 	{"github_project_add_item", "Add a linked repository issue or PR to the GitHub Project", []string{"project_id", "repository", "kind", "number"}, nil},
 	{"github_project_set_status", "Update a GitHub Project single-select field", []string{"project_id", "item_id", "field_id", "option_id"}, nil},
 	{"repository_memberships", "List all project repositories and their roles", []string{"project_id"}, nil},
+	{"library_attachment_send", "Receive actual attachment bytes from a file-capable MCP client into a verified research library object (up to 512 KiB)", []string{"library_id", "name", "kind", "sha256", "data_base64"}, nil},
+	{"study_pack_prepare", "Compose a cited study pack from verified indexed passages without automatically storing it", []string{"project_id", "title", "passage_ids"}, []string{"objective", "questions"}},
 	{"research_register_source", "Register an immutable library object or pinned Git source for research indexing", []string{"library", "title", "origin_kind", "origin_name"}, []string{"origin_revision", "origin_path"}},
 	{"research_ingest_passages", "Append or replace bounded source-linked text passages with an expected index revision", []string{"library", "source_id", "mode", "expected_revision", "passages"}, nil},
 	{"research_sources", "List indexed research sources visible through a project's linked libraries", []string{"project_id"}, nil},
@@ -157,7 +159,7 @@ func kindFor(key string) string {
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
-	case "packages", "software_ids", "artifact_ids", "tags", "passages":
+	case "packages", "software_ids", "artifact_ids", "tags", "passages", "passage_ids", "questions":
 		return "array"
 	case "hardware", "payload", "params", "changes":
 		return "object"
@@ -168,7 +170,7 @@ func (t toolDefinition) schema() map[string]any {
 	properties := map[string]any{}
 	for _, key := range append(append([]string{}, t.Required...), t.Optional...) {
 		prop := map[string]any{"type": kindFor(key)}
-		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" {
+		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" || key == "passage_ids" || key == "questions" {
 			prop["items"] = map[string]any{"type": "string"}
 		}
 		if key == "passages" {
@@ -634,6 +636,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			limit = 30
 		}
 		return db.SearchResearch(project, get("query"), limit)
+	case "library_attachment_send":
+		return db.StoreMCPResearchAttachment(get("library_id"), get("name"), get("kind"), get("sha256"), get("data_base64"))
+	case "study_pack_prepare":
+		var passages []string
+		if err := JSONRequest(a["passage_ids"], &passages); err != nil { return nil, err }
+		var questions []string
+		if a["questions"] != nil {
+			if err := JSONRequest(a["questions"], &questions); err != nil { return nil, err }
+		}
+		return db.PrepareStudyPack(project, get("title"), get("objective"), passages, questions)
 	case "research_read_passage":
 		return db.ReadResearchPassage(project, get("passage_id"))
 	case "library_create":
