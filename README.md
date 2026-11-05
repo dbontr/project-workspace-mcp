@@ -754,7 +754,7 @@ Large OS images can be streamed to `PUT /api/projects/PROJECT/artifacts/upload` 
 
 ## Personal tasks and independent files
 
-The controller now supports owner-scoped **standalone tasks** without requiring
+The controller supports owner-scoped **standalone tasks** without requiring
 a registered research project. Task metadata (title, description, tags and
 active/archived status) uses revision guards. Each task file retains every
 immutable revision rather than overwriting previous contents. The authenticated
@@ -763,7 +763,8 @@ another subject cannot enumerate, read, modify, or download its files.
 
 The MCP tools are `task_create`, `task_list`, `task_details`,
 `task_update`, `task_files`, `task_file_info`, `task_save_text`,
-`task_send_base64`, `task_read_base64` and `task_export_project`.
+`task_send_base64`, `task_read_base64`, `task_export_project`,
+`task_attach_base64`, and `task_study_pack_import`.
 Small binary inputs up to 512 KiB use base64 plus a mandatory SHA-256. Larger
 inputs use authenticated streamed REST uploads with bounded size and exact
 checksum verification:
@@ -830,9 +831,16 @@ the real attachment bytes or call the REST stream route. The task library includ
 one-shot jobs with `task_compute_submit` and `task_compute_jobs`. The
 execution-only worker scope `personal-tasks` must be deployed separately for
 Kubernetes; a trusted Docker compatibility worker can also accept those jobs.
-No project, repository or knowledge record is created. Interactive task
-workspaces and automatic hardware allocation for finite task jobs require
-separate worker support and are not yet accepted.
+No project, repository or knowledge record is created. One-shot completion
+logs are operational data, not project knowledge; completed task-job records
+older than 24 hours are pruned when the task results are inspected.
+`task_attach_base64` verifies supplied attachment bytes, SHA-256 and MIME
+type before explicit task-file storage. `task_study_pack_import` accepts a
+structured prepared pack and rejects questions referencing absent source IDs;
+client-provided provenance remains unverified until independently checked.
+Larger task files use the authenticated streaming REST endpoint described above.
+Interactive task workspaces and automatic hardware allocation for finite task
+jobs require separate worker support and are not yet accepted.
 Do not claim end-to-end ChatGPT attachment transfer until the actual client
 integration has been tested.
 
@@ -1464,9 +1472,16 @@ permission system is not yet implemented.
 
 ## GitHub issues, branches, and pull-request lifecycle
 
-Each project can link multiple GitHub repositories. All GitHub operations act on
-an explicitly linked repository; repository credentials remain on the Go
-controller. GitHub Projects V2 remains the planning authority. Issues, commits,
+Each project can link multiple GitHub repositories. Project-scoped GitHub
+operations require explicit repository links; separate administrator-only
+`github_account_search`, `github_account_repositories`,
+`github_account_repository`, `github_account_rename`, and
+`github_account_transfer` tools can act on repositories accessible to the
+connected GitHub identity without first linking them to a project. Rename and
+transfer require an exact immutable repository ID, provider administrator
+permission, and operation-specific confirmation. Provider state is checked
+before and after a mutation; transfers may remain pending. Credentials stay on
+the Go controller. GitHub Projects V2 remains the planning authority. Issues, commits,
 reviews, checks, merges, and branch refs remain authoritative on GitHub.
 
 The MCP tools provide these operations without enabling unrestricted GitHub REST
