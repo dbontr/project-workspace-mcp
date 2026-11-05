@@ -19,6 +19,36 @@ func (g *GitHub) AccountRepositories(page int) (any, error) {
 	}, nil)
 }
 
+// SearchGitHubRepositories searches repositories visible to this credential.
+func (g *GitHub) SearchGitHubRepositories(query string, page int) (map[string]any, error) {
+	if strings.TrimSpace(query) == "" || len(query) > 160 || strings.ContainsAny(query, "\x00\r\n") ||
+		page < 1 || page > 100 {
+		return nil, errors.New("invalid repository search")
+	}
+	value, err := g.request("GET", "/search/repositories", map[string]any{
+		"q": query, "per_page": 30, "page": page,
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	result := gitObj(value)
+	items, ok := result["items"].([]any)
+	if !ok {
+		return nil, errors.New("GitHub returned an invalid repository search")
+	}
+	rows := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		repo := gitObj(item)
+		if asString(repo["full_name"]) == "" || asFloat(repo["id"]) <= 0 {
+			return nil, errors.New("GitHub returned an invalid repository identity")
+		}
+		rows = append(rows, map[string]any{"id": repo["id"], "full_name": repo["full_name"],
+			"private": repo["private"], "description": repo["description"]})
+	}
+	return map[string]any{"query": query, "total_count": result["total_count"],
+		"repositories": rows, "page": page}, nil
+}
+
 func (g *GitHub) AccountRepository(repo string) (map[string]any, error) {
 	p, err := repoPath(repo)
 	if err != nil {
