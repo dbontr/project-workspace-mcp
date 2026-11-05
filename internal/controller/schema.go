@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS pool_entry_states(kind TEXT NOT NULL,entry_id TEXT NO
 CREATE TABLE IF NOT EXISTS pool_programs(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL,version TEXT NOT NULL,platform TEXT NOT NULL,distribution TEXT NOT NULL,source_url TEXT NOT NULL,license_notes TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,pool_kind TEXT NOT NULL,pool_id TEXT NOT NULL,review_note TEXT NOT NULL,created REAL NOT NULL,updated REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS pool_events(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,entry_id TEXT NOT NULL,revision INTEGER NOT NULL,previous TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_pool_events_entry ON pool_events(kind,entry_id,created);
+CREATE TABLE IF NOT EXISTS external_resources(id TEXT PRIMARY KEY,kind TEXT NOT NULL,adapter TEXT NOT NULL,endpoint TEXT NOT NULL,operator TEXT NOT NULL,policy TEXT NOT NULL,status TEXT NOT NULL,created REAL NOT NULL,updated REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS external_resource_leases(id TEXT PRIMARY KEY,resource TEXT NOT NULL,scope TEXT NOT NULL,scope_id TEXT NOT NULL,principal TEXT NOT NULL,expires REAL NOT NULL,released REAL,created REAL NOT NULL,FOREIGN KEY(resource) REFERENCES external_resources(id));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_external_resource_exclusive ON external_resource_leases(resource) WHERE released IS NULL;
+CREATE INDEX IF NOT EXISTS idx_external_resource_lease_expiry ON external_resource_leases(expires,released);
 
 `
 
