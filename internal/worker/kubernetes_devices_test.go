@@ -99,7 +99,6 @@ func TestKubernetesWorkspaceExecRequiresVerifiedPodOwnership(t *testing.T) {
 	}
 }
 
-
 func TestKubernetesTaskJobUsesVerifiedDevicePluginResources(t *testing.T) {
 	k, _ := testKubernetes(t)
 	k.Devices = []KubernetesDevice{{

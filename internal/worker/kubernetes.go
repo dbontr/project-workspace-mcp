@@ -587,6 +587,7 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 	}
 	return result
 }
+
 // jobManifestWithDevices asks Kubernetes to allocate only operator-approved
 // extended resources named by a controller-issued device lease.
 func (k *Kubernetes) jobManifestWithDevices(job Job, worker string) (map[string]any, error) {
