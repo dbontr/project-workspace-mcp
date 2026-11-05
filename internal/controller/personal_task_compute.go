@@ -34,7 +34,7 @@ func (db *Database) SubmitPersonalTaskJobWithHardware(owner, task, command, imag
 		return nil, errors.New("invalid independent compute job")
 	}
 	var result map[string]any
-	err := db.transaction(func() error {
+	err = db.transaction(func() error {
 		t, err := db.lockedOne("SELECT id FROM personal_tasks WHERE id=? AND owner=? AND status='active'", task, owner)
 		if err != nil || t == nil {
 			return errors.New("active task owned by caller required")
