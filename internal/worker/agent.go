@@ -44,6 +44,7 @@ type Job struct {
 	CPU        float64 `json:"cpu"`
 	MemoryMB   int     `json:"memory_mb"`
 	LeaseToken string  `json:"lease_token"`
+	Devices    []DeviceClaim `json:"devices,omitempty"`
 }
 
 func ValidateURL(address string) (string, error) {
