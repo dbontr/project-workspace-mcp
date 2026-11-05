@@ -6,9 +6,8 @@ import (
 )
 
 // A personal compute job has no project row, repository link or knowledge
-// destination. Kubernetes needs an operator-managed worker whose project_id
-// matches this execution-only scope; Docker compatibility workers can also
-// claim these jobs under their existing capacity policy.
+// destination. Every worker requires administrator approval for standalone
+// tasks. Kubernetes workers also require the isolated personal-tasks scope.
 const personalComputeScope = "personal-tasks"
 const personalJobRetentionSeconds = 24 * 60 * 60
 
@@ -34,15 +33,19 @@ func (db *Database) SubmitPersonalTaskJob(owner, task, command, image string, cp
 		if asInt(busy["n"]) >= 8 {
 			return errors.New("independent task compute queue is full")
 		}
-		nodes, err := db.queryLocked("SELECT capabilities,last_seen FROM nodes WHERE last_seen>?", stamp()-90)
+		nodes, err := db.queryLocked(`SELECT n.capabilities,n.last_seen FROM nodes n
+			JOIN personal_task_worker_access a ON a.node=n.id AND a.allowed=1
+			WHERE n.last_seen>?`, stamp()-90)
 		if err != nil {
 			return err
 		}
 		eligible := false
 		for _, node := range nodes {
 			caps := decodeObject(asString(node["capabilities"]))
-			if (asBool(caps["docker"]) || asBool(caps["kubernetes"]) &&
-				asString(caps["project_id"]) == personalComputeScope) &&
+			scope := asString(caps["project_id"])
+			scopeAllowed := asBool(caps["docker"]) && (scope == "" || scope == personalComputeScope) ||
+				asBool(caps["kubernetes"]) && scope == personalComputeScope
+			if scopeAllowed && workerHasImage(caps, image) &&
 				asFloat(caps["cpu"]) >= cpu && asFloat(caps["memory_mb"]) >= float64(memory) {
 				eligible = true
 				break
