@@ -378,7 +378,7 @@ func (r *Runner) Capabilities() (map[string]any, error) {
 		}
 		return map[string]any{
 			"cpu": k.CPU, "memory_mb": k.MemoryMB, "max_jobs": k.MaxJobs,
-			"kubernetes": true, "docker": false, "project_id": k.Project, "task_pool": k.Project == "task-pool",
+			"kubernetes": true, "docker": false, "project_id": k.Project,
 			"namespace": k.Namespace, "os": "linux", "arch": runtime.GOARCH,
 			"devices": PublicKubernetesDevices(k.Devices), "images": r.ApprovedImages(),
 		}, nil
