@@ -52,6 +52,7 @@ func readToken(path string) (string, error) {
 	}
 	return token, nil
 }
+
 // Capture a baseline on startup. A failed remote backup is retried sooner
 // than the normal schedule so a transient outage does not leave new state
 // unprotected for an entire backup interval.
