@@ -913,6 +913,11 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 	if r.WorkerID != "" {
 		args = append(args, "--label", "project-workspace-worker="+r.WorkerID)
 	}
+	devices, err := DeviceDockerArgsAuthorized(job.Devices, r.AvailableDevices(), false)
+	if err != nil {
+		return "failed", fmt.Sprintf("unapproved job device lease: %v", err)
+	}
+	args = append(args, devices...)
 	args = append(args, job.Image, "sh", "-c", job.Command)
 	out, stderr, status, err := r.docker(ctx, 5*time.Minute, nil, args...)
 	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
