@@ -70,9 +70,10 @@ namespace-scoped RBAC, and workload namespaces require `worker.enabled=true`
 after one-time pairing and creation of the worker credential Secret. Do not
 provide an unpaired worker credential or rely on the chart to enroll workers.
 
-Choose a dedicated DNS-label workload namespace for each project. The Helm
-chart refuses worker installation in the controller namespace or Kubernetes
-system namespaces. Worker and project identifiers must fit Kubernetes resource
+Choose a dedicated DNS-label workload namespace for each worker instance.
+Multiple workers may serve the same project, but must use distinct workload
+namespaces and worker credentials. The Helm chart refuses worker installation
+in the controller namespace or Kubernetes system namespaces. Worker and project identifiers must fit Kubernetes resource
 name limits. Kubernetes StorageClass names may contain DNS subdomain labels.
 Each worker rejects a workspace or batch Job that requests more CPU or memory
 than that worker advertises; Kubernetes ResourceQuota and the scheduler remain
@@ -203,8 +204,13 @@ helm upgrade --install pwm-research deploy/helm/project-workspace \
   --set worker.workspaceStorageClass=YOUR_REPLICATED_STORAGE_CLASS
 ```
 
-Install a separate worker release and namespace for each additional project,
-with a distinct worker ID, token Secret, and storage quota. Helm uninstall
+Install a separate worker release and namespace for each additional worker,
+with a distinct controller worker ID, token Secret, and storage quota. If two
+workers share a project, set the same `worker.projectID` but a unique
+`worker.instanceID` for each, together with unique `worker.name` and
+`worker.workloadNamespace`. The instance ID distinguishes Deployment and
+ServiceAccount names and Pod selectors. An empty `worker.instanceID` retains
+the original project-derived resource names and labels for existing releases. Helm uninstall
 does not remove the controller's state PVC or project namespaces; both carry
 `helm.sh/resource-policy: keep` so uninstallation cannot silently erase
 durable project records or workspace PVCs. Review retained data and its
