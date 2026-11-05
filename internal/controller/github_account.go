@@ -84,8 +84,12 @@ func (g *GitHub) AccountRepositoryChange(repo, operation, destination string, ex
 		return nil, err
 	}
 	provider := gitObj(modified)
-	if int64(asFloat(provider["id"])) != expectedID ||
-		asString(provider["full_name"]) != next {
+	if int64(asFloat(provider["id"])) != expectedID {
+		return nil, errors.New("GitHub returned an unexpected repository identity")
+	}
+	// GitHub transfers can be pending destination acceptance; only a read
+	// of the destination with the same immutable repository ID proves completion.
+	if operation == "rename" && asString(provider["full_name"]) != next {
 		return nil, fmt.Errorf("GitHub did not confirm %s destination; inspect provider state", operation)
 	}
 	result := map[string]any{
