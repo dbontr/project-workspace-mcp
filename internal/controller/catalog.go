@@ -52,7 +52,7 @@ func (db *Database) LinkRepositoryWithRole(project, repo, role, ref string) (map
 
 var libraryKinds = map[string]bool{"lean": true, "research": true, "code": true, "mixed": true}
 var sourceKinds = map[string]bool{"source": true, "research": true, "formalization": true, "documentation": true}
-var objectKinds = map[string]bool{"build-cache": true, "dataset": true, "paper": true, "result": true, "archive": true}
+var objectKinds = map[string]bool{"build-cache": true, "dataset": true, "paper": true, "result": true, "archive": true, "study-pack": true}
 
 func (db *Database) CreateLibrary(id, title, description, kind string) (map[string]any, error) {
 	if e := requireID(id); e != nil {
