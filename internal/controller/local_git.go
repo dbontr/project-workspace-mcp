@@ -29,6 +29,13 @@ func localRepoName(value string) (string, bool) {
 	return name, validGitRepository(name)
 }
 
+func validSourceRepository(value string) bool {
+	if _, ok := localRepoName(value); ok {
+		return true
+	}
+	return validGitRepository(value)
+}
+
 func validKnowledgeRepository(value string) bool {
 	if _, ok := localRepoName(value); ok {
 		return true
@@ -74,7 +81,7 @@ func (w *gitBoundedWriter) Write(p []byte) (int, error) {
 func (g *LocalGit) command(dir, index string, data []byte, maxOutput int, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", append([]string{"--git-dir=" + dir}, args...)...)
+	command := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + os.DevNull, "--git-dir=" + dir}, args...)...)
 	if data != nil {
 		command.Stdin = bytes.NewReader(data)
 	}
@@ -90,7 +97,6 @@ func (g *LocalGit) command(dir, index string, data []byte, maxOutput int, args .
 	if index != "" {
 		command.Env = append(command.Env, "GIT_INDEX_FILE="+index)
 	}
-	command.Args = append(command.Args[:1], append([]string{"-c", "core.hooksPath=" + os.DevNull}, command.Args[1:]...)...)
 	output := &gitBoundedWriter{Limit: maxOutput}
 	stderr := &gitBoundedWriter{Limit: 1024}
 	command.Stdout, command.Stderr = output, stderr
@@ -126,11 +132,25 @@ func (g *LocalGit) branchHead(name, branch string) (string, error) {
 	return head, nil
 }
 
-func (g *LocalGit) ReadFile(name, branch, path string) (map[string]any, error) {
-	if !validFilePath(path) {
-		return nil, errors.New("invalid local Git file path")
+func (g *LocalGit) Resolve(name, ref string) (string, error) {
+	if !commitID.MatchString(ref) {
+		return g.branchHead(name, ref)
 	}
-	head, err := g.branchHead(name, branch)
+	dir, err := g.repository(name)
+	if err != nil {
+		return "", err
+	}
+	if _, err := g.command(dir, "", nil, 64, "cat-file", "-e", ref+"^{commit}"); err != nil {
+		return "", err
+	}
+	return ref, nil
+}
+
+func (g *LocalGit) ReadAtCommit(name, sha, path string) (map[string]any, error) {
+	if !validFilePath(path) || !commitID.MatchString(sha) {
+		return nil, errors.New("invalid local Git file revision or path")
+	}
+	verified, err := g.Resolve(name, sha)
 	if err != nil {
 		return nil, err
 	}
@@ -138,13 +158,21 @@ func (g *LocalGit) ReadFile(name, branch, path string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	body, err := g.command(dir, "", nil, 128<<10, "show", head+":"+path)
+	body, err := g.command(dir, "", nil, 128<<10, "show", verified+":"+path)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"repository": "local:" + name, "provider": "local-git",
-		"branch": branch, "path": path, "commit_sha": head,
+		"path": path, "commit_sha": verified, "revision": verified,
 		"content": string(body), "content_sha256": checksum(body)}, nil
+}
+
+func (g *LocalGit) ReadFile(name, branch, path string) (map[string]any, error) {
+	head, err := g.Resolve(name, branch)
+	if err != nil {
+		return nil, err
+	}
+	return g.ReadAtCommit(name, head, path)
 }
 
 func (g *LocalGit) Publish(name, branch, path, expected, body, message string) (map[string]any, error) {
@@ -221,7 +249,7 @@ func (g *LocalGit) Publish(name, branch, path, expected, body, message string) (
 // Archive streams an exact commit as a tar archive, with no local checkout
 // and no repository-controlled hooks. A caller must enforce artifact quotas.
 func (g *LocalGit) Archive(name, branch string, output io.Writer) (string, error) {
-	sha, err := g.branchHead(name, branch)
+	sha, err := g.Resolve(name, branch)
 	if err != nil {
 		return "", err
 	}
