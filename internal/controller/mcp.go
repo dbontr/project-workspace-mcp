@@ -84,6 +84,11 @@ var tools = []toolDefinition{
 	{"workspace_checkpoint_stop_status", "Inspect checkpoint-before-stop progress and snapshot reference", []string{"project_id", "workspace_id"}, nil},
 	{"workspace_prune_volume", "Prune the stopped workspace's labeled Docker volume after verifying its checkpoint; requires project owner permission and explicit confirmation", []string{"project_id", "workspace_id", "snapshot_id", "confirm"}, nil},
 	{"workspace_restore", "Restore a workspace snapshot", []string{"project_id", "workspace_id", "snapshot_id"}, nil},
+	{"external_resource_register", "Register an external machine or cluster outside the free scheduling pool", []string{"resource_id", "kind", "adapter", "endpoint", "operator", "policy"}, nil},
+	{"external_resource_list", "List external resources; registration does not imply active access", nil, nil},
+	{"external_resource_leases", "List local external resource reservation records", nil, []string{"resource_id"}},
+	{"external_resource_reserve", "Record an explicitly selected external resource request without implying a confirmed remote lease", []string{"resource_id", "scope", "scope_id", "duration_minutes", "confirm"}, nil},
+	{"external_resource_release", "Release an external resource reservation record", []string{"lease_id", "confirm"}, nil},
 	{"github_account_repositories", "List repositories accessible to the administrator, without requiring project linkage", nil, []string{"page"}},
 	{"github_account_repository", "Inspect a repository accessible to the administrator by exact name", []string{"repository"}, nil},
 	{"github_account_rename", "Rename an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
@@ -145,7 +150,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "duration_minutes", "revision", "number", "generation", "lease_seconds", "limit", "page":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
@@ -459,6 +464,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.StopWorkspace(project, workspace)
 	case "list_hardware":
 		return db.Hardware()
+	case "external_resource_register":
+		return db.RegisterExternalResource(get("resource_id"), get("kind"), get("adapter"), get("endpoint"), get("operator"), get("policy"))
+	case "external_resource_list":
+		return db.ExternalResources()
+	case "external_resource_leases":
+		return db.ExternalResourceLeases(get("resource_id"))
+	case "external_resource_reserve":
+		return db.ReserveExternalResource(get("resource_id"), get("scope"), get("scope_id"), who.Principal, asInt(a["duration_minutes"]), a["confirm"] == true)
+	case "external_resource_release":
+		return db.ReleaseExternalResource(get("lease_id"), a["confirm"] == true)
 	case "environment_define":
 		return db.EnvironmentDefine(project, get("name"), get("base_image"), get("dockerfile"), get("context"), get("architecture"), asInt(a["expected_version"]))
 	case "environment_list":
