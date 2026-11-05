@@ -15,7 +15,7 @@ func (g *GitHub) AccountRepositories(page int) (any, error) {
 	}
 	return g.request("GET", "/user/repos", map[string]any{
 		"affiliation": "owner,collaborator,organization_member",
-		"per_page":  100, "page": page, "sort": "full_name",
+		"per_page":	100, "page": page, "sort": "full_name",
 	}, nil)
 }
 
