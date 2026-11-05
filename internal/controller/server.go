@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -23,6 +24,7 @@ type Server struct {
 	OIDC             *OIDCVerifier
 	PublicURL        string
 	GitHub           *GitHub
+	LocalGit         *LocalGit
 	AllowedHosts     map[string]bool
 	AllowedOrigins   map[string]bool
 	MaxArtifactBytes int64
@@ -76,7 +78,30 @@ func NewServer(db *Database, token string) (*Server, error) {
 		}
 	}
 	github.GenericWrites = os.Getenv("PWM_GITHUB_GENERIC_WRITES") == "1"
-	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil
+	var localGit *LocalGit
+	if configuredRoot := os.Getenv("PWM_GIT_LOCAL_ROOT"); configuredRoot != "" {
+		if !filepath.IsAbs(configuredRoot) {
+			return nil, errors.New("PWM_GIT_LOCAL_ROOT must be an absolute path")
+		}
+		root, err := filepath.EvalSymlinks(configuredRoot)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() {
+			return nil, errors.New("PWM_GIT_LOCAL_ROOT must be a directory")
+		}
+		localGit = &LocalGit{
+			Root: root,
+			AuthorName: strings.TrimSpace(os.Getenv("PWM_GIT_AUTHOR_NAME")),
+			AuthorEmail: strings.TrimSpace(os.Getenv("PWM_GIT_AUTHOR_EMAIL")),
+		}
+	}
+	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL,
+		GitHub: github, LocalGit: localGit,
+		AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"),
+		AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"),
+		MaxArtifactBytes: limit}, nil
 }
 func (s *Server) isAuthorized(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.AdminToken)) == 1
