@@ -150,7 +150,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "duration_minutes", "revision", "number", "generation", "lease_seconds", "limit", "page":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
 		return "boolean"
