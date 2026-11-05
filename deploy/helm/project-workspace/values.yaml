@@ -35,6 +35,7 @@ worker:
   nodeSelector: {}
   name: research-agent
   projectID: research
+  instanceID: ""
   workloadNamespace: pwm-research
   tokenSecretName: pwm-worker-research-credentials
   controllerCASecretName: pwm-controller-ca
