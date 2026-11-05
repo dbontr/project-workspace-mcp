@@ -10,6 +10,7 @@ import (
 // matches this execution-only scope; Docker compatibility workers can also
 // claim these jobs under their existing capacity policy.
 const personalComputeScope = "personal-tasks"
+const personalJobRetentionSeconds = 24 * 60 * 60
 
 func (db *Database) SubmitPersonalTaskJob(owner, task, command, image string, cpu float64, memory int) (map[string]any, error) {
 	if !validTaskOwner(owner) || !contributionArtifactID.MatchString(task) ||
@@ -68,6 +69,23 @@ func (db *Database) SubmitPersonalTaskJob(owner, task, command, image string, cp
 	return result, err
 }
 
+// ExpirePersonalJobResults discards old operational logs without touching
+// the task's explicitly saved files or any project's knowledge.
+func (db *Database) ExpirePersonalJobResults() error {
+	return db.transaction(func() error {
+		cutoff := stamp() - personalJobRetentionSeconds
+		if err := db.execLocked(`DELETE FROM personal_task_jobs WHERE job IN (
+			SELECT id FROM jobs WHERE project=? AND status IN ('succeeded','failed','expired')
+			AND updated<?)`, personalComputeScope, cutoff); err != nil {
+			return err
+		}
+		return db.execLocked(`DELETE FROM jobs WHERE project=?
+			AND status IN ('succeeded','failed','expired')
+			AND updated<? AND NOT EXISTS (
+				SELECT 1 FROM personal_task_jobs t WHERE t.job=jobs.id)`, personalComputeScope, cutoff)
+	})
+}
+
 func (db *Database) PersonalTaskJobs(owner, task string) ([]map[string]any, error) {
 	if !validTaskOwner(owner) || !contributionArtifactID.MatchString(task) {
 		return nil, errors.New("invalid personal task")
@@ -79,6 +97,7 @@ func (db *Database) PersonalTaskJobs(owner, task string) ([]map[string]any, erro
 	if found == nil {
 		return nil, errors.New("personal task not found")
 	}
+	if err := db.ExpirePersonalJobResults(); err != nil { return nil, err }
 	return db.query(`SELECT j.id,j.status,j.node,j.created,j.updated,j.result
 		FROM personal_task_jobs x JOIN jobs j ON j.id=x.job
 		WHERE x.task=? AND x.owner=? ORDER BY j.created DESC LIMIT 100`,
