@@ -174,6 +174,13 @@ func (db *Database) Hardware() ([]map[string]any, error) {
 	for _, l := range leases {
 		busy[asString(l["node"])+"/"+asString(l["device_id"])] = l["workspace"]
 	}
+	jobLeases, e := db.query("SELECT node,device_id,job FROM task_job_device_leases WHERE released IS NULL")
+	if e != nil {
+		return nil, e
+	}
+	for _, lease := range jobLeases {
+		busy[asString(lease["node"])+"/"+asString(lease["device_id"])] = "job:" + asString(lease["job"])
+	}
 	out := []map[string]any{}
 	for _, n := range nodes {
 		cap := n["capabilities"].(map[string]any)
@@ -271,21 +278,33 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			return e
 		}
 		var row map[string]any
+		var selected []map[string]any
 		for _, candidate := range candidates {
 			if asString(candidate["project"]) == personalComputeScope &&
 				(!personalAllowed || !workerHasImage(caps, asString(candidate["image"]))) {
 				continue
 			}
-			row = candidate
+			devices, eligible, err := db.jobHardwareSelectionLocked(asString(candidate["id"]), node, caps)
+			if err != nil {
+				return err
+			}
+			if !eligible {
+				continue
+			}
+			row, selected = candidate, devices
 			break
 		}
 		if row == nil {
 			return nil
 		}
 		token := randomHex(32)
+		if err := db.leaseJobHardwareLocked(asString(row["id"]), node, selected); err != nil {
+			return err
+		}
 		if e = db.execLocked("UPDATE jobs SET status='leased',node=?,token_hash=?,lease_until=?,updated=? WHERE id=?", node, hashToken(token), now+420, now, row["id"]); e != nil {
 			return e
 		}
+		row["devices"] = selected
 		row["lease_token"] = token
 		out = row
 		return nil
@@ -307,7 +326,10 @@ func (db *Database) FinishJob(node, id, token, status, result string) (map[strin
 		if len(result) > 32768 {
 			result = result[:32768]
 		}
-		return db.execLocked("UPDATE jobs SET status=?,result=?,updated=?,lease_until=NULL,token_hash=NULL WHERE id=?", status, result, stamp(), id)
+		if err := db.execLocked("UPDATE jobs SET status=?,result=?,updated=?,lease_until=NULL,token_hash=NULL WHERE id=?", status, result, stamp(), id); err != nil {
+			return err
+		}
+		return db.releaseJobHardwareLocked(id, node)
 	})
 	return map[string]any{"id": id, "status": status}, err
 }
