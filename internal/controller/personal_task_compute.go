@@ -12,6 +12,21 @@ const personalComputeScope = "personal-tasks"
 const personalJobRetentionSeconds = 24 * 60 * 60
 
 func (db *Database) SubmitPersonalTaskJob(owner, task, command, image string, cpu float64, memory int) (map[string]any, error) {
+	return db.SubmitPersonalTaskJobWithHardware(owner, task, command, image, cpu, memory, nil, 0)
+}
+
+// Standalone jobs retain operational results but never create project records,
+// project knowledge or Git commits.
+func (db *Database) SubmitPersonalTaskJobWithHardware(owner, task, command, image string,
+	cpu float64, memory int, hardware map[string]any, minGPUMemory int) (map[string]any, error) {
+	request, err := validHardwareRequest(hardware)
+	if err != nil {
+		return nil, err
+	}
+	if request["usb"] != 0 || minGPUMemory < 0 || minGPUMemory > 1_000_000 ||
+		(minGPUMemory > 0 && request["gpu"] == 0) {
+		return nil, errors.New("standalone jobs support only approved GPU, NPU and FPGA devices")
+	}
 	if !validTaskOwner(owner) || !contributionArtifactID.MatchString(task) ||
 		strings.TrimSpace(command) == "" || len(command) > 16000 ||
 		!validImage.MatchString(image) || cpu < 0.1 || cpu > 32 ||
@@ -45,8 +60,26 @@ func (db *Database) SubmitPersonalTaskJob(owner, task, command, image string, cp
 			scope := asString(caps["project_id"])
 			scopeAllowed := asBool(caps["docker"]) && (scope == "" || scope == personalComputeScope) ||
 				asBool(caps["kubernetes"]) && scope == personalComputeScope
-			if scopeAllowed && workerHasImage(caps, image) &&
-				asFloat(caps["cpu"]) >= cpu && asFloat(caps["memory_mb"]) >= float64(memory) {
+			if !scopeAllowed || !workerHasImage(caps, image) ||
+				asFloat(caps["cpu"]) < cpu || asFloat(caps["memory_mb"]) < float64(memory) {
+				continue
+			}
+			counts := map[string]int{}
+			for _, device := range devicesIn(caps) {
+				if asString(device["kind"]) == "gpu" &&
+					asFloat(device["memory_mb"]) < float64(minGPUMemory) {
+					continue
+				}
+				counts[asString(device["kind"])]++
+			}
+			sufficient := true
+			for kind, quantity := range request {
+				if counts[kind] < quantity {
+					sufficient = false
+					break
+				}
+			}
+			if sufficient {
 				eligible = true
 				break
 			}
@@ -65,8 +98,14 @@ func (db *Database) SubmitPersonalTaskJob(owner, task, command, image string, cp
 			task, id, owner, now); err != nil {
 			return err
 		}
+		if len(request) != 0 {
+			if err := db.execLocked("INSERT INTO personal_task_job_hardware(job,requirements,min_gpu_memory_mb) VALUES(?,?,?)",
+				id, encode(request), minGPUMemory); err != nil {
+				return err
+			}
+		}
 		result = map[string]any{"id": id, "task_id": task, "status": "queued",
-			"storage": "task-operational", "project_knowledge": false}
+			"hardware": request, "storage": "task-operational", "project_knowledge": false}
 		return nil
 	})
 	return result, err
@@ -82,10 +121,25 @@ func (db *Database) ExpirePersonalJobResults() error {
 			AND updated<?)`, personalComputeScope, cutoff); err != nil {
 			return err
 		}
+		if err := db.execLocked(`DELETE FROM personal_task_job_hardware
+			WHERE job IN (SELECT id FROM jobs WHERE project=?
+			AND status IN ('succeeded','failed','expired') AND updated<?)
+			AND NOT EXISTS (SELECT 1 FROM task_job_device_leases l
+				WHERE l.job=personal_task_job_hardware.job AND l.released IS NULL)`, personalComputeScope, cutoff); err != nil {
+			return err
+		}
+		if err := db.execLocked(`DELETE FROM task_job_device_leases WHERE job IN
+			(SELECT id FROM jobs WHERE project=? AND status IN ('succeeded','failed','expired')
+			AND updated<?) AND released IS NOT NULL`, personalComputeScope, cutoff); err != nil {
+			return err
+		}
 		return db.execLocked(`DELETE FROM jobs WHERE project=?
 			AND status IN ('succeeded','failed','expired')
 			AND updated<? AND NOT EXISTS (
-				SELECT 1 FROM personal_task_jobs t WHERE t.job=jobs.id)`, personalComputeScope, cutoff)
+				SELECT 1 FROM personal_task_jobs t WHERE t.job=jobs.id)
+			AND NOT EXISTS (
+				SELECT 1 FROM task_job_device_leases l WHERE l.job=jobs.id AND l.released IS NULL)`,
+			personalComputeScope, cutoff)
 	})
 }
 
