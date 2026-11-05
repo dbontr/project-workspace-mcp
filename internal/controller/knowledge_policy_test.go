@@ -53,7 +53,9 @@ func TestGitKnowledgePublicationVerifiesRemoteCommitAndContent(t *testing.T) {
 			fmt.Fprint(w, `{"id":123,"login":"author","type":"User"}`)
 		case r.Method == "GET" && r.URL.Path == "/repos/example/notes/git/ref/heads/main":
 			sha := prior
-			if changed { sha = next }
+			if changed {
+				sha = next
+			}
 			fmt.Fprintf(w, `{"object":{"sha":"%s"}}`, sha)
 		case r.Method == "GET" && r.URL.Path == "/repos/example/notes/git/commits/"+prior:
 			fmt.Fprintf(w, `{"tree":{"sha":"%s"}}`, tree)
