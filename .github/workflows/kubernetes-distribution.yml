@@ -49,6 +49,24 @@ jobs:
             exit 1
           fi
           grep -q 'encrypted backups require' /tmp/restic-error
+      - name: Validate encrypted SFTP backup transport
+        run: |
+          helm template pwm-controller deploy/helm/project-workspace \
+            --set controller.backupInterval=24h \
+            --set controller.offsite.repository=sftp:backup@example.org:/srv/restic \
+            --set controller.offsite.passwordSecretName=restic-password \
+            --set controller.offsite.sshSecretName=restic-ssh > /tmp/sftp-controller.yaml
+          grep -q 'name: restic-ssh-input' /tmp/sftp-controller.yaml
+          grep -q 'StrictHostKeyChecking yes' /tmp/sftp-controller.yaml
+          grep -q 'UserKnownHostsFile /tmp/.ssh/known_hosts' /tmp/sftp-controller.yaml
+          grep -q 'name: restic-password' /tmp/sftp-controller.yaml
+          if helm template pwm-controller deploy/helm/project-workspace \
+             --set controller.backupInterval=24h \
+             --set controller.offsite.repository=sftp:backup@example.org:/srv/restic \
+             --set controller.offsite.passwordSecretName=restic-password >/dev/null 2>&1; then
+            echo 'Chart permitted SFTP backups without pinned SSH credentials' >&2
+            exit 1
+          fi
       - name: Keep default installation controller-only
         run: |
           helm template pwm-controller deploy/helm/project-workspace > /tmp/default-install.yaml
