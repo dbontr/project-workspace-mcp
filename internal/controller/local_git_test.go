@@ -127,6 +127,18 @@ func TestLocalGitProjectKnowledgeUsesExplicitProvider(t *testing.T) {
 		t.Fatalf("local Git capabilities misrepresented: %v %v", available, failed)
 	}
 	_, failed = mcp("git_link_repository", map[string]any{
+		"project_id": "demo", "repository": source, "ref": "main", "role": "planning",
+	})
+	if !failed {
+		t.Fatal("local source was accepted as a GitHub planning repository")
+	}
+	_, failed = mcp("link_github_repository", map[string]any{
+		"project_id": "demo", "repository": source, "role": "planning", "default_ref": "main",
+	})
+	if !failed {
+		t.Fatal("GitHub-specific link accepted a local bare Git repository")
+	}
+	_, failed = mcp("git_link_repository", map[string]any{
 		"project_id": "demo", "repository": source, "ref": "main",
 	})
 	if failed || !db.RepositoryLinked("demo", source) {
