@@ -596,7 +596,22 @@ func (k *Kubernetes) ExecuteJob(ctx context.Context, r *Runner, job Job) (string
 	if !kubernetesName.MatchString(k.Worker) {
 		return "failed", "invalid Kubernetes worker identity"
 	}
-	if err := k.create(ctx, k.jobManifest(job, k.Worker)); err != nil {
+	resources, err := k.hardwareResources(map[string]any{"devices": job.Devices})
+	if err != nil {
+		return "failed", fmt.Sprintf("invalid task device-plugin lease: %v", err)
+	}
+	manifest := k.jobManifest(job, k.Worker)
+	podSpec := kubeObject(kubeObject(kubeObject(manifest, "spec"), "template"), "spec")
+	containers, ok := podSpec["containers"].([]any)
+	if !ok || len(containers) != 1 {
+		return "failed", "invalid Kubernetes task Pod template"
+	}
+	container, ok := containers[0].(map[string]any)
+	if !ok {
+		return "failed", "invalid Kubernetes task container"
+	}
+	container["resources"] = kubernetesResources(job.CPU, job.MemoryMB, resources)
+	if err := k.create(ctx, manifest); err != nil {
 		return "failed", fmt.Sprintf("create Kubernetes Job: %v", err)
 	}
 	defer func() {
