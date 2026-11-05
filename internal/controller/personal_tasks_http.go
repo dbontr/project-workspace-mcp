@@ -66,6 +66,29 @@ func (s *Server) handlePersonalTasks(w http.ResponseWriter, r *http.Request, p [
 		}
 		return true
 	}
+	if len(p) == 4 && p[3] == "compute" {
+		switch r.Method {
+		case http.MethodGet:
+			rows, err := s.DB.PersonalTaskJobs(owner, task)
+			send(w, rows, err)
+		case http.MethodPost:
+			var in struct {
+				Command string  `json:"command"`
+				Image string `json:"image"`
+				CPU float64 `json:"cpu"`
+				MemoryMB int `json:"memory_mb"`
+			}
+			if err := bodyJSON(r, &in); err != nil { fail(w, 400, err.Error()); return true }
+			if in.Image == "" { in.Image = "debian:bookworm-slim" }
+			if in.CPU == 0 { in.CPU = 1 }
+			if in.MemoryMB == 0 { in.MemoryMB = 512 }
+			row, err := s.DB.SubmitPersonalTaskJob(owner, task, in.Command, in.Image, in.CPU, in.MemoryMB)
+			send(w, row, err)
+		default:
+			fail(w, 405, "method not allowed")
+		}
+		return true
+	}
 	if p[3] != "files" {
 		fail(w, 404, "task route not found")
 		return true
