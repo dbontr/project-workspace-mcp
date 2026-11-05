@@ -77,7 +77,7 @@ func project(t *testing.T, srv *httptest.Server) {
 	wantOK(t, c, r)
 }
 func caps() map[string]any {
-	return map[string]any{"cpu": 4, "memory_mb": 4096, "max_jobs": 2, "docker": true, "devices": []any{map[string]any{"id": "npu-one", "kind": "npu"}, map[string]any{"id": "usb-one", "kind": "usb"}}}
+	return map[string]any{"cpu": 4, "memory_mb": 4096, "max_jobs": 2, "docker": true, "images": []any{"debian:bookworm-slim"}, "devices": []any{map[string]any{"id": "npu-one", "kind": "npu"}, map[string]any{"id": "usb-one", "kind": "usb"}}}
 }
 func pairWorker(t *testing.T, srv *httptest.Server) string {
 	t.Helper()
