@@ -260,7 +260,7 @@ func (g *LocalGit) Archive(name, branch string, output io.Writer) (string, error
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-c", "core.hooksPath="+os.DevNull,
-		"--git-dir="+dir, "archive", "--format=tar", sha)
+		"--git-dir="+dir, "archive", "--format=tar", "--prefix=local-"+sha[:12]+"/", sha)
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
 	cmd.Stdout = output
 	if err := cmd.Run(); err != nil {
