@@ -37,7 +37,7 @@ func (db *Database) ConfigureKnowledgePolicy(project, mode, repo, branch, prefix
 			return nil, errors.New("disabled knowledge cannot have a destination")
 		}
 	} else {
-		if !validGitRepository(repo) || !validateBranch(branch) ||
+		if !validKnowledgeRepository(repo) || !validateBranch(branch) ||
 			!validRelativePath(prefix) || strings.HasPrefix(prefix, ".") ||
 			strings.Contains(prefix, ".git") || len(prefix) > 128 {
 			return nil, errors.New("invalid Git knowledge destination")
