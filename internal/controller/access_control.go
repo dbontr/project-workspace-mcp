@@ -67,6 +67,8 @@ var rootTools = map[string]bool{
 	"link_github_repository": true, "github_repository_api": true, "github_pat_readiness": true,
 	"github_account_repositories": true, "github_account_repository": true,
 	"github_account_rename": true, "github_account_transfer": true,
+	"external_resource_register": true, "external_resource_list": true, "external_resource_leases": true,
+	"external_resource_reserve": true, "external_resource_release": true,
 	"github_create_issue": true, "github_update_issue": true,
 	"github_comment_issue": true, "github_create_branch": true,
 	"github_set_branch_auto_delete": true, "github_cleanup_merged_branch": true,
