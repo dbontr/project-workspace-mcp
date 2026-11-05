@@ -20,6 +20,53 @@ Treat the project, not the machine or chat, as the unit of work. The installed S
 
 The controller and worker are implemented in Go. Python is an optional application inside an approved workspace image, not a service dependency. The controller currently has one privileged administrator identity. Never put its token, GitHub credentials, or host SSH keys inside worker command payloads, project notes, snapshots, or image recipes. Kubernetes namespaces, RBAC, workload admission, and Pod Security Standards require operator verification; Pod sandboxing is not a substitute for a hostile-tenant security audit. Report physical hardware integrations as unverified unless exercised on authorized devices.
 
+## Independent tasks and external resources
+
+A standalone task is an execution context, not a project. Use `task_create`
+and `task_compute_submit` to queue a one-shot task on an authorized worker
+without registering a project or writing project knowledge. Inspect completion
+through `task_compute_jobs`. An approved `personal-tasks` Kubernetes worker
+or a trusted Docker compatibility worker must be online; do not claim that an
+unregistered node can execute the task. Task coordination records and
+explicitly saved task file revisions may persist, but project notes and Git
+knowledge do not.
+
+Interactive task workspaces and hardware-accelerated one-shot task jobs are
+not yet implemented by these tools. Use the existing project workspace
+workflow only when a real project is selected. Never silently create a
+placeholder project merely to obtain hardware.
+
+Use `external_resource_list` to inspect outside clusters, boards, and EDA
+guests. They are excluded from free worker scheduling. Register them with
+`external_resource_register` only as an owner-authorized operation. Reserve
+by exact ID with `external_resource_reserve(confirm=true)`, and distinguish
+the local `pending_external_adapter` record from a verified lease on the
+outside system. These tools do not themselves establish an SSH, Slurm, or
+independent Kubernetes session. Only a separately tested connector may
+execute or release remote work.
+
+## Account-level GitHub operations
+
+Project development remains restricted to linked repositories by default.
+For an explicitly requested account-wide operation, the controller owner may
+list accessible repositories using `github_account_repositories` or inspect
+one with `github_account_repository`. Use `github_account_rename` and
+`github_account_transfer` only with the exact repository ID, the proposed
+destination, administrator rights reported by GitHub, and explicit
+`confirm=true`. Read the returned verification status. Do not automatically
+rewrite project links or assume every private GitHub repository is accessible.
+
+## Attachments and study packs
+
+For a client that forwards actual attachment bytes, the owner may use
+`library_attachment_send` with content SHA-256 and bounded base64. Large
+documents require authenticated streamed uploads. An attachment named in
+chat is not readable by the MCP server without file-capable transport.
+`study_pack_prepare` composes passages and questions from real indexed
+source IDs; it is a returned result and is not automatically committed to
+Git knowledge. It does not parse a PDF, generate answer keys, or fabricate
+page references.
+
 ## Optional knowledge workflows
 
 Install `skills/project-knowledge` separately only when a project opts into knowledge persistence. Its modes are `none` (no intentional knowledge writes) and `git` (knowledge committed to an explicitly configured Git repository, either the source repository or another approved remote). The source-code Git remote remains mandatory independently of this choice. The controller's local note and contribution APIs are not evidence of Git persistence, and must not be invoked as an implicit fallback. Invoking compute does not automatically save knowledge.
