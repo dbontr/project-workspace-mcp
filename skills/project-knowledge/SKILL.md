@@ -16,7 +16,7 @@ Use this skill only when the project owner chooses durable knowledge. Project Wo
 
 ## Capabilities and authorization
 
-- Inspect the connected MCP tools and selected provider. The controller exposes `knowledge_policy`, `knowledge_configure`, and `knowledge_git_publish` for explicit GitHub storage. `knowledge_git_publish` uses a user-owned GitHub PAT, an exact branch head, the configured knowledge directory and remote read-back. The skill is not itself a Git backend; generic GitLab or Gitea write support still requires a verified adapter.
+- Inspect the connected MCP tools and selected provider. The controller exposes `knowledge_policy`, `knowledge_configure`, `knowledge_git_read`, and `knowledge_git_publish` for explicit GitHub storage. `knowledge_git_publish` uses a user-owned GitHub PAT, an exact branch head, the configured knowledge directory and remote read-back. The skill is not itself a Git backend; generic GitLab or Gitea write support still requires a verified adapter.
 - Resolve project ownership and a configured repository before reading or writing. Require a credential scoped to the selected repository; keep it in controller-managed secrets and never pass it to a worker Pod, file, note, output log, or shell command payload.
 - Prefer an operator-approved generic Git adapter for clone, exact-commit checkout, branch creation, revision-guarded commit, push and remote verification. GitHub-specific issue/PR methods are optional enhancements, never Git protocol requirements.
 - Reject unknown remote hosts, redirects, credential-in-URL inputs, local filesystem escape paths, Git command-option injection and unreviewed remote hooks. Do not weaken network or credential restrictions merely to make a remote accessible.
