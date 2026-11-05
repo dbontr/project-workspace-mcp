@@ -23,6 +23,7 @@ var tools = []toolDefinition{
 	{"write_project_note", "Write a note with a revision guard", []string{"project_id", "name", "body", "expected_version"}, nil},
 	{"search_project_knowledge", "Search project notes", []string{"project_id", "query"}, nil},
 	{"knowledge_policy", "Read the project\u0027s selected knowledge persistence policy", []string{"project_id"}, nil},
+	{"knowledge_git_read", "Read a project knowledge document from its configured GitHub repository at a verified commit", []string{"project_id", "path"}, nil},
 	{"knowledge_configure", "Choose disabled knowledge or an authorized GitHub knowledge repository", []string{"project_id", "mode", "expected_version"}, []string{"repository", "branch", "prefix"}},
 	{"knowledge_git_publish", "Publish an explicitly selected project knowledge document with exact Git revision verification", []string{"project_id", "path", "body", "expected_head", "message"}, nil},
 	{"knowledge_context", "Read canonical project and context notes, latest handoff, decisions and linked repositories", []string{"project_id"}, nil},
@@ -325,6 +326,23 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			if _, err := s.GitHub.Commit(get("repository"), get("branch")); err != nil { return nil, err }
 		}
 		return db.ConfigureKnowledgePolicy(project, mode, get("repository"), get("branch"), get("prefix"), asInt(a["expected_version"]))
+	case "knowledge_git_read":
+		policy, err := db.KnowledgePolicy(project)
+		if err != nil { return nil, err }
+		if asString(policy["mode"]) != "git" { return nil, errors.New("Git project knowledge is not enabled") }
+		path := get("path")
+		if !validRelativePath(path) || !(strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json")) {
+			return nil, errors.New("invalid Git knowledge document path")
+		}
+		repository := asString(policy["repository"])
+		branch := asString(policy["branch"])
+		revision, err := s.GitHub.Commit(repository, branch)
+		if err != nil { return nil, err }
+		remote, err := s.GitHub.File(repository, strings.TrimRight(asString(policy["prefix"]), "/")+"/"+path, revision)
+		if err != nil { return nil, err }
+		result := gitObj(remote)
+		result["repository"], result["branch"], result["commit_sha"] = repository, branch, revision
+		return result, nil
 	case "knowledge_git_publish":
 		policy, err := db.KnowledgePolicy(project)
 		if err != nil { return nil, err }
