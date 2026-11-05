@@ -50,6 +50,10 @@ CREATE INDEX IF NOT EXISTS idx_personal_task_files_task ON personal_task_files(t
 CREATE TABLE IF NOT EXISTS personal_task_jobs(task TEXT NOT NULL,job TEXT PRIMARY KEY,owner TEXT NOT NULL,created REAL NOT NULL,FOREIGN KEY(task) REFERENCES personal_tasks(id),FOREIGN KEY(job) REFERENCES jobs(id));
 CREATE INDEX IF NOT EXISTS idx_personal_task_jobs_task ON personal_task_jobs(task,created);
 CREATE TABLE IF NOT EXISTS personal_task_worker_access(node TEXT PRIMARY KEY,allowed INTEGER NOT NULL,updated REAL NOT NULL,FOREIGN KEY(node) REFERENCES nodes(id));
+CREATE TABLE IF NOT EXISTS personal_task_job_hardware(job TEXT PRIMARY KEY,requirements TEXT NOT NULL,min_gpu_memory_mb INTEGER NOT NULL,FOREIGN KEY(job) REFERENCES jobs(id));
+CREATE TABLE IF NOT EXISTS task_job_device_leases(job TEXT NOT NULL,node TEXT NOT NULL,device_id TEXT NOT NULL,kind TEXT NOT NULL,acquired REAL NOT NULL,released REAL,PRIMARY KEY(job,node,device_id),FOREIGN KEY(job) REFERENCES jobs(id));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_job_devices_busy ON task_job_device_leases(node,device_id) WHERE released IS NULL;
+CREATE INDEX IF NOT EXISTS idx_task_job_devices_job ON task_job_device_leases(job,released);
 CREATE TABLE IF NOT EXISTS research_sources(id TEXT PRIMARY KEY,library TEXT NOT NULL,title TEXT NOT NULL,origin_kind TEXT NOT NULL,origin_name TEXT NOT NULL,origin_revision TEXT NOT NULL,origin_digest TEXT NOT NULL,origin_path TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1,index_revision INTEGER NOT NULL DEFAULT 0,created REAL NOT NULL,updated REAL NOT NULL,FOREIGN KEY(library) REFERENCES libraries(id));
 CREATE INDEX IF NOT EXISTS idx_research_sources_library ON research_sources(library,created);
 CREATE TABLE IF NOT EXISTS research_passages(id TEXT PRIMARY KEY,source TEXT NOT NULL,epoch INTEGER NOT NULL,batch_revision INTEGER NOT NULL,ordinal INTEGER NOT NULL,page INTEGER NOT NULL,section TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,body TEXT NOT NULL,body_sha256 TEXT NOT NULL,topics TEXT NOT NULL,created REAL NOT NULL,UNIQUE(source,epoch,ordinal),FOREIGN KEY(source) REFERENCES research_sources(id));
