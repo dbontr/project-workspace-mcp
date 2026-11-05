@@ -16,10 +16,21 @@ Use this skill only when the project owner chooses durable knowledge. Project Wo
 
 ## Capabilities and authorization
 
-- Inspect the currently connected MCP tools and Git provider. This skill provides operating instructions, not a Git backend. The current Project Workspace controller exposes GitHub-specific APIs; do not claim native GitLab or generic Git write support until the operator has installed and verified a corresponding adapter.
+- Inspect the connected MCP tools and selected provider. The controller exposes `knowledge_policy`, `knowledge_configure`, and `knowledge_git_publish` for explicit GitHub storage. `knowledge_git_publish` uses a user-owned GitHub PAT, an exact branch head, the configured knowledge directory and remote read-back. The skill is not itself a Git backend; generic GitLab or Gitea write support still requires a verified adapter.
 - Resolve project ownership and a configured repository before reading or writing. Require a credential scoped to the selected repository; keep it in controller-managed secrets and never pass it to a worker Pod, file, note, output log, or shell command payload.
 - Prefer an operator-approved generic Git adapter for clone, exact-commit checkout, branch creation, revision-guarded commit, push and remote verification. GitHub-specific issue/PR methods are optional enhancements, never Git protocol requirements.
 - Reject unknown remote hosts, redirects, credential-in-URL inputs, local filesystem escape paths, Git command-option injection and unreviewed remote hooks. Do not weaken network or credential restrictions merely to make a remote accessible.
+
+## Explicit policy
+
+A project starts with knowledge mode `none`. Use `knowledge_configure` with
+the expected policy version to enable `git` and select a GitHub repository,
+branch and directory. Do not invoke local notes or contributions as a
+substitute for remote publication. Publish a document relative to the
+configured directory with `knowledge_git_publish`, supplying the expected
+40-character branch head. Verify its returned commit SHA and published
+content digest. A project-free task cannot enable this policy; an independent
+task's files and results are not promoted into project knowledge automatically.
 
 ## Standard knowledge layout
 
