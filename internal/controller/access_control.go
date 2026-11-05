@@ -64,6 +64,7 @@ var readableTools = map[string]bool{
 }
 var rootTools = map[string]bool{
 	"create_project": true, "list_compute_nodes": true, "worker_revoke": true, "list_hardware": true,
+	"task_worker_authorize": true, "task_worker_access": true,
 	"pool_register_image": true, "pool_register_software": true,
 	"pool_propose_program": true, "pool_review_program": true, "pool_update_entry": true, "pool_entry_info": true, "pool_events": true,
 	"library_create": true, "library_list": true, "library_sources": true, "library_add_source": true,
