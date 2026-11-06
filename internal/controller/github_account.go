@@ -155,3 +155,126 @@ func (g *GitHub) AccountRepositoryChange(repo, operation, destination string, ex
 	}
 	return result, nil
 }
+
+var accountRepositoryBooleanSettings = map[string]bool{
+	"has_issues": true, "has_projects": true, "has_wiki": true,
+	"allow_squash_merge": true, "allow_merge_commit": true,
+	"allow_rebase_merge": true, "allow_auto_merge": true,
+	"delete_branch_on_merge": true, "allow_update_branch": true,
+	"web_commit_signoff_required": true, "allow_forking": true,
+}
+
+func accountRepositorySettingsView(record map[string]any) map[string]any {
+	out := map[string]any{
+		"id": record["id"], "full_name": record["full_name"],
+		"archived": record["archived"], "visibility": record["visibility"],
+		"default_branch": record["default_branch"],
+		"description": record["description"], "homepage": record["homepage"],
+	}
+	for name := range accountRepositoryBooleanSettings {
+		if value, exists := record[name]; exists {
+			out[name] = value
+		}
+	}
+	return out
+}
+
+// AccountRepositorySettings exposes supported repository options without
+// requiring the repository to be linked to a project.
+func (g *GitHub) AccountRepositorySettings(repo string) (map[string]any, error) {
+	record, err := g.AccountRepository(repo)
+	if err != nil {
+		return nil, err
+	}
+	return accountRepositorySettingsView(record), nil
+}
+
+// AccountRepositoryConfigure changes only explicitly supported options.
+// The expected repository ID protects against a stale or redirected name.
+func (g *GitHub) AccountRepositoryConfigure(repo string, expectedID int64, settings map[string]any, confirm bool) (map[string]any, error) {
+	if !confirm || expectedID <= 0 || len(settings) == 0 || len(settings) > 16 {
+		return nil, errors.New("explicit confirmation, repository ID, and supported settings required")
+	}
+	body := make(map[string]any, len(settings))
+	for key, value := range settings {
+		switch {
+		case accountRepositoryBooleanSettings[key]:
+			enabled, ok := value.(bool)
+			if !ok {
+				return nil, fmt.Errorf("repository setting %s requires a boolean", key)
+			}
+			body[key] = enabled
+		case key == "description":
+			text, ok := value.(string)
+			if !ok || len(text) > 350 || strings.ContainsAny(text, "\x00\r\n") {
+				return nil, errors.New("invalid repository description")
+			}
+			body[key] = text
+		case key == "homepage":
+			text, ok := value.(string)
+			if !ok || len(text) > 2048 || strings.ContainsAny(text, "\x00\r\n\t ") ||
+				(text != "" && !strings.HasPrefix(text, "https://")) {
+				return nil, errors.New("homepage must be empty or an HTTPS URL")
+			}
+			body[key] = text
+		default:
+			return nil, fmt.Errorf("unsupported repository setting: %s", key)
+		}
+	}
+	current, err := g.AccountRepository(repo)
+	if err != nil {
+		return nil, err
+	}
+	if int64(asFloat(current["id"])) != expectedID ||
+		!asBool(gitObj(current["permissions"])["admin"]) {
+		return nil, errors.New("repository identity conflict or administrator permission missing")
+	}
+	path, _ := repoPath(repo)
+	if _, err := g.request("PATCH", path, nil, body); err != nil {
+		return nil, err
+	}
+	verified, err := g.AccountRepository(repo)
+	if err != nil {
+		return nil, fmt.Errorf("repository settings updated but verification failed: %w", err)
+	}
+	if int64(asFloat(verified["id"])) != expectedID {
+		return nil, errors.New("repository identity changed during settings verification")
+	}
+	for key, wanted := range body {
+		if verified[key] != wanted {
+			return nil, fmt.Errorf("repository setting %s not confirmed by GitHub", key)
+		}
+	}
+	return accountRepositorySettingsView(verified), nil
+}
+
+// AccountRepositoryArchive makes the archive state explicit. A second GET
+// confirms the provider state rather than trusting a mutation response.
+func (g *GitHub) AccountRepositoryArchive(repo string, expectedID int64, archived, confirm bool) (map[string]any, error) {
+	if !confirm || expectedID <= 0 {
+		return nil, errors.New("explicit confirmation and repository ID required")
+	}
+	current, err := g.AccountRepository(repo)
+	if err != nil {
+		return nil, err
+	}
+	if int64(asFloat(current["id"])) != expectedID ||
+		!asBool(gitObj(current["permissions"])["admin"]) {
+		return nil, errors.New("repository identity conflict or administrator permission missing")
+	}
+	if current["archived"] == archived {
+		return map[string]any{"repository": repo, "repository_id": expectedID, "archived": archived, "verified": true}, nil
+	}
+	path, _ := repoPath(repo)
+	if _, err := g.request("PATCH", path, nil, map[string]any{"archived": archived}); err != nil {
+		return nil, err
+	}
+	verified, err := g.AccountRepository(repo)
+	if err != nil {
+		return nil, fmt.Errorf("archive state changed but verification failed: %w", err)
+	}
+	if int64(asFloat(verified["id"])) != expectedID || verified["archived"] != archived {
+		return nil, errors.New("GitHub did not confirm the requested archive state")
+	}
+	return map[string]any{"repository": repo, "repository_id": expectedID, "archived": archived, "verified": true}, nil
+}
