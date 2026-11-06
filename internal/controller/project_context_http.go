@@ -43,13 +43,7 @@ func (s *Server) handleProjectKnowledge(w http.ResponseWriter, r *http.Request, 
 				rows, err := s.DB.ProjectContributions(project, r.URL.Query().Get("kind"), limit)
 				send(w, rows, err)
 			case http.MethodPost:
-				var in ContributionRequest
-				if err := bodyJSON(r, &in); err != nil {
-					fail(w, 400, err.Error())
-					return true
-				}
-				row, err := s.DB.ContributeProject(project, in, who.Principal)
-				send(w, row, err)
+				fail(w, http.StatusConflict, "local contributions are read-only; use the configured Git knowledge remote")
 			default:
 				fail(w, 405, "method not allowed")
 			}

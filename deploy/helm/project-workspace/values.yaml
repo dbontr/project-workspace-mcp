@@ -19,6 +19,10 @@ controller:
     audience: ""
     jwksURL: ""
     ownerEmailSecretName: ""
+  localGit:
+    existingClaimName: ""
+    authorName: ""
+    authorEmail: ""
   backupInterval: ""
   offsite:
     repository: ""
@@ -68,3 +72,21 @@ quota:
   maxPods: "64"
   maxPVCs: "64"
   maxJobs: "64"
+
+# Kubernetes device-plugin registration is opt-in and owned by the workspace release.
+# Drivers and the container runtime remain responsibilities of the host.
+hardware:
+  namespace: kube-system
+  nvidia:
+    enabled: false
+    image: nvcr.io/nvidia/k8s-device-plugin:v0.19.1
+    imagePullPolicy: IfNotPresent
+    nodeSelector: {}
+    runtimeClassName: nvidia-cdi
+    priorityClassName: system-node-critical
+    deviceIDStrategy: index
+  intelNpu:
+    enabled: false
+    image: intel/intel-npu-plugin:0.36.0
+    imagePullPolicy: IfNotPresent
+    nodeSelector: {}

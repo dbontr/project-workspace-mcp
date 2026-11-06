@@ -22,6 +22,10 @@ var tools = []toolDefinition{
 	{"read_project_note", "Read a versioned note", []string{"project_id", "name"}, nil},
 	{"write_project_note", "Write a note with a revision guard", []string{"project_id", "name", "body", "expected_version"}, nil},
 	{"search_project_knowledge", "Search project notes", []string{"project_id", "query"}, nil},
+	{"knowledge_policy", "Read the project\u0027s selected knowledge persistence policy", []string{"project_id"}, nil},
+	{"knowledge_git_read", "Read a project knowledge document from its configured GitHub repository at a verified commit", []string{"project_id", "path"}, nil},
+	{"knowledge_configure", "Choose disabled knowledge or an authorized GitHub knowledge repository", []string{"project_id", "mode", "expected_version"}, []string{"repository", "branch", "prefix"}},
+	{"knowledge_git_publish", "Publish an explicitly selected project knowledge document with exact Git revision verification", []string{"project_id", "path", "body", "expected_head", "message"}, nil},
 	{"knowledge_context", "Read canonical project and context notes, latest handoff, decisions and linked repositories", []string{"project_id"}, nil},
 	{"knowledge_contribute", "Append an immutable project handoff, decision, finding or note with source provenance", []string{"project_id", "kind", "title", "body"}, []string{"repository", "revision", "artifact_id"}},
 	{"knowledge_contributions", "List immutable project contributions and provenance", []string{"project_id"}, []string{"kind", "limit"}},
@@ -29,9 +33,17 @@ var tools = []toolDefinition{
 	{"knowledge_search_contributions", "Search project handoffs, decisions and findings", []string{"project_id", "query"}, nil},
 	{"list_compute_nodes", "List workers and availability", nil, nil},
 	{"worker_revoke", "Revoke a worker credential while retaining its active leases and recovery records; administrator only", []string{"node_id"}, nil},
+	{"task_worker_authorize", "Grant or revoke a worker's access to independent personal task execution", []string{"node_id", "allowed", "confirm"}, nil},
+	{"task_worker_access", "List controller-approved worker access to standalone personal tasks", nil, nil},
 	{"submit_compute_job", "Queue a one-shot command", []string{"project_id", "command"}, []string{"image", "cpu", "memory_mb"}},
 	{"list_project_jobs", "List compute jobs", []string{"project_id"}, nil},
 	{"link_github_repository", "Link a repository to a project", []string{"project_id", "repository"}, []string{"role", "default_ref"}},
+	{"git_provider_capabilities", "Discover supported storage and optional provider features", []string{"provider"}, nil},
+	{"git_link_repository", "Attach a verified GitHub or approved local Git repository to a project", []string{"project_id", "repository", "ref"}, []string{"role"}},
+	{"git_repository_head", "Resolve a project-linked Git repository reference to an exact commit", []string{"project_id", "repository", "ref"}, nil},
+	{"git_read_file", "Read a project-linked Git file at an exact resolved commit", []string{"project_id", "repository", "ref", "path"}, nil},
+	{"git_publish_file", "Publish an explicit text file to a linked Git repository with a revision guard", []string{"project_id", "repository", "ref", "path", "expected_head", "body", "message", "confirm"}, nil},
+	{"git_checkout_repository", "Import an exact linked Git source into an authorized workspace", []string{"project_id", "repository", "workspace_id", "ref"}, nil},
 	{"list_github_repositories", "List linked repositories", []string{"project_id"}, nil},
 	{"task_create", "Create a standalone owner-scoped task independent of research projects", []string{"title"}, []string{"description", "tags"}},
 	{"task_list", "Search the authenticated owner's standalone tasks", nil, []string{"query"}},
@@ -40,8 +52,13 @@ var tools = []toolDefinition{
 	{"task_files", "List all immutable task file revisions", []string{"task_id"}, nil},
 	{"task_file_info", "Inspect a task file revision, latest by default", []string{"task_id", "name"}, []string{"revision"}},
 	{"task_save_text", "Save a new immutable task text-file revision up to 512 KiB", []string{"task_id", "name", "body", "expected_revision"}, nil},
+	{"task_attach_base64", "Accept a ChatGPT-transferred attachment with real bytes, MIME type and SHA-256 for an owner task", []string{"task_id", "name", "media_type", "sha256", "data_base64", "expected_revision"}, nil},
+	{"task_study_pack_import", "Store a structured, source-referenced study pack as an explicit task file", []string{"task_id", "name", "pack", "expected_revision"}, nil},
 	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
 	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
+	{"task_compute_submit", "Run an independent task on an authorized worker without a project or knowledge destination", []string{"task_id", "command"}, []string{"image", "cpu", "memory_mb", "hardware", "min_gpu_memory_mb"}},
+	{"task_hardware_recover", "Release an uncertain device lease only after independent cleanup verification", []string{"job_id", "cleanup_verified", "confirm"}, nil},
+	{"task_compute_jobs", "Inspect only this owner\u0027s independent task compute results", []string{"task_id"}, nil},
 	{"task_export_project", "Promote an immutable task file into an editor-authorized project artifact", []string{"task_id", "name", "project_id"}, []string{"revision"}},
 	{"personal_task_claim_list", "List owner-scoped cooperative claims without lease tokens", []string{"task_id"}, nil},
 	{"personal_task_claim_status", "Inspect a personal task claim and durable completion", []string{"task_id", "work_key"}, nil},
@@ -84,6 +101,20 @@ var tools = []toolDefinition{
 	{"workspace_checkpoint_stop_status", "Inspect checkpoint-before-stop progress and snapshot reference", []string{"project_id", "workspace_id"}, nil},
 	{"workspace_prune_volume", "Prune the stopped workspace's labeled Docker volume after verifying its checkpoint; requires project owner permission and explicit confirmation", []string{"project_id", "workspace_id", "snapshot_id", "confirm"}, nil},
 	{"workspace_restore", "Restore a workspace snapshot", []string{"project_id", "workspace_id", "snapshot_id"}, nil},
+	{"external_resource_register", "Register an external machine or cluster outside the free scheduling pool", []string{"resource_id", "kind", "adapter", "endpoint", "operator", "policy"}, nil},
+	{"external_resource_list", "List external resources; registration does not imply active access", nil, nil},
+	{"external_resource_leases", "List local external resource reservation records", nil, []string{"resource_id"}},
+	{"external_resource_reserve", "Record an explicitly selected external resource request without implying a confirmed remote lease", []string{"resource_id", "scope", "scope_id", "duration_minutes", "confirm"}, nil},
+	{"external_resource_release", "Release an external resource reservation record", []string{"lease_id", "confirm"}, nil},
+	{"github_account_search", "Search repositories visible to the GitHub account without linking a project", []string{"query"}, []string{"page"}},
+	{"github_account_repositories", "List repositories accessible to the administrator, without requiring project linkage", nil, []string{"page"}},
+	{"github_account_repository", "Inspect a repository accessible to the administrator by exact name", []string{"repository"}, nil},
+	{"github_account_settings", "Read supported GitHub repository settings without project linkage", []string{"repository"}, nil},
+	{"github_account_configure", "Update supported repository settings with exact ID, administrator permission and confirmation", []string{"repository", "expected_repo_id", "settings", "confirm"}, nil},
+	{"github_account_archive", "Archive or unarchive a GitHub repository with exact ID and confirmation", []string{"repository", "expected_repo_id", "archived", "confirm"}, nil},
+	{"github_account_rename", "Rename an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
+	{"github_account_transfer", "Transfer an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
+	{"github_account_reconcile", "Reconcile links after confirming a provider-side repository change by immutable ID", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
 	{"github_repository_api", "Call a repository-scoped GitHub endpoint", []string{"project_id", "repository", "method", "endpoint"}, []string{"params", "payload"}},
 	{"github_pat_readiness", "Inspect the user-owned PAT identity and reported permissions for repositories linked to a project without exposing credentials", []string{"project_id"}, nil},
 	{"github_repository", "Read repository metadata", []string{"project_id", "repository"}, nil},
@@ -119,6 +150,8 @@ var tools = []toolDefinition{
 	{"github_project_add_item", "Add a linked repository issue or PR to the GitHub Project", []string{"project_id", "repository", "kind", "number"}, nil},
 	{"github_project_set_status", "Update a GitHub Project single-select field", []string{"project_id", "item_id", "field_id", "option_id"}, nil},
 	{"repository_memberships", "List all project repositories and their roles", []string{"project_id"}, nil},
+	{"library_attachment_send", "Receive actual attachment bytes from a file-capable MCP client into a verified research library object (up to 512 KiB)", []string{"library_id", "name", "kind", "sha256", "data_base64"}, nil},
+	{"study_pack_prepare", "Compose a cited study pack from verified indexed passages without automatically storing it", []string{"project_id", "title", "passage_ids"}, []string{"objective", "questions"}},
 	{"research_register_source", "Register an immutable library object or pinned Git source for research indexing", []string{"library", "title", "origin_kind", "origin_name"}, []string{"origin_revision", "origin_path"}},
 	{"research_ingest_passages", "Append or replace bounded source-linked text passages with an expected index revision", []string{"library", "source_id", "mode", "expected_revision", "passages"}, nil},
 	{"research_sources", "List indexed research sources visible through a project's linked libraries", []string{"project_id"}, nil},
@@ -141,13 +174,13 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "revision", "number", "generation", "lease_seconds", "limit":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page":
 		return "integer"
-	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled":
+	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled", "allowed", "cleanup_verified":
 		return "boolean"
-	case "packages", "software_ids", "artifact_ids", "tags", "passages":
+	case "packages", "software_ids", "artifact_ids", "tags", "passages", "passage_ids", "questions":
 		return "array"
-	case "hardware", "payload", "params", "changes":
+	case "hardware", "payload", "params", "changes", "pack":
 		return "object"
 	}
 	return "string"
@@ -156,7 +189,7 @@ func (t toolDefinition) schema() map[string]any {
 	properties := map[string]any{}
 	for _, key := range append(append([]string{}, t.Required...), t.Optional...) {
 		prop := map[string]any{"type": kindFor(key)}
-		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" {
+		if key == "software_ids" || key == "packages" || key == "artifact_ids" || key == "tags" || key == "passage_ids" || key == "questions" {
 			prop["items"] = map[string]any{"type": "string"}
 		}
 		if key == "passages" {
@@ -284,6 +317,26 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	workspace := get("workspace_id")
 	db := s.DB
 	switch name {
+	case "git_provider_capabilities":
+		return s.GitProviderCapabilities(get("provider"))
+	case "git_link_repository":
+		repository := get("repository")
+		if get("role") == "planning" && strings.HasPrefix(repository, "local:") {
+			return nil, errors.New("GitHub planning capabilities require a separate GitHub repository, not a local Git locator")
+		}
+		if name, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			if _, err := s.LocalGit.Resolve(name, get("ref")); err != nil {
+				return nil, err
+			}
+		} else {
+			if _, err := s.GitHub.Commit(repository, get("ref")); err != nil {
+				return nil, err
+			}
+		}
+		return db.LinkRepositoryWithRole(project, repository, get("role"), get("ref"))
 	case "list_projects":
 		return db.Projects()
 	case "create_project":
@@ -291,17 +344,99 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "read_project_note":
 		return db.ReadNote(project, get("name"))
 	case "write_project_note":
-		return db.WriteNote(project, get("name"), get("body"), asInt(a["expected_version"]))
+		return nil, errors.New("local project note writes are disabled; configure Git knowledge and use knowledge_git_publish")
 	case "search_project_knowledge":
 		return db.SearchNotes(project, get("query"))
+	case "knowledge_policy":
+		return db.KnowledgePolicy(project)
+	case "knowledge_configure":
+		mode := get("mode")
+		if mode == "git" {
+			repository := get("repository")
+			if name, ok := localRepoName(repository); ok {
+				if s.LocalGit == nil {
+					return nil, errors.New("local Git storage is not configured")
+				}
+				if _, err := s.LocalGit.branchHead(name, get("branch")); err != nil {
+					return nil, err
+				}
+			} else {
+				if strings.HasPrefix(repository, "local:") {
+					return nil, errors.New("invalid local Git repository identifier")
+				}
+				remote, err := s.GitHub.AccountRepository(repository)
+				if err != nil {
+					return nil, err
+				}
+				perms := gitObj(remote["permissions"])
+				if !asBool(perms["push"]) && !asBool(perms["admin"]) {
+					return nil, errors.New("Git knowledge destination requires provider write permission")
+				}
+				if _, err := s.GitHub.Commit(repository, get("branch")); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return db.ConfigureKnowledgePolicy(project, mode, get("repository"), get("branch"), get("prefix"), asInt(a["expected_version"]))
+	case "knowledge_git_read":
+		policy, err := db.KnowledgePolicy(project)
+		if err != nil {
+			return nil, err
+		}
+		if asString(policy["mode"]) != "git" {
+			return nil, errors.New("Git project knowledge is not enabled")
+		}
+		path := get("path")
+		if !validRelativePath(path) || !(strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json")) {
+			return nil, errors.New("invalid Git knowledge document path")
+		}
+		repository := asString(policy["repository"])
+		branch := asString(policy["branch"])
+		fullPath := strings.TrimRight(asString(policy["prefix"]), "/") + "/" + path
+		if name, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.ReadFile(name, branch, fullPath)
+		}
+		revision, err := s.GitHub.Commit(repository, branch)
+		if err != nil {
+			return nil, err
+		}
+		remote, err := s.GitHub.File(repository, fullPath, revision)
+		if err != nil {
+			return nil, err
+		}
+		result := gitObj(remote)
+		result["repository"], result["branch"], result["commit_sha"] = repository, branch, revision
+		return result, nil
+	case "knowledge_git_publish":
+		policy, err := db.KnowledgePolicy(project)
+		if err != nil {
+			return nil, err
+		}
+		if asString(policy["mode"]) != "git" {
+			return nil, errors.New("Git project knowledge is not enabled")
+		}
+		path := get("path")
+		if !validRelativePath(path) || !(strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json")) {
+			return nil, errors.New("knowledge path must be a relative Markdown or JSON file")
+		}
+		prefix := strings.TrimRight(asString(policy["prefix"]), "/")
+		repository := asString(policy["repository"])
+		if name, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.Publish(name, asString(policy["branch"]), prefix+"/"+path,
+				get("expected_head"), get("body"), get("message"))
+		}
+		return s.GitHub.CommitKnowledgeDocument(repository, asString(policy["branch"]),
+			prefix+"/"+path, get("expected_head"), get("body"), get("message"))
 	case "knowledge_context":
 		return db.ProjectContext(project)
 	case "knowledge_contribute":
-		var request ContributionRequest
-		if err := JSONRequest(a, &request); err != nil {
-			return nil, err
-		}
-		return db.ContributeProject(project, request, who.Principal)
+		return nil, errors.New("local project contributions are read-only; publish a versioned document to the configured Git knowledge remote")
 	case "knowledge_contributions":
 		limit := asInt(a["limit"])
 		if limit == 0 {
@@ -316,6 +451,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.Nodes()
 	case "worker_revoke":
 		return db.RevokeNode(get("node_id"))
+	case "task_worker_authorize":
+		result, err := db.AuthorizePersonalTaskWorker(get("node_id"), a["allowed"] == true, a["confirm"] == true)
+		db.AuditAccess(who.Principal, get("node_id"), "task-worker-authorization", err == nil)
+		return result, err
+	case "task_worker_access":
+		return db.PersonalTaskWorkerAccess()
+	case "task_hardware_recover":
+		result, err := db.RecoverTaskHardware(get("job_id"), a["confirm"] == true, a["cleanup_verified"] == true)
+		db.AuditAccess(who.Principal, get("job_id"), "task-hardware-recovery", err == nil)
+		return result, err
 	case "submit_compute_job":
 		image := get("image")
 		if image == "" {
@@ -333,7 +478,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "list_project_jobs":
 		return db.Jobs(project)
 	case "link_github_repository":
-		return db.LinkRepositoryWithRole(project, get("repository"), get("role"), get("default_ref"))
+		repository := get("repository")
+		if strings.HasPrefix(repository, "local:") {
+			return nil, errors.New("GitHub repository linking requires an actual GitHub repository")
+		}
+		if get("role") == "planning" {
+			if _, err := s.GitHub.AccountRepository(repository); err != nil {
+				return nil, fmt.Errorf("GitHub planning repository must be accessible: %w", err)
+			}
+		}
+		return db.LinkRepositoryWithRole(project, repository, get("role"), get("default_ref"))
 	case "list_github_repositories":
 		return db.Repositories(project)
 	case "github_pat_readiness":
@@ -342,6 +496,15 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			return nil, err
 		}
 		return s.GitHub.PATReadiness(repositories)
+	case "task_attach_base64":
+		return db.AdmitTaskAttachment(who.Principal, get("task_id"), get("name"), get("media_type"),
+			get("sha256"), get("data_base64"), asInt(a["expected_revision"]))
+	case "task_study_pack_import":
+		var pack StudyPack
+		if err := JSONRequest(a["pack"], &pack); err != nil {
+			return nil, err
+		}
+		return db.SaveTaskStudyPack(who.Principal, get("task_id"), get("name"), pack, asInt(a["expected_revision"]))
 	case "task_create":
 		var tags []string
 		if a["tags"] != nil {
@@ -352,6 +515,23 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.CreatePersonalTask(who.Principal, get("title"), get("description"), tags)
 	case "task_list":
 		return db.PersonalTasks(who.Principal, get("query"))
+	case "task_compute_submit":
+		image := get("image")
+		if image == "" {
+			image = "debian:bookworm-slim"
+		}
+		cpu := asFloat(a["cpu"])
+		if cpu == 0 {
+			cpu = 1
+		}
+		mem := asInt(a["memory_mb"])
+		if mem == 0 {
+			mem = 512
+		}
+		return db.SubmitPersonalTaskJobWithHardware(who.Principal, get("task_id"), get("command"), image, cpu, mem,
+			decodeAnyObject(a["hardware"]), asInt(a["min_gpu_memory_mb"]))
+	case "task_compute_jobs":
+		return db.PersonalTaskJobs(who.Principal, get("task_id"))
 	case "task_details":
 		return db.PersonalTaskInfo(who.Principal, get("task_id"))
 	case "task_update":
@@ -455,6 +635,16 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.StopWorkspace(project, workspace)
 	case "list_hardware":
 		return db.Hardware()
+	case "external_resource_register":
+		return db.RegisterExternalResource(get("resource_id"), get("kind"), get("adapter"), get("endpoint"), get("operator"), get("policy"))
+	case "external_resource_list":
+		return db.ExternalResources()
+	case "external_resource_leases":
+		return db.ExternalResourceLeases(get("resource_id"))
+	case "external_resource_reserve":
+		return db.ReserveExternalResource(get("resource_id"), get("scope"), get("scope_id"), who.Principal, asInt(a["duration_minutes"]), a["confirm"] == true)
+	case "external_resource_release":
+		return db.ReleaseExternalResource(get("lease_id"), a["confirm"] == true)
 	case "environment_define":
 		return db.EnvironmentDefine(project, get("name"), get("base_image"), get("dockerfile"), get("context"), get("architecture"), asInt(a["expected_version"]))
 	case "environment_list":
@@ -585,6 +775,20 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			limit = 30
 		}
 		return db.SearchResearch(project, get("query"), limit)
+	case "library_attachment_send":
+		return db.StoreMCPResearchAttachment(get("library_id"), get("name"), get("kind"), get("sha256"), get("data_base64"))
+	case "study_pack_prepare":
+		var passages []string
+		if err := JSONRequest(a["passage_ids"], &passages); err != nil {
+			return nil, err
+		}
+		var questions []string
+		if a["questions"] != nil {
+			if err := JSONRequest(a["questions"], &questions); err != nil {
+				return nil, err
+			}
+		}
+		return db.PrepareStudyPack(project, get("title"), get("objective"), passages, questions)
 	case "research_read_passage":
 		return db.ReadResearchPassage(project, get("passage_id"))
 	case "library_create":
@@ -592,12 +796,21 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "library_list":
 		return db.Libraries()
 	case "library_add_source":
-		if _, e := db.Library(get("library_id")); e != nil {
-			return nil, e
+		if _, err := db.Library(get("library_id")); err != nil {
+			return nil, err
 		}
-		revision, e := s.GitHub.Commit(get("repository"), get("ref"))
-		if e != nil {
-			return nil, e
+		var revision string
+		var err error
+		if name, ok := localRepoName(get("repository")); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			revision, err = s.LocalGit.Resolve(name, get("ref"))
+		} else {
+			revision, err = s.GitHub.Commit(get("repository"), get("ref"))
+		}
+		if err != nil {
+			return nil, err
 		}
 		return db.AddLibrarySource(get("library_id"), get("repository"), revision, get("path"), get("kind"))
 	case "library_sources":
@@ -617,6 +830,12 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		if !libraryFileAllowed(get("file"), get("source_path")) {
 			return nil, errors.New("file outside pinned library source")
 		}
+		if name, ok := localRepoName(get("repository")); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.ReadAtCommit(name, asString(source["revision"]), get("file"))
+		}
 		return s.GitHub.File(get("repository"), get("file"), asString(source["revision"]))
 	case "library_import_object":
 		return db.QueueLibraryObjectImport(project, workspace, get("library_id"), get("name"), get("path"))
@@ -633,9 +852,144 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	case "artifact_view_image":
 		return db.ReadPNGImage(project, get("artifact_id"))
 	}
+	// Account-scoped operations are never converted into implicit project grants.
+	switch name {
+	case "github_account_search":
+		page := asInt(a["page"])
+		if page == 0 {
+			page = 1
+		}
+		return s.GitHub.SearchGitHubRepositories(get("query"), page)
+	case "github_account_repositories":
+		page := asInt(a["page"])
+		if page == 0 {
+			page = 1
+		}
+		return s.GitHub.AccountRepositories(page)
+	case "github_account_repository":
+		return s.GitHub.AccountRepository(get("repository"))
+	case "github_account_settings":
+		return s.GitHub.AccountRepositorySettings(get("repository"))
+	case "github_account_configure":
+		settings, ok := a["settings"].(map[string]any)
+		if !ok {
+			return nil, errors.New("repository settings must be an object")
+		}
+		result, err := s.GitHub.AccountRepositoryConfigure(get("repository"),
+			int64(asFloat(a["expected_repo_id"])), settings, a["confirm"] == true)
+		db.AuditAccess(who.Principal, get("repository"), "github-account-configure", err == nil)
+		return result, err
+	case "github_account_archive":
+		archived, ok := a["archived"].(bool)
+		if !ok {
+			return nil, errors.New("archived must be a boolean")
+		}
+		result, err := s.GitHub.AccountRepositoryArchive(get("repository"),
+			int64(asFloat(a["expected_repo_id"])), archived, a["confirm"] == true)
+		db.AuditAccess(who.Principal, get("repository"), "github-account-archive", err == nil)
+		return result, err
+	case "github_account_rename", "github_account_transfer":
+		operation := "rename"
+		if name == "github_account_transfer" {
+			operation = "transfer"
+		}
+		if a["confirm"] != true {
+			return nil, errors.New("explicit repository mutation confirmation is required")
+		}
+		after, err := accountRepositoryDestination(get("repository"), operation, get("destination"))
+		if err != nil {
+			return nil, err
+		}
+		if err := db.CheckRepositoryRebind(get("repository"), after); err != nil {
+			return nil, err
+		}
+		result, err := s.GitHub.AccountRepositoryChange(get("repository"), operation,
+			get("destination"), int64(asFloat(a["expected_repo_id"])), true)
+		if err == nil && asString(result["status"]) == "verified" {
+			var references map[string]any
+			references, err = db.RebindRepositoryReferences(get("repository"), after)
+			if err != nil {
+				err = fmt.Errorf("provider changed repository but controller references require reconciliation: %w", err)
+			} else {
+				result["references"] = references
+			}
+		}
+		status := "rejected"
+		if err == nil {
+			status = asString(result["status"])
+		}
+		db.AuditAccess(who.Principal, get("repository"),
+			"github-account-"+operation+":"+after+":"+status, err == nil)
+		return result, err
+	case "github_account_reconcile":
+		if a["confirm"] != true || asFloat(a["expected_repo_id"]) <= 0 {
+			return nil, errors.New("explicit confirmation and repository identity required")
+		}
+		if err := db.CheckRepositoryRebind(get("repository"), get("destination")); err != nil {
+			return nil, err
+		}
+		remote, err := s.GitHub.AccountRepository(get("destination"))
+		if err != nil {
+			return nil, err
+		}
+		if int64(asFloat(remote["id"])) != int64(asFloat(a["expected_repo_id"])) {
+			return nil, errors.New("repository ID differs at proposed destination")
+		}
+		references, err := db.RebindRepositoryReferences(get("repository"), get("destination"))
+		db.AuditAccess(who.Principal, get("repository"), "github-account-reconcile:"+get("destination"), err == nil)
+		return references, err
+	}
 	repository := get("repository")
 	if !db.RepositoryLinked(project, repository) {
 		return nil, errors.New("repository is not linked to this project")
+	}
+	switch name {
+	case "git_repository_head":
+		if localName, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			sha, err := s.LocalGit.Resolve(localName, get("ref"))
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"repository": repository, "ref": get("ref"), "commit_sha": sha}, nil
+		}
+		sha, err := s.GitHub.Commit(repository, get("ref"))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"repository": repository, "ref": get("ref"), "commit_sha": sha}, nil
+	case "git_read_file":
+		if localName, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.ReadFile(localName, get("ref"), get("path"))
+		}
+		sha, err := s.GitHub.Commit(repository, get("ref"))
+		if err != nil {
+			return nil, err
+		}
+		return s.GitHub.File(repository, get("path"), sha)
+	case "git_publish_file":
+		if a["confirm"] != true {
+			return nil, errors.New("explicit Git publication confirmation required")
+		}
+		if localName, ok := localRepoName(repository); ok {
+			if s.LocalGit == nil {
+				return nil, errors.New("local Git storage is not configured")
+			}
+			return s.LocalGit.Publish(localName, get("ref"), get("path"), get("expected_head"),
+				get("body"), get("message"))
+		}
+		return s.GitHub.CommitKnowledgeDocument(repository, get("ref"), get("path"),
+			get("expected_head"), get("body"), get("message"))
+	case "git_checkout_repository":
+		return s.CheckoutArchive(project, workspace, repository, get("ref"))
+	}
+	if strings.HasPrefix(repository, "local:") {
+		return nil, errors.New("Git provider capability unavailable: local bare Git has no GitHub Issues, Pull Requests, Projects or account administration; use the git_* tools")
 	}
 	g := s.GitHub
 	switch name {

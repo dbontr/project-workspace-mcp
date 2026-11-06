@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS personal_task_claims(task TEXT NOT NULL,work_key TEXT
 CREATE INDEX IF NOT EXISTS idx_personal_claims_task ON personal_task_claims(task,status,expires);
 CREATE TABLE IF NOT EXISTS personal_task_files(task TEXT NOT NULL,name TEXT NOT NULL,revision INTEGER NOT NULL,artifact_id TEXT NOT NULL UNIQUE,sha256 TEXT NOT NULL,size INTEGER NOT NULL,created REAL NOT NULL,PRIMARY KEY(task,name,revision),FOREIGN KEY(task) REFERENCES personal_tasks(id));
 CREATE INDEX IF NOT EXISTS idx_personal_task_files_task ON personal_task_files(task,name,revision);
+CREATE TABLE IF NOT EXISTS personal_task_jobs(task TEXT NOT NULL,job TEXT PRIMARY KEY,owner TEXT NOT NULL,created REAL NOT NULL,FOREIGN KEY(task) REFERENCES personal_tasks(id),FOREIGN KEY(job) REFERENCES jobs(id));
+CREATE INDEX IF NOT EXISTS idx_personal_task_jobs_task ON personal_task_jobs(task,created);
+CREATE TABLE IF NOT EXISTS personal_task_worker_access(node TEXT PRIMARY KEY,allowed INTEGER NOT NULL,updated REAL NOT NULL,FOREIGN KEY(node) REFERENCES nodes(id));
+CREATE TABLE IF NOT EXISTS personal_task_job_hardware(job TEXT PRIMARY KEY,requirements TEXT NOT NULL,min_gpu_memory_mb INTEGER NOT NULL,FOREIGN KEY(job) REFERENCES jobs(id));
+CREATE TABLE IF NOT EXISTS task_job_device_leases(job TEXT NOT NULL,node TEXT NOT NULL,device_id TEXT NOT NULL,kind TEXT NOT NULL,acquired REAL NOT NULL,released REAL,PRIMARY KEY(job,node,device_id),FOREIGN KEY(job) REFERENCES jobs(id));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_job_devices_busy ON task_job_device_leases(node,device_id) WHERE released IS NULL;
+CREATE INDEX IF NOT EXISTS idx_task_job_devices_job ON task_job_device_leases(job,released);
 CREATE TABLE IF NOT EXISTS research_sources(id TEXT PRIMARY KEY,library TEXT NOT NULL,title TEXT NOT NULL,origin_kind TEXT NOT NULL,origin_name TEXT NOT NULL,origin_revision TEXT NOT NULL,origin_digest TEXT NOT NULL,origin_path TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1,index_revision INTEGER NOT NULL DEFAULT 0,created REAL NOT NULL,updated REAL NOT NULL,FOREIGN KEY(library) REFERENCES libraries(id));
 CREATE INDEX IF NOT EXISTS idx_research_sources_library ON research_sources(library,created);
 CREATE TABLE IF NOT EXISTS research_passages(id TEXT PRIMARY KEY,source TEXT NOT NULL,epoch INTEGER NOT NULL,batch_revision INTEGER NOT NULL,ordinal INTEGER NOT NULL,page INTEGER NOT NULL,section TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,body TEXT NOT NULL,body_sha256 TEXT NOT NULL,topics TEXT NOT NULL,created REAL NOT NULL,UNIQUE(source,epoch,ordinal),FOREIGN KEY(source) REFERENCES research_sources(id));
@@ -66,6 +73,11 @@ CREATE TABLE IF NOT EXISTS pool_entry_states(kind TEXT NOT NULL,entry_id TEXT NO
 CREATE TABLE IF NOT EXISTS pool_programs(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL,version TEXT NOT NULL,platform TEXT NOT NULL,distribution TEXT NOT NULL,source_url TEXT NOT NULL,license_notes TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,pool_kind TEXT NOT NULL,pool_id TEXT NOT NULL,review_note TEXT NOT NULL,created REAL NOT NULL,updated REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS pool_events(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,entry_id TEXT NOT NULL,revision INTEGER NOT NULL,previous TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_pool_events_entry ON pool_events(kind,entry_id,created);
+CREATE TABLE IF NOT EXISTS external_resources(id TEXT PRIMARY KEY,kind TEXT NOT NULL,adapter TEXT NOT NULL,endpoint TEXT NOT NULL,operator TEXT NOT NULL,policy TEXT NOT NULL,status TEXT NOT NULL,created REAL NOT NULL,updated REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS external_resource_leases(id TEXT PRIMARY KEY,resource TEXT NOT NULL,scope TEXT NOT NULL,scope_id TEXT NOT NULL,principal TEXT NOT NULL,expires REAL NOT NULL,released REAL,created REAL NOT NULL,FOREIGN KEY(resource) REFERENCES external_resources(id));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_external_resource_exclusive ON external_resource_leases(resource) WHERE released IS NULL;
+CREATE INDEX IF NOT EXISTS idx_external_resource_lease_expiry ON external_resource_leases(expires,released);
+CREATE TABLE IF NOT EXISTS project_knowledge_policies(project TEXT PRIMARY KEY,mode TEXT NOT NULL,repository TEXT NOT NULL,branch TEXT NOT NULL,prefix TEXT NOT NULL,version INTEGER NOT NULL,updated REAL NOT NULL,FOREIGN KEY(project) REFERENCES projects(id));
 
 `
 

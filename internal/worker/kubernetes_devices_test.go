@@ -98,3 +98,29 @@ func TestKubernetesWorkspaceExecRequiresVerifiedPodOwnership(t *testing.T) {
 		t.Fatal("workspace executed before Pod ownership was verified")
 	}
 }
+
+func TestKubernetesTaskJobUsesVerifiedDevicePluginResources(t *testing.T) {
+	k, _ := testKubernetes(t)
+	k.Devices = []KubernetesDevice{{
+		ID: "gpu-one", Kind: "gpu", Resource: "nvidia.com/gpu", MemoryMB: 12288,
+	}}
+	job := Job{
+		ID: strings.Repeat("a", 32), Image: "debian:bookworm-slim",
+		CPU: 1, MemoryMB: 1024, Command: "echo tested",
+		Devices: []DeviceClaim{{ID: "gpu-one", Kind: "gpu"}},
+	}
+	manifest, err := k.jobManifestWithDevices(job, "worker-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	podSpec := kubeObject(kubeObject(kubeObject(manifest, "spec"), "template"), "spec")
+	containers := podSpec["containers"].([]any)
+	limits := kubeObject(kubeObject(containers[0].(map[string]any), "resources"), "limits")
+	if limits["nvidia.com/gpu"] != "1" {
+		t.Fatalf("task GPU allocation missing: %v", limits)
+	}
+	job.Devices = []DeviceClaim{{ID: "unapproved-gpu", Kind: "gpu"}}
+	if _, err := k.jobManifestWithDevices(job, "worker-one"); err == nil {
+		t.Fatal("Kubernetes task accepted unapproved GPU device")
+	}
+}

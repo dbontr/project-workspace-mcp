@@ -10,7 +10,7 @@ import (
 var validCommitSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 var repositoryRoles = map[string]bool{
-	"source": true, "research": true, "lean": true, "hardware": true, "documentation": true,
+	"source": true, "research": true, "lean": true, "hardware": true, "documentation": true, "planning": true,
 }
 
 // RepositoryMemberships exposes a project's repositories without duplicating Git history.
@@ -25,7 +25,7 @@ func (db *Database) RepositoryMemberships(project string) ([]map[string]any, err
 }
 
 func (db *Database) LinkRepositoryWithRole(project, repo, role, ref string) (map[string]any, error) {
-	if !validGitRepository(repo) {
+	if !validSourceRepository(repo) {
 		return nil, errors.New("invalid repository")
 	}
 	if role == "" {
@@ -52,7 +52,7 @@ func (db *Database) LinkRepositoryWithRole(project, repo, role, ref string) (map
 
 var libraryKinds = map[string]bool{"lean": true, "research": true, "code": true, "mixed": true}
 var sourceKinds = map[string]bool{"source": true, "research": true, "formalization": true, "documentation": true}
-var objectKinds = map[string]bool{"build-cache": true, "dataset": true, "paper": true, "result": true, "archive": true}
+var objectKinds = map[string]bool{"build-cache": true, "dataset": true, "paper": true, "result": true, "archive": true, "study-pack": true}
 
 func (db *Database) CreateLibrary(id, title, description, kind string) (map[string]any, error) {
 	if e := requireID(id); e != nil {
@@ -117,7 +117,7 @@ func (db *Database) AddLibrarySource(id, repo, revision, path, kind string) (map
 	if e := requireID(id); e != nil {
 		return nil, e
 	}
-	if !validGitRepository(repo) || !validCommitSHA.MatchString(revision) {
+	if !validSourceRepository(repo) || !validCommitSHA.MatchString(revision) {
 		return nil, errors.New("library sources require a repository and immutable commit SHA")
 	}
 	if path != "" && (!validRelativePath(path) || strings.Contains(path, "\\")) {

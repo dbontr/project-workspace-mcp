@@ -7,7 +7,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=1 go build -trimpath -o /out/controller ./cmd/project-workspace-controller
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 openssh-client restic && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git libsqlite3-0 openssh-client restic && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/controller /usr/local/bin/project-workspace-controller
 USER 65534:65534
 ENTRYPOINT ["/usr/local/bin/project-workspace-controller"]

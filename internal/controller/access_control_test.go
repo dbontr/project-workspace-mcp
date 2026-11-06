@@ -92,8 +92,13 @@ func TestOIDCProjectPermissions(t *testing.T) {
 	}
 	code, _ = call(t, httpServer, "POST", "/api/projects/demo/notes/secret", token,
 		map[string]any{"body": "version two", "expected_version": 1})
-	if code != 200 {
-		t.Fatal("editor should be able to update their project")
+	if code != http.StatusConflict {
+		t.Fatal("editor must use the configured Git knowledge remote")
+	}
+	code, note = call(t, httpServer, "GET", "/api/projects/demo/notes/secret", token, nil)
+	wantOK(t, code, note)
+	if asString(note["body"]) != "version one" {
+		t.Fatal("read-only legacy note was changed")
 	}
 	code, _ = call(t, httpServer, "POST", "/api/projects/demo/permissions", testOwner,
 		map[string]any{"principal": principal, "role": "revoke", "expected_role": "editor"})

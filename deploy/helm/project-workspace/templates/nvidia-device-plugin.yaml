@@ -1,0 +1,49 @@
+{{- if .Values.hardware.nvidia.enabled }}
+{{- if empty .Values.hardware.nvidia.nodeSelector }}
+{{- fail "hardware.nvidia.nodeSelector must select explicitly approved GPU worker nodes" }}
+{{- end }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: {{ .Values.hardware.namespace }}
+  labels:
+    app: nvidia-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-device-plugin
+  template:
+    metadata:
+      labels:
+        app: nvidia-device-plugin
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        {{- toYaml .Values.hardware.nvidia.nodeSelector | nindent 8 }}
+      {{- if .Values.hardware.nvidia.runtimeClassName }}
+      runtimeClassName: {{ .Values.hardware.nvidia.runtimeClassName | quote }}
+      {{- end }}
+      {{- if .Values.hardware.nvidia.priorityClassName }}
+      priorityClassName: {{ .Values.hardware.nvidia.priorityClassName | quote }}
+      {{- end }}
+      containers:
+        - name: nvidia-device-plugin
+          image: {{ .Values.hardware.nvidia.image | quote }}
+          imagePullPolicy: {{ .Values.hardware.nvidia.imagePullPolicy }}
+          env:
+            - name: DEVICE_ID_STRATEGY
+              value: {{ .Values.hardware.nvidia.deviceIDStrategy | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: kubelet-device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: kubelet-device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory
+{{- end }}

@@ -587,6 +587,28 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 	}
 	return result
 }
+
+// jobManifestWithDevices asks Kubernetes to allocate only operator-approved
+// extended resources named by a controller-issued device lease.
+func (k *Kubernetes) jobManifestWithDevices(job Job, worker string) (map[string]any, error) {
+	resources, err := k.hardwareResources(map[string]any{"devices": job.Devices})
+	if err != nil {
+		return nil, err
+	}
+	manifest := k.jobManifest(job, worker)
+	podSpec := kubeObject(kubeObject(kubeObject(manifest, "spec"), "template"), "spec")
+	containers, ok := podSpec["containers"].([]any)
+	if !ok || len(containers) != 1 {
+		return nil, errors.New("invalid Kubernetes task Pod template")
+	}
+	container, ok := containers[0].(map[string]any)
+	if !ok {
+		return nil, errors.New("invalid Kubernetes task container")
+	}
+	container["resources"] = kubernetesResources(job.CPU, job.MemoryMB, resources)
+	return manifest, nil
+}
+
 func (k *Kubernetes) ExecuteJob(ctx context.Context, r *Runner, job Job) (string, string) {
 	if !workspaceID.MatchString(job.ID) || !r.Images[job.Image] || job.CPU < 0.1 ||
 		job.CPU > 32 || job.CPU > k.CPU || math.IsNaN(job.CPU) || math.IsInf(job.CPU, 0) ||
@@ -596,7 +618,11 @@ func (k *Kubernetes) ExecuteJob(ctx context.Context, r *Runner, job Job) (string
 	if !kubernetesName.MatchString(k.Worker) {
 		return "failed", "invalid Kubernetes worker identity"
 	}
-	if err := k.create(ctx, k.jobManifest(job, k.Worker)); err != nil {
+	manifest, err := k.jobManifestWithDevices(job, k.Worker)
+	if err != nil {
+		return "failed", fmt.Sprintf("invalid task device-plugin lease: %v", err)
+	}
+	if err := k.create(ctx, manifest); err != nil {
 		return "failed", fmt.Sprintf("create Kubernetes Job: %v", err)
 	}
 	defer func() {
