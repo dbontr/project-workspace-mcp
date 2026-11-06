@@ -311,6 +311,36 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 	})
 	return out, err
 }
+// ReconcileInterruptedJobs fences claims only after the authenticated worker
+// has removed its abandoned runtime jobs. Hardware leases stay reserved until
+// their physical cleanup is verified independently.
+func (db *Database) ReconcileInterruptedJobs(node string) (map[string]any, error) {
+	if !validID.MatchString(node) {
+		return nil, errors.New("invalid worker")
+	}
+	count := 0
+	err := db.transaction(func() error {
+		row, err := db.lockedOne("SELECT id FROM nodes WHERE id=?", node)
+		if err != nil {
+			return err
+		}
+		if row == nil {
+			return errors.New("worker not found")
+		}
+		active, err := db.lockedOne("SELECT count(*) n FROM jobs WHERE node=? AND status='leased'", node)
+		if err != nil {
+			return err
+		}
+		count = asInt(active["n"])
+		return db.execLocked("UPDATE jobs SET status='expired',result=?,token_hash=NULL,lease_until=NULL,updated=? WHERE node=? AND status='leased'",
+			"worker execution interrupted; runtime cleanup confirmed", stamp(), node)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"node": node, "expired_jobs": count}, nil
+}
+
 func (db *Database) FinishJob(node, id, token, status, result string) (map[string]any, error) {
 	if status != "succeeded" && status != "failed" {
 		return nil, errors.New("invalid status")
