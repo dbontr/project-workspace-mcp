@@ -69,6 +69,14 @@ reconciles project/library/knowledge locators after provider confirmation.
 recovered partial operation to reconcile references without changing historical
 source provenance.
 
+Owner-only account administration includes `github_account_settings` for
+bounded repository configuration inspection, `github_account_configure` for
+supported repository settings, and `github_account_archive` for archiving or
+unarchiving. Mutations require confirmation, the current GitHub repository ID,
+provider administrator permission, and provider read-back verification.
+These tools do not require project linkage. Unlisted settings and security
+administration endpoints are not silently delegated to the generic API tool.
+
 ## Requirements
 
 - Go 1.27.3 or later at build time (a security-patched Go release), and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation. The OCI builds use Go 1.27.3 and a pinned Kubernetes `kubectl` v1.35.9 client by default; update both deliberately with security releases and cluster version-skew requirements.
