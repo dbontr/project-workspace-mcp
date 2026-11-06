@@ -230,8 +230,8 @@ func (v *OIDCVerifier) Verify(token string) (string, error) {
 	return "oidc:" + v.Issuer + "#" + subject, nil
 }
 
- // VerifiedEmail obtains the asserted identity only after validating the
- // signature, issuer, audience and expiry of the exact JWT.
+// VerifiedEmail obtains the asserted identity only after validating the
+// signature, issuer, audience and expiry of the exact JWT.
 func (v *OIDCVerifier) VerifiedEmail(token string) (string, error) {
 	if _, err := v.Verify(token); err != nil {
 		return "", err
