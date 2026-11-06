@@ -22,6 +22,8 @@ type Server struct {
 	DB               *Database
 	AdminToken       string
 	OIDC             *OIDCVerifier
+	AccessVerifier   *OIDCVerifier
+	AccessOwnerEmail string
 	PublicURL        string
 	GitHub           *GitHub
 	LocalGit         *LocalGit
@@ -57,6 +59,10 @@ func NewServer(db *Database, token string) (*Server, error) {
 		limit = n
 	}
 	verifier, err := configuredOIDC()
+	if err != nil {
+		return nil, err
+	}
+	access, accessOwner, err := configuredAccessVerifier()
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +103,7 @@ func NewServer(db *Database, token string) (*Server, error) {
 			AuthorEmail: strings.TrimSpace(os.Getenv("PWM_GIT_AUTHOR_EMAIL")),
 		}
 	}
-	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL,
+	return &Server{DB: db, AdminToken: token, OIDC: verifier, AccessVerifier: access, AccessOwnerEmail: accessOwner, PublicURL: publicURL,
 		GitHub: github, LocalGit: localGit,
 		AllowedHosts:	configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"),
 		AllowedOrigins:	configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"),
