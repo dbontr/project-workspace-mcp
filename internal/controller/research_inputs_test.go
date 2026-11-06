@@ -8,8 +8,12 @@ import (
 func TestResearchAttachmentAdmissionAndStudyPackCitations(t *testing.T) {
 	db, _, srv := fixture(t)
 	project(t, srv)
-	if _, err := db.CreateLibrary("science", "Science", "", "research"); err != nil { t.Fatal(err) }
-	if _, err := db.LinkLibrary("demo", "science"); err != nil { t.Fatal(err) }
+	if _, err := db.CreateLibrary("science", "Science", "", "research"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.LinkLibrary("demo", "science"); err != nil {
+		t.Fatal(err)
+	}
 	original := []byte("%PDF-1.4 supplied bytes")
 	digest := checksum(original)
 	if _, err := db.StoreMCPResearchAttachment("science", "notes.pdf", "paper",
@@ -28,13 +32,19 @@ func TestResearchAttachmentAdmissionAndStudyPackCitations(t *testing.T) {
 	source, err := db.RegisterResearchSource(ResearchSourceRequest{
 		Library: "science", Title: "Lecture", OriginKind: "object", OriginName: "notes.pdf",
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.IngestResearchPassages("science", asString(source["id"]), "append", 0,
 		[]ResearchPassageInput{{Ordinal: 1, Page: 3, Section: "Energy",
 			Text: "Conservation of energy constrains a closed system."}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	found, err := db.SearchResearch("demo", "conservation", 10)
-	if err != nil || len(found) != 1 { t.Fatalf("search: %v %v", found, err) }
+	if err != nil || len(found) != 1 {
+		t.Fatalf("search: %v %v", found, err)
+	}
 	pack, err := db.PrepareStudyPack("demo", "Energy", "Reconstruct the argument",
 		[]string{asString(found[0]["id"])}, []string{"What is conserved?"})
 	if err != nil || pack["stored"] != false || pack["source_verified"] != true {

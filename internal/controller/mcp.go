@@ -380,8 +380,12 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.ConfigureKnowledgePolicy(project, mode, get("repository"), get("branch"), get("prefix"), asInt(a["expected_version"]))
 	case "knowledge_git_read":
 		policy, err := db.KnowledgePolicy(project)
-		if err != nil { return nil, err }
-		if asString(policy["mode"]) != "git" { return nil, errors.New("Git project knowledge is not enabled") }
+		if err != nil {
+			return nil, err
+		}
+		if asString(policy["mode"]) != "git" {
+			return nil, errors.New("Git project knowledge is not enabled")
+		}
 		path := get("path")
 		if !validRelativePath(path) || !(strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json")) {
 			return nil, errors.New("invalid Git knowledge document path")
@@ -396,15 +400,21 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			return s.LocalGit.ReadFile(name, branch, fullPath)
 		}
 		revision, err := s.GitHub.Commit(repository, branch)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		remote, err := s.GitHub.File(repository, fullPath, revision)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		result := gitObj(remote)
 		result["repository"], result["branch"], result["commit_sha"] = repository, branch, revision
 		return result, nil
 	case "knowledge_git_publish":
 		policy, err := db.KnowledgePolicy(project)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		if asString(policy["mode"]) != "git" {
 			return nil, errors.New("Git project knowledge is not enabled")
 		}
@@ -491,7 +501,9 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			get("sha256"), get("data_base64"), asInt(a["expected_revision"]))
 	case "task_study_pack_import":
 		var pack StudyPack
-		if err := JSONRequest(a["pack"], &pack); err != nil { return nil, err }
+		if err := JSONRequest(a["pack"], &pack); err != nil {
+			return nil, err
+		}
 		return db.SaveTaskStudyPack(who.Principal, get("task_id"), get("name"), pack, asInt(a["expected_revision"]))
 	case "task_create":
 		var tags []string
@@ -505,11 +517,17 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.PersonalTasks(who.Principal, get("query"))
 	case "task_compute_submit":
 		image := get("image")
-		if image == "" { image = "debian:bookworm-slim" }
+		if image == "" {
+			image = "debian:bookworm-slim"
+		}
 		cpu := asFloat(a["cpu"])
-		if cpu == 0 { cpu = 1 }
+		if cpu == 0 {
+			cpu = 1
+		}
 		mem := asInt(a["memory_mb"])
-		if mem == 0 { mem = 512 }
+		if mem == 0 {
+			mem = 512
+		}
 		return db.SubmitPersonalTaskJobWithHardware(who.Principal, get("task_id"), get("command"), image, cpu, mem,
 			decodeAnyObject(a["hardware"]), asInt(a["min_gpu_memory_mb"]))
 	case "task_compute_jobs":
@@ -761,10 +779,14 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.StoreMCPResearchAttachment(get("library_id"), get("name"), get("kind"), get("sha256"), get("data_base64"))
 	case "study_pack_prepare":
 		var passages []string
-		if err := JSONRequest(a["passage_ids"], &passages); err != nil { return nil, err }
+		if err := JSONRequest(a["passage_ids"], &passages); err != nil {
+			return nil, err
+		}
 		var questions []string
 		if a["questions"] != nil {
-			if err := JSONRequest(a["questions"], &questions); err != nil { return nil, err }
+			if err := JSONRequest(a["questions"], &questions); err != nil {
+				return nil, err
+			}
 		}
 		return db.PrepareStudyPack(project, get("title"), get("objective"), passages, questions)
 	case "research_read_passage":
@@ -834,11 +856,15 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 	switch name {
 	case "github_account_search":
 		page := asInt(a["page"])
-		if page == 0 { page = 1 }
+		if page == 0 {
+			page = 1
+		}
 		return s.GitHub.SearchGitHubRepositories(get("query"), page)
 	case "github_account_repositories":
 		page := asInt(a["page"])
-		if page == 0 { page = 1 }
+		if page == 0 {
+			page = 1
+		}
 		return s.GitHub.AccountRepositories(page)
 	case "github_account_repository":
 		return s.GitHub.AccountRepository(get("repository"))
@@ -924,11 +950,15 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 				return nil, errors.New("local Git storage is not configured")
 			}
 			sha, err := s.LocalGit.Resolve(localName, get("ref"))
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			return map[string]any{"repository": repository, "ref": get("ref"), "commit_sha": sha}, nil
 		}
 		sha, err := s.GitHub.Commit(repository, get("ref"))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return map[string]any{"repository": repository, "ref": get("ref"), "commit_sha": sha}, nil
 	case "git_read_file":
 		if localName, ok := localRepoName(repository); ok {
@@ -938,7 +968,9 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 			return s.LocalGit.ReadFile(localName, get("ref"), get("path"))
 		}
 		sha, err := s.GitHub.Commit(repository, get("ref"))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return s.GitHub.File(repository, get("path"), sha)
 	case "git_publish_file":
 		if a["confirm"] != true {

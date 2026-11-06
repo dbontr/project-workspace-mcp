@@ -15,7 +15,7 @@ func (g *GitHub) AccountRepositories(page int) (any, error) {
 	}
 	return g.request("GET", "/user/repos", map[string]any{
 		"affiliation": "owner,collaborator,organization_member",
-		"per_page":	100, "page": page, "sort": "full_name",
+		"per_page":    100, "page": page, "sort": "full_name",
 	}, nil)
 }
 
@@ -169,7 +169,7 @@ func accountRepositorySettingsView(record map[string]any) map[string]any {
 		"id": record["id"], "full_name": record["full_name"],
 		"archived": record["archived"], "visibility": record["visibility"],
 		"default_branch": record["default_branch"],
-		"description": record["description"], "homepage": record["homepage"],
+		"description":    record["description"], "homepage": record["homepage"],
 	}
 	for name := range accountRepositoryBooleanSettings {
 		if value, exists := record[name]; exists {
