@@ -26,6 +26,7 @@ type OIDCVerifier struct {
 	Audience string
 	JWKSURL  string
 	Client   *http.Client
+	MaxTokenLifetime time.Duration
 
 	mu        sync.Mutex
 	keys      map[string]*rsa.PublicKey
@@ -34,7 +35,10 @@ type OIDCVerifier struct {
 }
 
 func configuredOIDC() (*OIDCVerifier, error) {
-	issuer, audience, jwks := os.Getenv("PWM_OIDC_ISSUER"), os.Getenv("PWM_OIDC_AUDIENCE"), os.Getenv("PWM_OIDC_JWKS_URL")
+	return newOIDCVerifier(os.Getenv("PWM_OIDC_ISSUER"), os.Getenv("PWM_OIDC_AUDIENCE"), os.Getenv("PWM_OIDC_JWKS_URL"))
+}
+
+func newOIDCVerifier(issuer, audience, jwks string) (*OIDCVerifier, error) {
 	if issuer == "" && audience == "" && jwks == "" {
 		return nil, nil
 	}
@@ -54,6 +58,31 @@ func configuredOIDC() (*OIDCVerifier, error) {
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return &OIDCVerifier{Issuer: issuer, Audience: audience, JWKSURL: jwks, Client: client}, nil
+}
+
+// configuredAccessVerifier validates Cloudflare Access assertions independently
+// of the opaque OAuth bearer token received by the MCP client.
+func configuredAccessVerifier() (*OIDCVerifier, string, error) {
+	owner := strings.ToLower(strings.TrimSpace(os.Getenv("PWM_ACCESS_OWNER_EMAIL")))
+	verifier, err := newOIDCVerifier(
+		os.Getenv("PWM_ACCESS_ISSUER"),
+		os.Getenv("PWM_ACCESS_AUDIENCE"),
+		os.Getenv("PWM_ACCESS_JWKS_URL"),
+	)
+	if err != nil {
+		return nil, "", err
+	}
+	if verifier == nil && owner == "" {
+		return nil, "", nil
+	}
+	if verifier == nil || len(owner) > 320 || strings.Count(owner, "@") != 1 ||
+		strings.ContainsAny(owner, "\x00\r\n\t ") {
+		return nil, "", errors.New("Cloudflare Access requires a valid configured owner email, issuer, audience, and JWKS")
+	}
+	// Access sessions can outlive the 24-hour default for ordinary OIDC tokens.
+	// Cap accepted Access tokens at the configured two-week gateway session.
+	verifier.MaxTokenLifetime = 15 * 24 * time.Hour
+	return verifier, owner, nil
 }
 
 func (v *OIDCVerifier) key(kid string) (*rsa.PublicKey, error) {
@@ -172,8 +201,12 @@ func (v *OIDCVerifier) Verify(token string) (string, error) {
 	issuer, subject := asString(claims["iss"]), asString(claims["sub"])
 	expiry, hasExpiry := claims["exp"].(float64)
 	now := float64(time.Now().Unix())
+	maxTTL := v.MaxTokenLifetime
+	if maxTTL == 0 {
+		maxTTL = 24 * time.Hour
+	}
 	if issuer != v.Issuer || !jwtAudienceMatches(claims["aud"], v.Audience) ||
-		!hasExpiry || expiry <= now || expiry > now+86400 ||
+		!hasExpiry || expiry <= now || expiry > now+maxTTL.Seconds() ||
 		subject == "" || len(subject) > 512 || strings.ContainsAny(subject, "\x00\r\n") {
 		return "", errors.New("invalid JWT issuer, audience, subject, or lifetime")
 	}
@@ -203,4 +236,29 @@ func (v *OIDCVerifier) Verify(token string) (string, error) {
 	}
 	// Include issuer in the identity to prevent ambiguous grants across providers.
 	return "oidc:" + v.Issuer + "#" + subject, nil
+}
+
+// VerifiedEmail obtains the asserted identity only after validating the
+// signature, issuer, audience and expiry of the exact JWT.
+func (v *OIDCVerifier) VerifiedEmail(token string) (string, error) {
+	if _, err := v.Verify(token); err != nil {
+		return "", err
+	}
+	parts := strings.Split(token, ".")
+	claims, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", errors.New("invalid Access identity encoding")
+	}
+	var identity struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(claims, &identity); err != nil {
+		return "", errors.New("invalid Access identity")
+	}
+	email := strings.ToLower(strings.TrimSpace(identity.Email))
+	if len(email) == 0 || len(email) > 320 || strings.Count(email, "@") != 1 ||
+		strings.ContainsAny(email, "\x00\r\n\t ") {
+		return "", errors.New("Access identity email is missing or invalid")
+	}
+	return email, nil
 }
