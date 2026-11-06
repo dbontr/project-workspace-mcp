@@ -114,7 +114,7 @@ func TestMCPHandshakeAndKnowledge(t *testing.T) {
 	}
 	c, r = call(t, srv, "POST", "/mcp/", testOwner, req)
 	wantOK(t, c, r)
-	if gitObj(gitObj(r["result"])["serverInfo"])["name"] != "project-workspace-mcp" {
+	if gitObj(gitObj(r["result"])["serverInfo"])["name"] != "workspace-mcp" {
 		t.Fatal(r)
 	}
 	c, r = call(t, srv, "POST", "/mcp/", testOwner, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": map[string]any{}})
