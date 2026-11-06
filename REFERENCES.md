@@ -48,6 +48,8 @@
 - [RFC 7517: JSON Web Key](https://www.rfc-editor.org/rfc/rfc7517) — IETF. Used for: JSON Web Key Set parsing and key selection.
 - [RFC 7518: JSON Web Algorithms](https://www.rfc-editor.org/rfc/rfc7518) — IETF. Used for: RS256 signature validation.
 - [RFC 9728: OAuth 2.0 Protected Resource Metadata](https://www.rfc-editor.org/rfc/rfc9728) — IETF. Used for: OAuth resource metadata and bearer challenges.
+- [Cloudflare Access Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) — Cloudflare. Used for: OAuth discovery, authorization code flow and opaque token resolution at the protected MCP edge.
+- [Validate Cloudflare Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) — Cloudflare. Used for: validating origin identity assertions by signing keys, issuer, audience, and expiry.
 
 - [systemd service execution settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) — systemd maintainers. Used for: service credentials, restricted state directories, environment files, and filesystem hardening.
 - [Docker Engine Linux post-installation](https://docs.docker.com/engine/install/linux-postinstall/) — Docker. Used for: systemd Docker startup and the root-equivalent trust boundary of the docker group.
