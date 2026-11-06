@@ -18,6 +18,7 @@
 - [Docker container run](https://docs.docker.com/reference/cli/docker/container/run/) — Docker. Used for: isolated workspaces and quotas.
 - [Docker build context](https://docs.docker.com/build/concepts/context/) — Docker. Used for: administrator-controlled build inputs.
 - [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) — Docker. Used for: portable environment archives.
+- [GNU tar manual](https://www.gnu.org/software/tar/manual/tar.html) — GNU Project. Used for: safe archive member transformation and extraction into non-owned Kubernetes workspace volumes.
 - [NVIDIA Container Toolkit CDI](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html) — NVIDIA. Used for: approved GPU device identifiers.
 - [AMD Vivado supported platforms](https://docs.amd.com/r/2025.2-English/ug973-vivado-release-notes-install-license/Supported-Operating-Systems) — AMD. Used for: vendor toolchain host and license constraints.
 - [GitHub Projects V2 GraphQL API](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects) — GitHub. Used for: native Project association, item pagination, draft issues, issue and pull request linking, and field updates.
