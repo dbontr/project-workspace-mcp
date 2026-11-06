@@ -61,7 +61,7 @@ func (g *GitHub) request(method, path string, query map[string]any, body any) (a
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "project-workspace-mcp")
+	req.Header.Set("User-Agent", "workspace-mcp")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -259,7 +259,7 @@ func (g *GitHub) Snapshot(repo, ref string) (string, []byte, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "project-workspace-mcp")
+	req.Header.Set("User-Agent", "workspace-mcp")
 	noRedirect := &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	first, e := noRedirect.Do(req)
 	if e != nil {
@@ -277,7 +277,7 @@ func (g *GitHub) Snapshot(repo, ref string) (string, []byte, error) {
 	if e != nil {
 		return "", nil, e
 	}
-	rawReq.Header.Set("User-Agent", "project-workspace-mcp")
+	rawReq.Header.Set("User-Agent", "workspace-mcp")
 	res, e := noRedirect.Do(rawReq)
 	if e != nil {
 		return "", nil, e
