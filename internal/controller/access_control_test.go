@@ -192,6 +192,7 @@ func TestCloudflareAccessAssertionOwner(t *testing.T) {
 	_, server, httpServer := fixture(t)
 	key, issuer := testOIDCIssuer(t, server)
 	server.AccessVerifier = server.OIDC
+	server.AccessVerifier.MaxTokenLifetime = 15 * 24 * time.Hour
 	server.AccessOwnerEmail = "owner@example.com"
 	server.OIDC = nil // Cloudflare provides an opaque bearer token, not an OIDC JWT.
 
@@ -221,6 +222,14 @@ func TestCloudflareAccessAssertionOwner(t *testing.T) {
 	if status != http.StatusOK || result["administrator"] != true ||
 		result["principal"] != "cloudflare-access:"+issuer+"#owner@example.com" {
 		t.Fatalf("verified Access owner must be authorized: %d %v", status, result)
+	}
+	longSession := signedAccessAssertion(t, key, issuer, "project-workspace", "owner-subject", "owner@example.com", time.Now().Add(7*24*time.Hour).Unix())
+	if status, _ := request(longSession); status != http.StatusOK {
+		t.Fatal("valid multi-day Cloudflare Access session was rejected")
+	}
+	tooLong := signedAccessAssertion(t, key, issuer, "project-workspace", "owner-subject", "owner@example.com", time.Now().Add(16*24*time.Hour).Unix())
+	if status, _ := request(tooLong); status != http.StatusUnauthorized {
+		t.Fatal("unbounded Cloudflare Access session accepted")
 	}
 	if status, _ := request(""); status != http.StatusUnauthorized {
 		t.Fatal("opaque client bearer token was accepted without Access assertion")
