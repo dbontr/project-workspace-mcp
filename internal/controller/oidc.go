@@ -22,10 +22,10 @@ import (
 // configured OAuth/OIDC authorization server. It is a resource-server verifier,
 // not a replacement for that authorization server's login and consent flows.
 type OIDCVerifier struct {
-	Issuer   string
-	Audience string
-	JWKSURL  string
-	Client   *http.Client
+	Issuer           string
+	Audience         string
+	JWKSURL          string
+	Client           *http.Client
 	MaxTokenLifetime time.Duration
 
 	mu        sync.Mutex
