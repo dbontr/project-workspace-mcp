@@ -169,6 +169,19 @@ spec:
             - name: PWM_PUBLIC_URL
               value: {{ .Values.controller.publicURL | quote }}
             {{- end }}
+            {{- if .Values.controller.access.issuer }}
+            - name: PWM_ACCESS_ISSUER
+              value: {{ .Values.controller.access.issuer | quote }}
+            - name: PWM_ACCESS_AUDIENCE
+              value: {{ .Values.controller.access.audience | quote }}
+            - name: PWM_ACCESS_JWKS_URL
+              value: {{ .Values.controller.access.jwksURL | quote }}
+            - name: PWM_ACCESS_OWNER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.access.ownerEmailSecretName }}
+                  key: email
+            {{- end }}
             {{- if .Values.controller.githubPATSecretName }}
             - name: PWM_GITHUB_TOKEN
               valueFrom:
