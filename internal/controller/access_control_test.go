@@ -168,3 +168,95 @@ func TestOIDCMCPAuthorizationAndIsolation(t *testing.T) {
 		t.Fatal("project member should be allowed to list their workspace records")
 	}
 }
+
+func signedAccessAssertion(t *testing.T, key *rsa.PrivateKey, issuer, audience, subject, email string, expiry int64) string {
+	t.Helper()
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","kid":"test-key","typ":"JWT"}`))
+	body, err := json.Marshal(map[string]any{
+		"iss": issuer, "aud": audience, "sub": subject,
+		"email": email, "iat": time.Now().Unix(), "exp": expiry,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := header + "." + base64.RawURLEncoding.EncodeToString(body)
+	digest := sha256.Sum256([]byte(message))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return message + "." + base64.RawURLEncoding.EncodeToString(signature)
+}
+
+func TestCloudflareAccessAssertionOwner(t *testing.T) {
+	_, server, httpServer := fixture(t)
+	key, issuer := testOIDCIssuer(t, server)
+	server.AccessVerifier = server.OIDC
+	server.AccessOwnerEmail = "owner@example.com"
+	server.OIDC = nil // Cloudflare provides an opaque bearer token, not an OIDC JWT.
+
+	request := func(jwt string) (int, map[string]any) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/api/whoami", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer oauth:opaque-client-token")
+		if jwt != "" {
+			req.Header.Set("Cf-Access-Jwt-Assertion", jwt)
+		}
+		response, err := httpServer.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var result map[string]any
+		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		return response.StatusCode, result
+	}
+	owner := signedAccessAssertion(t, key, issuer, "project-workspace", "owner-subject", "Owner@Example.Com", time.Now().Add(time.Hour).Unix())
+	status, result := request(owner)
+	if status != http.StatusOK || result["administrator"] != true ||
+		result["principal"] != "cloudflare-access:"+issuer+"#owner@example.com" {
+		t.Fatalf("verified Access owner must be authorized: %d %v", status, result)
+	}
+	if status, _ := request(""); status != http.StatusUnauthorized {
+		t.Fatal("opaque client bearer token was accepted without Access assertion")
+	}
+	wrongEmail := signedAccessAssertion(t, key, issuer, "project-workspace", "other-user", "other@example.com", time.Now().Add(time.Hour).Unix())
+	if status, _ := request(wrongEmail); status != http.StatusUnauthorized {
+		t.Fatal("non-owner Access assertion accepted")
+	}
+	wrongAudience := signedAccessAssertion(t, key, issuer, "another-app", "owner-subject", "owner@example.com", time.Now().Add(time.Hour).Unix())
+	if status, _ := request(wrongAudience); status != http.StatusUnauthorized {
+		t.Fatal("Access assertion for another application accepted")
+	}
+	expired := signedAccessAssertion(t, key, issuer, "project-workspace", "owner-subject", "owner@example.com", time.Now().Add(-time.Hour).Unix())
+	if status, _ := request(expired); status != http.StatusUnauthorized {
+		t.Fatal("expired Access assertion accepted")
+	}
+	forged := owner[:len(owner)-4] + "AAAA"
+	if status, _ := request(forged); status != http.StatusUnauthorized {
+		t.Fatal("modified Access assertion accepted")
+	}
+}
+
+func TestCloudflareAccessConfigurationRequiresCompleteIdentity(t *testing.T) {
+	t.Setenv("PWM_ACCESS_OWNER_EMAIL", "owner@example.com")
+	if _, _, err := configuredAccessVerifier(); err == nil {
+		t.Fatal("owner email without issuer, audience, and JWKS must be rejected")
+	}
+	t.Setenv("PWM_ACCESS_ISSUER", "https://team.cloudflareaccess.com")
+	t.Setenv("PWM_ACCESS_AUDIENCE", "application-audience")
+	t.Setenv("PWM_ACCESS_JWKS_URL", "https://team.cloudflareaccess.com/cdn-cgi/access/certs")
+	verifier, owner, err := configuredAccessVerifier()
+	if err != nil || verifier == nil || owner != "owner@example.com" {
+		t.Fatalf("valid Access configuration rejected: %v", err)
+	}
+	t.Setenv("PWM_ACCESS_OWNER_EMAIL", "")
+	if _, _, err := configuredAccessVerifier(); err == nil {
+		t.Fatal("access verifier accepted no configured owner")
+	}
+}
