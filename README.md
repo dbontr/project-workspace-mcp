@@ -342,6 +342,13 @@ verify SQLite integrity and artifact checksums before describing the backup
 system as recovered. Schedule and periodic checks alone are not substitutes
 for a verified restore on an independent machine.
 
+The Kubernetes distribution test also exercises the packaged controller
+against a disposable Restic REST backend. The test creates an encrypted
+snapshot, restores it into a separate empty PVC, and opens the restored
+SQLite state with a fresh controller process. Authentication is disabled only
+for the isolated test backend in kind; a production backend requires
+independent authenticated storage and a separate-host recovery rehearsal.
+
 ## Install and start
 
 ```sh
