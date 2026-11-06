@@ -71,6 +71,9 @@ func (c ResticRepositoryConfig) resticCommand(ctx context.Context, directory str
 }
 
 func (c ResticRepositoryConfig) run(ctx context.Context, directory string, args ...string) error {
+	if err := c.validate(); err != nil {
+		return err
+	}
 	cmd := c.resticCommand(ctx, directory, args...)
 	cmd.Stdout = io.Discard
 	if err := cmd.Run(); err != nil {

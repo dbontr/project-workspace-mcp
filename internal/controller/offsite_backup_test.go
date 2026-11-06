@@ -99,6 +99,9 @@ func TestResticCredentialsAndMissingBackend(t *testing.T) {
 	if err := os.WriteFile(password, []byte("secret"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(password, 0644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := ResticRepositoryConfig{Repository: "/tmp/unused", PasswordFile: password}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "owner-only") {
 		t.Fatalf("world-readable Restic secret must be refused: %v", err)
