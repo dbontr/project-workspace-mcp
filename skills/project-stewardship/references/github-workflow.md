@@ -60,7 +60,9 @@ A local bare Git repository must have operator-controlled access, stable storage
 
 ## Read-only discovery versus account mutations
 
-Project operations should normally be restricted to linked repositories. Account-wide search, rename, transfer, delete, branch protection changes and settings changes require explicit authority and exact target identities. Confirm immutable repository ID and destination before renaming/transferring; reconcile all links and check whether active workspaces still depend on the old repository name. Do not confuse repository display names with stable Git commit identities.
+Project operations should normally be restricted to linked repositories. Account-wide search, rename, transfer, delete, branch protection changes and settings changes require explicit authority and exact target identities.
+
+Account-level archive/unarchive and supported repository settings are owner-only MCP operations. They use immutable repository-ID checks, explicit confirmation, administrator permission, provider read-back and audit records. Settings outside the supported typed configuration fields require separately implemented and verified tools. Never represent an unimplemented GitHub administration capability as available. Confirm immutable repository ID and destination before renaming/transferring; reconcile all links and check whether active workspaces still depend on the old repository name. Do not confuse repository display names with stable Git commit identities.
 
 ## Sources
 
