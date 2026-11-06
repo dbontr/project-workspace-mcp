@@ -109,6 +109,9 @@ var tools = []toolDefinition{
 	{"github_account_search", "Search repositories visible to the GitHub account without linking a project", []string{"query"}, []string{"page"}},
 	{"github_account_repositories", "List repositories accessible to the administrator, without requiring project linkage", nil, []string{"page"}},
 	{"github_account_repository", "Inspect a repository accessible to the administrator by exact name", []string{"repository"}, nil},
+	{"github_account_settings", "Read supported GitHub repository settings without project linkage", []string{"repository"}, nil},
+	{"github_account_configure", "Update supported repository settings with exact ID, administrator permission and confirmation", []string{"repository", "expected_repo_id", "settings", "confirm"}, nil},
+	{"github_account_archive", "Archive or unarchive a GitHub repository with exact ID and confirmation", []string{"repository", "expected_repo_id", "archived", "confirm"}, nil},
 	{"github_account_rename", "Rename an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
 	{"github_account_transfer", "Transfer an administrator-owned repository with exact ID and confirmation", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
 	{"github_account_reconcile", "Reconcile links after confirming a provider-side repository change by immutable ID", []string{"repository", "destination", "expected_repo_id", "confirm"}, nil},
@@ -839,6 +842,26 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return s.GitHub.AccountRepositories(page)
 	case "github_account_repository":
 		return s.GitHub.AccountRepository(get("repository"))
+	case "github_account_settings":
+		return s.GitHub.AccountRepositorySettings(get("repository"))
+	case "github_account_configure":
+		settings, ok := a["settings"].(map[string]any)
+		if !ok {
+			return nil, errors.New("repository settings must be an object")
+		}
+		result, err := s.GitHub.AccountRepositoryConfigure(get("repository"),
+			int64(asFloat(a["expected_repo_id"])), settings, a["confirm"] == true)
+		db.AuditAccess(who.Principal, get("repository"), "github-account-configure", err == nil)
+		return result, err
+	case "github_account_archive":
+		archived, ok := a["archived"].(bool)
+		if !ok {
+			return nil, errors.New("archived must be a boolean")
+		}
+		result, err := s.GitHub.AccountRepositoryArchive(get("repository"),
+			int64(asFloat(a["expected_repo_id"])), archived, a["confirm"] == true)
+		db.AuditAccess(who.Principal, get("repository"), "github-account-archive", err == nil)
+		return result, err
 	case "github_account_rename", "github_account_transfer":
 		operation := "rename"
 		if name == "github_account_transfer" {
