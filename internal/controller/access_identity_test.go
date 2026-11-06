@@ -59,10 +59,10 @@ func TestCloudflareMCPAssertionAuthorization(t *testing.T) {
 		t.Fatalf("signed owner assertion rejected by authentication layer: %d", code)
 	}
 	for name, token := range map[string]string{
-		"wrong owner": signedAccessAssertion(t, key, issuer, "access-application", "other@example.com", time.Now().Add(time.Hour).Unix()),
+		"wrong owner":    signedAccessAssertion(t, key, issuer, "access-application", "other@example.com", time.Now().Add(time.Hour).Unix()),
 		"wrong audience": signedAccessAssertion(t, key, issuer, "another-audience", "owner@example.com", time.Now().Add(time.Hour).Unix()),
-		"expired": signedAccessAssertion(t, key, issuer, "access-application", "owner@example.com", time.Now().Add(-time.Minute).Unix()),
-		"unsigned": "not-a-jwt",
+		"expired":       signedAccessAssertion(t, key, issuer, "access-application", "owner@example.com", time.Now().Add(-time.Minute).Unix()),
+		"unsigned":      "not-a-jwt",
 	} {
 		if code := makeRequest(token); code != http.StatusUnauthorized {
 			t.Errorf("%s assertion returned %d; expected 401", name, code)
