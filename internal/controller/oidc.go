@@ -26,6 +26,7 @@ type OIDCVerifier struct {
 	Audience string
 	JWKSURL  string
 	Client   *http.Client
+	MaxTokenLifetime time.Duration
 
 	mu        sync.Mutex
 	keys      map[string]*rsa.PublicKey
@@ -78,6 +79,9 @@ func configuredAccessVerifier() (*OIDCVerifier, string, error) {
 		strings.ContainsAny(owner, "\x00\r\n\t ") {
 		return nil, "", errors.New("Cloudflare Access requires a valid configured owner email, issuer, audience, and JWKS")
 	}
+	// Access sessions can outlive the 24-hour default for ordinary OIDC tokens.
+	// Cap accepted Access tokens at the configured two-week gateway session.
+	verifier.MaxTokenLifetime = 15 * 24 * time.Hour
 	return verifier, owner, nil
 }
 
@@ -197,8 +201,12 @@ func (v *OIDCVerifier) Verify(token string) (string, error) {
 	issuer, subject := asString(claims["iss"]), asString(claims["sub"])
 	expiry, hasExpiry := claims["exp"].(float64)
 	now := float64(time.Now().Unix())
+	maxTTL := v.MaxTokenLifetime
+	if maxTTL == 0 {
+		maxTTL = 24 * time.Hour
+	}
 	if issuer != v.Issuer || !jwtAudienceMatches(claims["aud"], v.Audience) ||
-		!hasExpiry || expiry <= now || expiry > now+86400 ||
+		!hasExpiry || expiry <= now || expiry > now+maxTTL.Seconds() ||
 		subject == "" || len(subject) > 512 || strings.ContainsAny(subject, "\x00\r\n") {
 		return "", errors.New("invalid JWT issuer, audience, subject, or lifetime")
 	}
