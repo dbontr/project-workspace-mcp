@@ -98,15 +98,15 @@ func NewServer(db *Database, token string) (*Server, error) {
 			return nil, errors.New("PWM_GIT_LOCAL_ROOT must be a directory")
 		}
 		localGit = &LocalGit{
-			Root:		root,
-			AuthorName:	strings.TrimSpace(os.Getenv("PWM_GIT_AUTHOR_NAME")),
+			Root:        root,
+			AuthorName:  strings.TrimSpace(os.Getenv("PWM_GIT_AUTHOR_NAME")),
 			AuthorEmail: strings.TrimSpace(os.Getenv("PWM_GIT_AUTHOR_EMAIL")),
 		}
 	}
 	return &Server{DB: db, AdminToken: token, OIDC: verifier, AccessVerifier: access, AccessOwnerEmail: accessOwner, PublicURL: publicURL,
 		GitHub: github, LocalGit: localGit,
-		AllowedHosts:	configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"),
-		AllowedOrigins:	configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"),
+		AllowedHosts:     configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"),
+		AllowedOrigins:   configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"),
 		MaxArtifactBytes: limit}, nil
 }
 func (s *Server) isAuthorized(r *http.Request) bool {
