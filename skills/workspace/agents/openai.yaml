@@ -1,0 +1,3 @@
+interface:
+  display_name: Workspace
+  short_description: Git-centered development and distributed compute
