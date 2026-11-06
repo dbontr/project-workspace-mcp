@@ -45,7 +45,7 @@ func (g *GitHub) SnapshotReader(repo, ref string) (string, io.ReadCloser, error)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "project-workspace-mcp")
+	req.Header.Set("User-Agent", "workspace-mcp")
 	client := *g.Client
 	client.Timeout = 60 * time.Minute
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
@@ -67,7 +67,7 @@ func (g *GitHub) SnapshotReader(repo, ref string) (string, io.ReadCloser, error)
 	if e != nil {
 		return "", nil, e
 	}
-	download.Header.Set("User-Agent", "project-workspace-mcp")
+	download.Header.Set("User-Agent", "workspace-mcp")
 	response, e := client.Do(download)
 	if e != nil {
 		return "", nil, e
