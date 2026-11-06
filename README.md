@@ -1,12 +1,12 @@
-# Project Workspace MCP
+# Workspace MCP
 
 A self-hosted, project-aware distributed computing system for MCP clients. Its Go controller retains projects, repository associations, knowledge, durable artifacts, environment definitions, hardware leases, jobs, and execution history. Kubernetes workers create restricted Pods and persistent volume claims for workspaces and Kubernetes Jobs for finite tasks. The Kubernetes scheduler performs final placement across approved nodes. The controller and worker require **no Python interpreter or Python application server**. Python, Vivado, C++, and other applications can be installed within approved workspace images.
 
-The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Project Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
+The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
 
 ## Git source authority and optional knowledge
 
-Project Workspace is a Git-centered development system. Every **code project**
+Workspace is a Git-centered development system. Every **code project**
 must designate at least one authoritative Git remote. Workers may check out
 temporary copies of source code for builds and tests, but uncommitted local
 copies and controller disks are not durable code publication. A task is not
@@ -30,7 +30,7 @@ Knowledge persistence is separately opt-in:
 | `git` | Chosen Git remote and subdirectory | Explicitly selected knowledge is committed and verified in Git |
 
 The independently installable `skills/project-knowledge` describes the
-knowledge lifecycle; `skills/project-workspace` remains responsible for
+knowledge lifecycle; `skills/workspace` remains responsible for
 source-backed compute. A knowledge repository may be the existing source
 repository or an explicitly chosen separate repository. No project needs a
 second repository just for notes. These are design-level policies; the current
@@ -1291,7 +1291,7 @@ This is a trusted-machine system with optional OIDC bearer authentication and pr
 
 ## GitHub Projects planning and shared research libraries
 
-Project Workspace can use a native GitHub Projects V2 board as the authoritative
+Workspace can use a native GitHub Projects V2 board as the authoritative
 planning record. Local projects remain usable without GitHub. GitHub planning
 items, custom fields, and the Project README are read live from GitHub; the
 controller stores only the verified Project association. The linked board may
