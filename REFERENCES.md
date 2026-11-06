@@ -81,3 +81,4 @@
 - [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) — GitHub. Used for: gating OCI package publication on Kubernetes Helm integration tests.
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) — Kubernetes. Used for: isolated controller-only backup password projection, init-container copies, and backend credential injection.
 - [Kubernetes init containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) — Kubernetes. Used for: preparing owner-only Restic credentials before controller startup.
+- [NixOS module system](https://nixos.org/manual/nixos/stable/#sec-writing-modules) — NixOS; Used for: externally imported service modules, option validation, and declarative systemd/Helm deployment integration.
