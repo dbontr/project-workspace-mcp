@@ -413,7 +413,7 @@ func (r *Runner) restore(ctx context.Context, op Operation, c *Client) (map[stri
 			gz.Close()
 			return nil, err
 		}
-		if !safeArchiveEntry(header.Name) || (header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA && header.Typeflag != tar.TypeDir) {
+		if !safeSnapshotEntry(header.Name) || (header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA && header.Typeflag != tar.TypeDir) {
 			gz.Close()
 			return nil, errors.New("unsafe snapshot archive entry")
 		}
@@ -427,12 +427,24 @@ func (r *Runner) restore(ctx context.Context, op Operation, c *Client) (map[stri
 	if _, err := temp.Seek(0, 0); err != nil {
 		return nil, err
 	}
-	_, err = r.workspaceExec(ctx, 2*time.Hour, temp, op.Workspace, "tar", "-xzf", "-",
-		"--no-same-owner", "--no-same-permissions", "-C", "/workspace")
+	_, err = r.workspaceExec(ctx, 2*time.Hour, temp, op.Workspace, snapshotExtractArgs("/workspace")...)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"status": "restored", "bytes": expanded}, nil
+}
+
+// Snapshot archives are created from /workspace with tar -C /workspace .
+// The leading component is removed at extraction so an unowned PVC mount
+// does not receive metadata operations on its root.
+func safeSnapshotEntry(entry string) bool {
+	return safeArchiveEntry(entry) &&
+		(entry == "." || entry == "./" || strings.HasPrefix(entry, "./") && len(entry) > 2)
+}
+
+func snapshotExtractArgs(destination string) []string {
+	return []string{"tar", "-xzf", "-", "--no-same-owner", "--no-same-permissions",
+		"--no-overwrite-dir", "--touch", "--strip-components=1", "-C", destination}
 }
 
 func safeArchiveEntry(entry string) bool {
