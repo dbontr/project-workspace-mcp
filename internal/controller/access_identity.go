@@ -37,7 +37,7 @@ func configuredAccessVerifier() (*OIDCVerifier, string, error) {
 		return nil, "", errors.New("Cloudflare Access issuer and JWKS hosts must match")
 	}
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:       5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return &OIDCVerifier{Issuer: issuer, Audience: audience, JWKSURL: jwks, Client: client}, owner, nil
