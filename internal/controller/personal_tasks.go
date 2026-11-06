@@ -16,7 +16,17 @@ import (
 var personalTagName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 func validTaskOwner(owner string) bool {
-	return owner == "controller-owner" || validPrincipal(owner)
+	if owner == "controller-owner" || validPrincipal(owner) {
+		return true
+	}
+	if !strings.HasPrefix(owner, "cloudflare-access:https://") || len(owner) > 1024 ||
+		strings.ContainsAny(owner, "\x00\r\n") {
+		return false
+	}
+	identity := strings.TrimPrefix(owner, "cloudflare-access:")
+	separator := strings.LastIndexByte(identity, '#')
+	return separator > len("https://") && separator+1 < len(identity) &&
+		strings.Contains(identity[separator+1:], "@")
 }
 
 func taskFileScope(task string) string { return "personal-task:" + task }
