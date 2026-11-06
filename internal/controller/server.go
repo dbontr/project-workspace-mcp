@@ -21,6 +21,8 @@ type Server struct {
 	DB               *Database
 	AdminToken       string
 	OIDC             *OIDCVerifier
+	AccessVerifier   *OIDCVerifier
+	AccessOwnerEmail string
 	PublicURL        string
 	GitHub           *GitHub
 	AllowedHosts     map[string]bool
@@ -58,6 +60,10 @@ func NewServer(db *Database, token string) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	access, owner, err := configuredAccessVerifier()
+	if err != nil {
+		return nil, err
+	}
 	publicURL := strings.TrimRight(os.Getenv("PWM_PUBLIC_URL"), "/")
 	if publicURL != "" {
 		parsed, err := url.Parse(publicURL)
@@ -76,7 +82,7 @@ func NewServer(db *Database, token string) (*Server, error) {
 		}
 	}
 	github.GenericWrites = os.Getenv("PWM_GITHUB_GENERIC_WRITES") == "1"
-	return &Server{DB: db, AdminToken: token, OIDC: verifier, PublicURL: publicURL, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil
+	return &Server{DB: db, AdminToken: token, OIDC: verifier, AccessVerifier: access, AccessOwnerEmail: owner, PublicURL: publicURL, GitHub: github, AllowedHosts: configured("PWM_ALLOWED_HOSTS", "127.0.0.1,localhost"), AllowedOrigins: configured("PWM_ALLOWED_ORIGINS", "http://127.0.0.1,http://localhost"), MaxArtifactBytes: limit}, nil
 }
 func (s *Server) isAuthorized(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.AdminToken)) == 1
