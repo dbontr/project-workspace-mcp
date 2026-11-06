@@ -96,3 +96,83 @@ func TestAccountOperationsRequireControllerOwner(t *testing.T) {
 	}
 	_ = srv
 }
+
+func TestAccountRepositoryArchiveAndSettings(t *testing.T) {
+	archived := false
+	issues := true
+	patches := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/repos/example/source" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case "GET":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 42, "full_name": "example/source", "archived": archived,
+				"has_issues": issues, "permissions": map[string]any{"admin": true},
+			})
+		case "PATCH":
+			patches++
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+				http.Error(w, "bad JSON", http.StatusBadRequest)
+				return
+			}
+			if value, present := body["archived"]; present {
+				archived = value.(bool)
+			}
+			if value, present := body["has_issues"]; present {
+				issues = value.(bool)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "full_name": "example/source"})
+		default:
+			t.Errorf("unexpected method %s", r.Method)
+			http.Error(w, "unsupported", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+	g := NewGitHub("test-token")
+	g.API = server.URL
+	if _, err := g.AccountRepositoryArchive("example/source", 42, true, false); err == nil {
+		t.Fatal("archive accepted without confirmation")
+	}
+	if _, err := g.AccountRepositoryArchive("example/source", 43, true, true); err == nil {
+		t.Fatal("archive accepted stale repository ID")
+	}
+	if _, err := g.AccountRepositoryConfigure("example/source", 42, map[string]any{"archived": true}, true); err == nil {
+		t.Fatal("unsupported setting accepted")
+	}
+	if _, err := g.AccountRepositoryConfigure("example/source", 42, map[string]any{"has_issues": "false"}, true); err == nil {
+		t.Fatal("invalid setting type accepted")
+	}
+	if patches != 0 {
+		t.Fatalf("invalid operations mutated repository: %d", patches)
+	}
+	result, err := g.AccountRepositoryArchive("example/source", 42, true, true)
+	if err != nil || result["verified"] != true || result["archived"] != true {
+		t.Fatalf("archive: %v %v", result, err)
+	}
+	result, err = g.AccountRepositoryArchive("example/source", 42, false, true)
+	if err != nil || result["verified"] != true || result["archived"] != false {
+		t.Fatalf("unarchive: %v %v", result, err)
+	}
+	settings, err := g.AccountRepositoryConfigure("example/source", 42, map[string]any{"has_issues": false}, true)
+	if err != nil || settings["has_issues"] != false {
+		t.Fatalf("settings: %v %v", settings, err)
+	}
+	if patches != 3 {
+		t.Fatalf("expected three state changes, got %d", patches)
+	}
+}
+
+func TestAccountAdministrationRequiresControllerOwner(t *testing.T) {
+	for _, name := range []string{"github_account_settings", "github_account_configure", "github_account_archive"} {
+		if !rootTools[name] {
+			t.Fatalf("%s must require controller-owner authorization", name)
+		}
+	}
+}
