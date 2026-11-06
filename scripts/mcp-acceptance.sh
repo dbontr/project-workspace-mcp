@@ -63,7 +63,7 @@ status=$(rpc "$initialize" initialized.json yes)
   .jsonrpc == "2.0"
   and .id == 1
   and .result.protocolVersion == "2025-06-18"
-  and .result.serverInfo.name == "project-workspace-mcp"
+  and .result.serverInfo.name == "workspace-mcp"
 ' "$scratch/initialized.json" >/dev/null || {
   printf 'FAIL: authenticated initialization was rejected or malformed (HTTP %s).\n' "$status" >&2
   exit 1
