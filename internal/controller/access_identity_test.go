@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -39,11 +40,13 @@ func TestCloudflareMCPAssertionAuthorization(t *testing.T) {
 	service.AccessVerifier.Audience = "access-application"
 	makeRequest := func(token string) int {
 		t.Helper()
-		req, err := http.NewRequest(http.MethodPost, server.URL+"/mcp", nil)
+		req, err := http.NewRequest(http.MethodPost, server.URL+"/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"identity-test","version":"1"}}}`))
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set("Cf-Access-Jwt-Assertion", token)
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Content-Type", "application/json")
 		res, err := server.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -52,7 +55,7 @@ func TestCloudflareMCPAssertionAuthorization(t *testing.T) {
 		return res.StatusCode
 	}
 	valid := signedAccessAssertion(t, key, issuer, "access-application", "owner@example.com", time.Now().Add(time.Hour).Unix())
-	if code := makeRequest(valid); code != http.StatusBadRequest && code != http.StatusOK {
+	if code := makeRequest(valid); code != http.StatusOK {
 		t.Fatalf("signed owner assertion rejected by authentication layer: %d", code)
 	}
 	for name, token := range map[string]string{
