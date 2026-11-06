@@ -311,6 +311,7 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 	})
 	return out, err
 }
+
 // ReconcileInterruptedJobs fences claims only after the authenticated worker
 // has removed its abandoned runtime jobs. Hardware leases stay reserved until
 // their physical cleanup is verified independently.
