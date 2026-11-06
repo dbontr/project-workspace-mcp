@@ -1,4 +1,9 @@
 {{- if .Values.controller.enabled }}
+{{- if or .Values.controller.access.issuer .Values.controller.access.audience .Values.controller.access.jwksURL .Values.controller.access.ownerEmailSecretName }}
+{{- if not (and .Values.controller.access.issuer .Values.controller.access.audience .Values.controller.access.jwksURL .Values.controller.access.ownerEmailSecretName) }}
+{{- fail "Cloudflare Access requires issuer, audience, JWKS URL, and owner-email Secret together" }}
+{{- end }}
+{{- end }}
 {{- if and .Values.controller.backupInterval (or (not .Values.controller.offsite.repository) (not .Values.controller.offsite.passwordSecretName)) }}
 {{- fail "controller encrypted backups require controller.offsite.repository and controller.offsite.passwordSecretName" }}
 {{- end }}
@@ -168,6 +173,19 @@ spec:
             {{- if .Values.controller.publicURL }}
             - name: PWM_PUBLIC_URL
               value: {{ .Values.controller.publicURL | quote }}
+            {{- end }}
+            {{- if .Values.controller.access.issuer }}
+            - name: PWM_ACCESS_ISSUER
+              value: {{ .Values.controller.access.issuer | quote }}
+            - name: PWM_ACCESS_AUDIENCE
+              value: {{ .Values.controller.access.audience | quote }}
+            - name: PWM_ACCESS_JWKS_URL
+              value: {{ .Values.controller.access.jwksURL | quote }}
+            - name: PWM_ACCESS_OWNER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.access.ownerEmailSecretName }}
+                  key: email
             {{- end }}
             {{- if .Values.controller.githubPATSecretName }}
             - name: PWM_GITHUB_TOKEN
