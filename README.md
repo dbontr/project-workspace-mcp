@@ -77,6 +77,29 @@ provider administrator permission, and provider read-back verification.
 These tools do not require project linkage. Unlisted settings and security
 administration endpoints are not silently delegated to the generic API tool.
 
+## Cloudflare Access MCP authentication
+
+For an MCP endpoint protected by Cloudflare Access Managed OAuth, enable
+Managed OAuth on the dedicated Access application and restrict its policy to
+the controller owner. Cloudflare issues an opaque OAuth token to the client
+and sends the resolved signed identity in the `Cf-Access-Jwt-Assertion` origin
+header. The controller validates the assertion's signature, issuer,
+application audience, expiry and verified email before granting administrator
+access. It never treats the opaque OAuth bearer value as its administrator
+credential.
+
+Set `controller.access.issuer`, `controller.access.audience`,
+`controller.access.jwksURL`, and `controller.access.ownerEmailSecretName`
+together. The owner email Secret must contain a single `email` key. Use
+Cloudflare's Access signing-key endpoint for the JWKS URL. A missing,
+incorrect, expired or differently scoped assertion is rejected. The
+controller also continues to support its existing administrator credential
+and separately configured OIDC project roles.
+
+Do not configure an owner-granting Access application with general or
+unrestricted user policies. Protect the origin network, and authorize
+untrusted clients through the MCP client's per-tool approval controls.
+
 ## Requirements
 
 - Go 1.27.3 or later at build time (a security-patched Go release), and a C compiler plus SQLite development library for the controller (`pkg-config sqlite3`). Prebuilt binaries do not require a Go compiler or Python installation. The OCI builds use Go 1.27.3 and a pinned Kubernetes `kubectl` v1.35.9 client by default; update both deliberately with security releases and cluster version-skew requirements.
