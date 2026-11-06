@@ -160,7 +160,7 @@ jobs:
           helm lint deploy/helm/project-workspace
           helm template pwm-system deploy/helm/project-workspace > /tmp/project-workspace.yaml
           test -s /tmp/project-workspace.yaml
-          helm template pwm-system deploy/helm/project-workspace --set worker.deviceManifestConfigMap=pwm-approved-devices > /tmp/project-workspace-devices.yaml
+          helm template pwm-system deploy/helm/project-workspace --set controller.enabled=false --set worker.enabled=true --set worker.deviceManifestConfigMap=pwm-approved-devices > /tmp/project-workspace-devices.yaml
           grep -q PWM_KUBE_DEVICE_MANIFEST /tmp/project-workspace-devices.yaml
       - name: Create disposable Kubernetes cluster
         uses: helm/kind-action@v1.12.0
