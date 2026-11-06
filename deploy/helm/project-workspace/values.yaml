@@ -14,6 +14,11 @@ controller:
   storageClass: ""
   nodeSelector: {}
   githubPATSecretName: ""
+  access:
+    issuer: ""
+    audience: ""
+    jwksURL: ""
+    ownerEmailSecretName: ""
   backupInterval: ""
   offsite:
     repository: ""
