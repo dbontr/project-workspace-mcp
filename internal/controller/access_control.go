@@ -19,6 +19,16 @@ func (s *Server) authenticate(r *http.Request) (caller, error) {
 	if s.isAuthorized(r) {
 		return caller{Principal: "controller-owner", Root: true}, nil
 	}
+	if assertion := r.Header.Get("Cf-Access-Jwt-Assertion"); assertion != "" {
+		if s.AccessVerifier == nil {
+			return caller{}, errors.New("Cloudflare Access identity is not configured")
+		}
+		email, err := s.AccessVerifier.VerifiedEmail(assertion)
+		if err != nil || email != s.AccessOwnerEmail || s.DB.TokenRevoked(hashToken(assertion)) {
+			return caller{}, errors.New("invalid Cloudflare Access identity")
+		}
+		return caller{Principal: "cloudflare-access:" + s.AccessVerifier.Issuer + "#" + email, Root: true}, nil
+	}
 	header := r.Header.Get("Authorization")
 	if s.OIDC == nil || !strings.HasPrefix(header, "Bearer ") {
 		return caller{}, errors.New("invalid controller credential")
