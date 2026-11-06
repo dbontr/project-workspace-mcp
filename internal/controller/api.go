@@ -339,6 +339,11 @@ func (s *Server) handleWorker(w http.ResponseWriter, r *http.Request, p []string
 		send(w, map[string]any{"ok": true}, e)
 		return
 	}
+	if len(p) == 4 && p[3] == "reconcile" && method == "POST" {
+		v, e := db.ReconcileInterruptedJobs(node)
+		send(w, v, e)
+		return
+	}
 	if len(p) == 4 && p[3] == "claim" && method == "POST" {
 		v, e := db.ClaimJob(node)
 		send(w, map[string]any{"job": v}, e)
