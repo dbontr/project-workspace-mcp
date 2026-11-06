@@ -738,7 +738,7 @@ func (r *Runner) importArchive(ctx context.Context, op Operation, c *Client) (ma
 	if err := json.Unmarshal(op.Payload, &p); err != nil {
 		return nil, err
 	}
-	repoName := regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	repoName := regexp.MustCompile(`^(local:)?[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 	if !repoName.MatchString(p.Repository) || !workspaceID.MatchString(p.ArtifactID) {
 		return nil, errors.New("invalid imported repository")
 	}
@@ -793,7 +793,7 @@ func (r *Runner) importArchive(ctx context.Context, op Operation, c *Client) (ma
 		if total > 32*1024*1024 {
 			return nil, errors.New("repository snapshot exceeds 32 MiB")
 		}
-		entry := &tar.Header{Name: "repos/" + strings.ReplaceAll(p.Repository, "/", "__") + "/" + relative,
+		entry := &tar.Header{Name: "repos/" + strings.NewReplacer("/", "__", ":", "__").Replace(p.Repository) + "/" + relative,
 			Mode: 0644, Size: header.Size, Typeflag: tar.TypeReg, Uid: 65534, Gid: 65534}
 		if header.Mode&0111 != 0 {
 			entry.Mode = 0755
@@ -913,6 +913,11 @@ func (r *Runner) ExecuteJob(ctx context.Context, job Job) (string, string) {
 	if r.WorkerID != "" {
 		args = append(args, "--label", "project-workspace-worker="+r.WorkerID)
 	}
+	devices, err := DeviceDockerArgsAuthorized(job.Devices, r.AvailableDevices(), false)
+	if err != nil {
+		return "failed", fmt.Sprintf("unapproved job device lease: %v", err)
+	}
+	args = append(args, devices...)
 	args = append(args, job.Image, "sh", "-c", job.Command)
 	out, stderr, status, err := r.docker(ctx, 5*time.Minute, nil, args...)
 	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {

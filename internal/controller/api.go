@@ -175,16 +175,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, p []string)
 				return
 			}
 			if method == "POST" {
-				var in struct {
-					Body     string `json:"body"`
-					Expected *int   `json:"expected_version"`
-				}
-				if e := bodyJSON(r, &in); e != nil || in.Expected == nil {
-					fail(w, 400, "expected_version is required")
-					return
-				}
-				v, e := db.WriteNote(project, p[4], in.Body, *in.Expected)
-				send(w, v, e)
+				fail(w, http.StatusConflict, "local notes are read-only; use the configured Git knowledge remote")
 				return
 			}
 		case "artifacts":

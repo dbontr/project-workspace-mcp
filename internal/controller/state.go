@@ -27,7 +27,7 @@ func (db *Database) Repositories(project string) ([]string, error) {
 	return out, nil
 }
 func (db *Database) LinkRepository(project, repo string) (map[string]any, error) {
-	if !validGitRepository(repo) {
+	if !validSourceRepository(repo) {
 		return nil, errors.New("invalid repository")
 	}
 	err := db.transaction(func() error {
@@ -174,6 +174,13 @@ func (db *Database) Hardware() ([]map[string]any, error) {
 	for _, l := range leases {
 		busy[asString(l["node"])+"/"+asString(l["device_id"])] = l["workspace"]
 	}
+	jobLeases, e := db.query("SELECT node,device_id,job FROM task_job_device_leases WHERE released IS NULL")
+	if e != nil {
+		return nil, e
+	}
+	for _, lease := range jobLeases {
+		busy[asString(lease["node"])+"/"+asString(lease["device_id"])] = "job:" + asString(lease["job"])
+	}
 	out := []map[string]any{}
 	for _, n := range nodes {
 		cap := n["capabilities"].(map[string]any)
@@ -201,7 +208,7 @@ func (db *Database) Jobs(project string) ([]map[string]any, error) {
 	return db.query("SELECT id,project,node,status,created,updated,result FROM jobs WHERE project=? ORDER BY created DESC LIMIT 100", project)
 }
 func (db *Database) SubmitJob(project, command, image string, cpu float64, memory int) (map[string]any, error) {
-	if strings.TrimSpace(command) == "" || len(command) > 16000 || !validImage.MatchString(image) || cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 {
+	if strings.TrimSpace(command) == "" || len(command) > 16000 || !validImage.MatchString(image) || math.IsNaN(cpu) || math.IsInf(cpu, 0) || cpu < 0.1 || cpu > 32 || memory < 64 || memory > 131072 {
 		return nil, errors.New("invalid job")
 	}
 	id := randomHex(16)
@@ -229,6 +236,10 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			return errors.New("node not found")
 		}
 		caps := decodeObject(asString(n["capabilities"]))
+		personalAllowed, e := db.personalWorkerAllowedLocked(node)
+		if e != nil {
+			return e
+		}
 		if !asBool(caps["docker"]) && !asBool(caps["kubernetes"]) {
 			return nil
 		}
@@ -254,15 +265,46 @@ func (db *Database) ClaimJob(node string) (map[string]any, error) {
 			}
 			query += " AND project=?"
 			arguments = append(arguments, project)
+		} else if project := asString(caps["project_id"]); project != "" {
+			query += " AND project=?"
+			arguments = append(arguments, project)
 		}
-		row, e := db.lockedOne(query+" ORDER BY created,id LIMIT 1", arguments...)
-		if e != nil || row == nil {
+		if !personalAllowed {
+			query += " AND project!=?"
+			arguments = append(arguments, personalComputeScope)
+		}
+		candidates, e := db.queryLocked(query+" ORDER BY created,id LIMIT 200", arguments...)
+		if e != nil {
 			return e
 		}
+		var row map[string]any
+		var selected []map[string]any
+		for _, candidate := range candidates {
+			if asString(candidate["project"]) == personalComputeScope &&
+				(!personalAllowed || !workerHasImage(caps, asString(candidate["image"]))) {
+				continue
+			}
+			devices, eligible, err := db.jobHardwareSelectionLocked(asString(candidate["id"]), node, caps)
+			if err != nil {
+				return err
+			}
+			if !eligible {
+				continue
+			}
+			row, selected = candidate, devices
+			break
+		}
+		if row == nil {
+			return nil
+		}
 		token := randomHex(32)
+		if err := db.leaseJobHardwareLocked(asString(row["id"]), node, selected); err != nil {
+			return err
+		}
 		if e = db.execLocked("UPDATE jobs SET status='leased',node=?,token_hash=?,lease_until=?,updated=? WHERE id=?", node, hashToken(token), now+420, now, row["id"]); e != nil {
 			return e
 		}
+		row["devices"] = selected
 		row["lease_token"] = token
 		out = row
 		return nil
@@ -284,7 +326,15 @@ func (db *Database) FinishJob(node, id, token, status, result string) (map[strin
 		if len(result) > 32768 {
 			result = result[:32768]
 		}
-		return db.execLocked("UPDATE jobs SET status=?,result=?,updated=?,lease_until=NULL,token_hash=NULL WHERE id=?", status, result, stamp(), id)
+		if err := db.execLocked("UPDATE jobs SET status=?,result=?,updated=?,lease_until=NULL,token_hash=NULL WHERE id=?", status, result, stamp(), id); err != nil {
+			return err
+		}
+		// A failed worker operation does not prove that its host device was
+		// released. The operator must verify cleanup before reuse.
+		if status == "succeeded" {
+			return db.releaseJobHardwareLocked(id, node)
+		}
+		return nil
 	})
 	return map[string]any{"id": id, "status": status}, err
 }

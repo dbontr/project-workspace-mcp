@@ -77,7 +77,7 @@ func project(t *testing.T, srv *httptest.Server) {
 	wantOK(t, c, r)
 }
 func caps() map[string]any {
-	return map[string]any{"cpu": 4, "memory_mb": 4096, "max_jobs": 2, "docker": true, "devices": []any{map[string]any{"id": "npu-one", "kind": "npu"}, map[string]any{"id": "usb-one", "kind": "usb"}}}
+	return map[string]any{"cpu": 4, "memory_mb": 4096, "max_jobs": 2, "docker": true, "images": []any{"debian:bookworm-slim"}, "devices": []any{map[string]any{"id": "npu-one", "kind": "npu"}, map[string]any{"id": "usb-one", "kind": "usb"}}}
 }
 func pairWorker(t *testing.T, srv *httptest.Server) string {
 	t.Helper()
@@ -106,7 +106,7 @@ func finishOp(t *testing.T, srv *httptest.Server, token string, op map[string]an
 	}
 }
 func TestMCPHandshakeAndKnowledge(t *testing.T) {
-	_, _, srv := fixture(t)
+	db, _, srv := fixture(t)
 	req := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "test", "version": "1"}}}
 	c, r := call(t, srv, "POST", "/mcp/", "", req)
 	if c != 401 {
@@ -114,7 +114,7 @@ func TestMCPHandshakeAndKnowledge(t *testing.T) {
 	}
 	c, r = call(t, srv, "POST", "/mcp/", testOwner, req)
 	wantOK(t, c, r)
-	if gitObj(gitObj(r["result"])["serverInfo"])["name"] != "workspace-mcp" {
+	if gitObj(gitObj(r["result"])["serverInfo"])["name"] != "project-workspace-mcp" {
 		t.Fatal(r)
 	}
 	c, r = call(t, srv, "POST", "/mcp/", testOwner, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": map[string]any{}})
@@ -134,7 +134,23 @@ func TestMCPHandshakeAndKnowledge(t *testing.T) {
 		return gitObj(result["structuredContent"])
 	}
 	invoke("create_project", map[string]any{"project_id": "demo", "title": "Demo"})
-	invoke("write_project_note", map[string]any{"project_id": "demo", "name": "plan", "body": "Go-native persistent context", "expected_version": 0})
+	code, rejected := call(t, srv, "POST", "/mcp/", testOwner, map[string]any{
+		"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+		"params": map[string]any{"name": "write_project_note", "arguments": map[string]any{
+			"project_id": "demo", "name": "plan", "body": "unconfigured local data", "expected_version": 0,
+		}},
+	})
+	wantOK(t, code, rejected)
+	if !asBool(gitObj(rejected["result"])["isError"]) {
+		t.Fatal("MCP accepted a local knowledge write without Git storage")
+	}
+	if _, err := db.ReadNote("demo", "plan"); err == nil {
+		t.Fatal("rejected knowledge write left persisted state")
+	}
+	// Historical SQLite notes remain readable for explicit migration.
+	if _, err := db.WriteNote("demo", "plan", "Go-native persistent context", 0); err != nil {
+		t.Fatal(err)
+	}
 	got := invoke("read_project_note", map[string]any{"project_id": "demo", "name": "plan"})
 	if got["body"] != "Go-native persistent context" || asInt(got["version"]) != 1 {
 		t.Fatalf("note mismatch: %v", got)
@@ -239,7 +255,14 @@ func TestProjectAuthorizationAndDatabaseCompatibility(t *testing.T) {
 		t.Fatalf("stale notes allowed: %d %v", c, r)
 	}
 	c, r = call(t, srv, "POST", "/api/projects/demo/notes/legacy", testOwner, map[string]any{"body": "correct revision", "expected_version": 3})
+	if c != http.StatusConflict {
+		t.Fatalf("local knowledge overwrite accepted: %d %v", c, r)
+	}
+	c, r = call(t, srv, "GET", "/api/projects/demo/notes/legacy", testOwner, nil)
 	wantOK(t, c, r)
+	if asString(r["body"]) != "existing SQLite note" || asInt(r["version"]) != 3 {
+		t.Fatalf("historic note changed: %v", r)
+	}
 	c, r = call(t, srv, "GET", "/api/projects/demo/notes/legacy", "wrong-token", nil)
 	if c != 401 {
 		t.Fatal(c, r)

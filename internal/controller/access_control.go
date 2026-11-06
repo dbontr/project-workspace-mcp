@@ -54,7 +54,11 @@ var readableTools = map[string]bool{
 	"pool_list_images": true, "pool_list_software": true, "pool_list_programs": true,
 	"read_project_note": true, "search_project_knowledge": true,
 	"research_sources": true, "research_search": true, "research_read_passage": true, "research_topics": true, "research_browse_topic": true,
+	"study_pack_prepare": true,
 	"knowledge_context": true, "knowledge_contributions": true, "knowledge_contribution": true, "knowledge_search_contributions": true,
+	"knowledge_policy": true,
+	"knowledge_git_read":  true,
+	"git_repository_head": true, "git_read_file": true,
 	"list_project_jobs": true, "list_github_repositories": true,
 	"task_claim_list": true, "task_claim_status": true, "resource_plan": true,
 	"workspace_list": true, "workspace_operation": true,
@@ -70,11 +74,20 @@ var readableTools = map[string]bool{
 }
 var rootTools = map[string]bool{
 	"create_project": true, "list_compute_nodes": true, "worker_revoke": true, "list_hardware": true,
+	"task_worker_authorize": true, "task_worker_access": true, "task_hardware_recover": true,
 	"pool_register_image": true, "pool_register_software": true,
 	"pool_propose_program": true, "pool_review_program": true, "pool_update_entry": true, "pool_entry_info": true, "pool_events": true,
 	"library_create": true, "library_list": true, "library_sources": true, "library_add_source": true,
 	"research_register_source": true, "research_ingest_passages": true,
-	"link_github_repository": true, "github_repository_api": true, "github_pat_readiness": true,
+	"library_attachment_send": true,
+	"link_github_repository":  true, "github_repository_api": true, "github_pat_readiness": true,
+	"github_account_search": true, "github_account_repositories": true, "github_account_repository": true,
+	"github_account_rename": true, "github_account_transfer": true, "github_account_reconcile": true,
+	"github_account_settings": true, "github_account_configure": true, "github_account_archive": true,
+	"git_link_repository":  true,
+	"external_resource_register": true, "external_resource_list": true, "external_resource_leases": true,
+	"external_resource_reserve": true, "external_resource_release": true,
+	"knowledge_configure": true, "knowledge_git_publish": true,
 	"github_create_issue": true, "github_update_issue": true,
 	"github_comment_issue": true, "github_create_branch": true,
 	"github_set_branch_auto_delete": true, "github_cleanup_merged_branch": true,
@@ -98,7 +111,9 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 	}
 	if name == "task_list" || name == "task_create" || name == "task_details" ||
 		name == "task_update" || name == "task_files" || name == "task_file_info" ||
+		name == "task_compute_submit" || name == "task_compute_jobs" ||
 		name == "task_save_text" || name == "task_send_base64" || name == "task_read_base64" ||
+		name == "task_attach_base64" || name == "task_study_pack_import" ||
 		name == "personal_task_claim_list" || name == "personal_task_claim_status" ||
 		name == "personal_task_claim" || name == "personal_task_claim_renew" ||
 		name == "personal_task_claim_finish" {
@@ -109,7 +124,7 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 		s.DB.AuditAccess(who.Principal, asString(args["project_id"]), "mcp:"+name, allowed)
 		return allowed
 	}
-	if name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" || name == "pool_list_programs" {
+	if name == "git_provider_capabilities" || name == "list_projects" || name == "pool_list_images" || name == "pool_list_software" || name == "pool_list_programs" {
 		return true
 	}
 	project := asString(args["project_id"])

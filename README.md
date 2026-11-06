@@ -2,25 +2,24 @@
 
 A self-hosted, project-aware distributed computing system for MCP clients. Its Go controller retains projects, repository associations, knowledge, durable artifacts, environment definitions, hardware leases, jobs, and execution history. Kubernetes workers create restricted Pods and persistent volume claims for workspaces and Kubernetes Jobs for finite tasks. The Kubernetes scheduler performs final placement across approved nodes. The controller and worker require **no Python interpreter or Python application server**. Python, Vivado, C++, and other applications can be installed within approved workspace images.
 
-The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
+The controller uses SQLite and the system SQLite library through Go's CGO interface. Existing Project Workspace SQLite databases retain their schema and records. Do not run two authoritative controllers against the same database simultaneously. Back up `state.db` together with the sibling `artifacts/` directory before migrating a deployed instance.
 
 ## Git source authority and optional knowledge
 
-Workspace is a Git-centered development system. Every **code project**
+Project Workspace is a Git-centered development system. Every **code project**
 must designate at least one authoritative Git remote. Workers may check out
 temporary copies of source code for builds and tests, but uncommitted local
 copies and controller disks are not durable code publication. A task is not
 finished until its code is committed and verified on the designated remote.
 
-GitHub is the active source provider for the Saturn deployment. The current
-controller implements its repository checkout, publication and GitHub-specific
-project-management operations through GitHub APIs. Ordinary Git transports
-also work with GitLab, Gitea and self-hosted servers, but **the controller's
-generic Git provider adapter is not yet implemented**. Do not claim those
-providers are supported by the current release or substitute a local-only
-repository. A provider-agnostic adapter must separately implement authenticated
-fetch, exact-commit checkout, protected publication and remote verification,
-with provider-specific PR/issue features remaining optional.
+GitHub remains the configured provider on Saturn. The controller also accepts
+operator-mounted bare Git repositories using `local:OWNER/REPOSITORY` identifiers
+when `PWM_GIT_LOCAL_ROOT` is configured. The local Git adapter resolves exact
+commits, reads files, publishes with non-forced revision guards, and streams
+source archives into approved workspaces. It does not require GitHub or create
+GitHub planning entities. GitLab, Gitea, and other remote Git transports still
+require separately authenticated provider adapters and cannot be represented
+as active implementations.
 
 Knowledge persistence is separately opt-in:
 
@@ -29,18 +28,81 @@ Knowledge persistence is separately opt-in:
 | `none` | None | No intentional project note, finding, decision or handoff writes |
 | `git` | Chosen Git remote and subdirectory | Explicitly selected knowledge is committed and verified in Git |
 
-The independently installable `skills/project-knowledge` describes the
-knowledge lifecycle; `skills/workspace` remains responsible for
-source-backed compute. A knowledge repository may be the existing source
-repository or an explicitly chosen separate repository. No project needs a
-second repository just for notes. These are design-level policies; the current
-controller retains legacy local note APIs and does **not** yet enforce the
-two-mode storage policy. Operators must not treat a local note record as a
-verified Git knowledge commit.
+The repository-owned [`skills/project-stewardship`](skills/project-stewardship/SKILL.md)
+is the single operational skill for this MCP. It governs project workspaces,
+independent tasks, cluster and hardware allocation, Git provider selection,
+opt-in versioned knowledge, GitHub planning, verification, and handoffs.
+Its references describe the specialized MCP workflows and governance contracts.
+Use the general `professional-code` skill for additional code-quality guidance
+when available; the controller remains the authority for live tool permissions.
 
-GitLab and self-hosted Git require an authenticated and tested generic Git
-adapter before provider-independent workflows can be considered production
-ready. GitHub remains the configured authoritative remote for this installation.
+A knowledge repository may be the existing source
+repository or an explicitly chosen separate repository. No project needs a
+second repository just for notes. The controller exposes `knowledge_policy`, `knowledge_configure`,
+`knowledge_git_read`, and `knowledge_git_publish` with exact branch revision
+verification for GitHub or explicitly mounted local bare Git. GitHub writes
+require a user-owned PAT and repository permission; local writes require an
+operator-controlled storage root and configured Git author identity.
+Legacy SQLite notes and immutable contributions remain readable for deliberate
+migration, but public REST and MCP writes to those local knowledge stores are
+disabled. They do not silently fall back when Git storage is disabled or
+unavailable.
+
+### Provider capability boundary
+
+| Provider | Code Git operations | Git knowledge | Issues / PRs | Project boards |
+| --- | --- | --- | --- | --- |
+| GitHub | Available with scoped credentials | Available with explicit policy | GitHub APIs, with permission | GitHub Projects V2, with permission |
+| Local bare Git | Available when approved storage is mounted | Available with explicit policy | Unavailable; never emulated | Unavailable; never emulated |
+| GitLab, Gitea, other remotes | Adapter required | Adapter required | Provider adapter required | Provider adapter required |
+
+Call `git_provider_capabilities` to inspect support. Use `git_link_repository`,
+`git_repository_head`, `git_read_file`, `git_publish_file`, and
+`git_checkout_repository` for provider-neutral Git operations. GitHub-only
+tools fail explicitly for local Git identities. **A local Git code/knowledge
+project may independently link an authorized GitHub repository with the
+`planning` role and attach a GitHub Projects V2 board.** Issues and PRs then
+operate on that actual GitHub planning repository; they do not become features
+of the local Git remote. Without that separate provider, return an explicit
+unavailable-capability result rather than creating counterfeit issues or boards.
+
+Repository rename or transfer
+preflights controller references, checks GitHub's immutable repository ID, and
+reconciles project/library/knowledge locators after provider confirmation.
+`github_account_reconcile` permits a confirmed pending transfer or a
+recovered partial operation to reconcile references without changing historical
+source provenance.
+
+Owner-only account administration includes `github_account_settings` for
+bounded repository configuration inspection, `github_account_configure` for
+supported repository settings, and `github_account_archive` for archiving or
+unarchiving. Mutations require confirmation, the current GitHub repository ID,
+provider administrator permission, and provider read-back verification.
+These tools do not require project linkage. Unlisted settings and security
+administration endpoints are not silently delegated to the generic API tool.
+
+## Cloudflare Access MCP authentication
+
+For an MCP endpoint protected by Cloudflare Access Managed OAuth, enable
+Managed OAuth on the dedicated Access application and restrict its policy to
+the controller owner. Cloudflare issues an opaque OAuth token to the client
+and sends the resolved signed identity in the `Cf-Access-Jwt-Assertion` origin
+header. The controller validates the assertion's signature, issuer,
+application audience, expiry and verified email before granting administrator
+access. It never treats the opaque OAuth bearer value as its administrator
+credential.
+
+Set `controller.access.issuer`, `controller.access.audience`,
+`controller.access.jwksURL`, and `controller.access.ownerEmailSecretName`
+together. The owner email Secret must contain a single `email` key. Use
+Cloudflare's Access signing-key endpoint for the JWKS URL. A missing,
+incorrect, expired or differently scoped assertion is rejected. The
+controller also continues to support its existing administrator credential
+and separately configured OIDC project roles.
+
+Do not configure an owner-granting Access application with general or
+unrestricted user policies. Protect the origin network, and authorize
+untrusted clients through the MCP client's per-tool approval controls.
 
 ## Requirements
 
@@ -49,6 +111,31 @@ ready. GitHub remains the configured authoritative remote for this installation.
 - The Kubernetes controller runs as a single-writer process over durable SQLite and artifact storage. Conventional Linux Docker workers remain an optional compatibility backend selected with `--backend docker`.
 - A trusted MCP client. The HTTP MCP endpoint implements stateless Streamable HTTP with the 2025-06-18 protocol, including `initialize`, `tools/list`, and `tools/call`.
 - An HTTPS ingress for remote connections; the controller listens on loopback by default. The owner credential is always available for administration. Optional OIDC bearer-token verification and per-project grants require an external identity provider.
+
+### Operator-mounted local Git repositories
+
+The local Git adapter is deliberately opt-in. Provision a persistent volume
+containing **bare**, operator-authorized repositories beneath
+`OWNER/REPOSITORY.git`. The controller must be able to write that volume;
+workers must **not** mount it. The image includes the native Git CLI. In an
+isolated Helm installation, configure:
+
+```yaml
+controller:
+  localGit:
+    existingClaimName: pwm-git-repositories
+    authorName: "Authorized Developer"
+    authorEmail: "verified-commit-identity@example.org"
+```
+
+The claim is mounted at `/git` and exposed to the controller as
+`PWM_GIT_LOCAL_ROOT`. Those settings are empty by default and do not affect
+Saturn's existing deployment. The operator remains responsible for repository
+creation, filesystem permissions, independent backups, and restricting the
+content to approved source repositories. Repository hooks and ambient Git
+configuration are disabled for controller operations. A local bare Git
+repository is persistent only to the extent that its storage survives host
+failure. It is not a substitute for independently verified off-host recovery.
 
 ## Kubernetes deployment and execution
 
@@ -361,6 +448,40 @@ schedule. Reconstruct a fresh controller from an exact Restic snapshot and
 verify SQLite integrity and artifact checksums before describing the backup
 system as recovered. Schedule and periodic checks alone are not substitutes
 for a verified restore on an independent machine.
+
+### Hardware device-plugin installation
+
+The Helm chart can register NVIDIA GPUs and Intel NPUs as Kubernetes extended
+resources. Device plugins run on their physical worker nodes; the controller
+retains authorization and hardware-lease ownership. They are not MCP servers and
+do not run inside the Project Workspace controller.
+
+Registration is disabled by default. Enable each plugin only after installing
+its vendor driver, container runtime support, and matching node permissions.
+Each enabled plugin requires an explicit `nodeSelector` to prevent scheduling
+on unapproved nodes:
+
+```yaml
+hardware:
+  nvidia:
+    enabled: true
+    nodeSelector:
+      kubernetes.io/hostname: jupiter
+  intelNpu:
+    enabled: true
+    nodeSelector:
+      kubernetes.io/hostname: jupiter
+```
+
+The NVIDIA runtime class `nvidia-cdi` must already be registered and supported
+by the selected node. The chart deliberately does not modify host drivers,
+kubelet settings, or container runtime handlers.
+
+Do not enable these templates beside a separately managed device plugin of the
+same type. Transfer existing DaemonSet ownership to the Helm release in a
+controlled maintenance operation, then verify the reported extended resources
+and execute a real device-backed job before retiring host-managed manifests.
+A Helm template rendering alone is not evidence of hardware acceptance.
 
 ## Install and start
 
@@ -772,7 +893,7 @@ Large OS images can be streamed to `PUT /api/projects/PROJECT/artifacts/upload` 
 
 ## Personal tasks and independent files
 
-The controller now supports owner-scoped **standalone tasks** without requiring
+The controller supports owner-scoped **standalone tasks** without requiring
 a registered research project. Task metadata (title, description, tags and
 active/archived status) uses revision guards. Each task file retains every
 immutable revision rather than overwriting previous contents. The authenticated
@@ -781,7 +902,8 @@ another subject cannot enumerate, read, modify, or download its files.
 
 The MCP tools are `task_create`, `task_list`, `task_details`,
 `task_update`, `task_files`, `task_file_info`, `task_save_text`,
-`task_send_base64`, `task_read_base64` and `task_export_project`.
+`task_send_base64`, `task_read_base64`, `task_export_project`,
+`task_attach_base64`, and `task_study_pack_import`.
 Small binary inputs up to 512 KiB use base64 plus a mandatory SHA-256. Larger
 inputs use authenticated streamed REST uploads with bounded size and exact
 checksum verification:
@@ -844,9 +966,30 @@ but do not admit new work.
 
 This is the **storage and transfer API**, not automatic ChatGPT attachment
 resolution. A connected, file-capable ChatGPT client/adapter must still pass
-the real attachment bytes or call the REST stream route. The task library
-does not yet provide standalone claim leases, automatic task-to-worker
-creation, or independent native execution without project resource grants.
+the real attachment bytes or call the REST stream route. The task library includes standalone claim leases and can submit project-free
+one-shot jobs with `task_compute_submit` and `task_compute_jobs`. The
+execution-only worker scope `personal-tasks` must be deployed separately for
+Kubernetes; a trusted Docker compatibility worker can also accept those jobs.
+No project, repository or knowledge record is created. One-shot completion
+logs are operational data, not project knowledge; completed task-job records
+older than 24 hours are pruned when the task results are inspected.
+`task_attach_base64` verifies supplied attachment bytes, SHA-256 and MIME
+type before explicit task-file storage. `task_study_pack_import` accepts a
+structured prepared pack and rejects questions referencing absent source IDs;
+client-provided provenance remains unverified until independently checked.
+Larger task files use the authenticated streaming REST endpoint described above.
+The controller requires `task_worker_authorize` from an administrator before
+any worker may receive standalone task jobs. Kubernetes workers must use the
+isolated `personal-tasks` namespace scope. `task_compute_submit` accepts
+bounded `hardware` requests for GPU, NPU, or FPGA slots and optional
+`min_gpu_memory_mb`. Device reservations are mutually exclusive with project
+workspace leases and are conveyed to workers as validated Docker device
+mappings or Kubernetes device-plugin extended-resource requests. USB passthrough
+for independent finite jobs is not implemented. A failed or expired job retains
+an uncertain hardware lease until the administrator verifies cleanup and calls
+`task_hardware_recover` with `cleanup_verified=true` and `confirm=true`.
+Interactive independent task workspaces are not implemented; task job resources
+must not be mistaken for a persistent user workspace.
 Do not claim end-to-end ChatGPT attachment transfer until the actual client
 integration has been tested.
 
@@ -1009,6 +1152,43 @@ text; an integration that converts ChatGPT's native file attachments to this
 transport requires a separate client-side file-capable connector. It is not
 automatically established by installing this repository.
 
+## External resources and account-level GitHub operations
+
+`external_resource_register` registers named machines, EDA guests, boards and
+clusters outside the ordinary worker pool. Explicit owner-controlled requests
+use `external_resource_reserve` and `external_resource_release`. A local
+reservation remains `pending_external_adapter` until its independently
+managed remote scheduler or device adapter confirms real allocation. These
+records never grant SSH access or silently join external clusters to K3s.
+
+The administrator may search and inspect accessible GitHub repositories without linking
+them to a project using `github_account_search`, `github_account_repositories` and
+`github_account_repository`. Repository rename and transfer use separate
+administrator-only tools requiring the exact provider repository ID,
+provider-confirmed permissions and `confirm=true`; a successful API response
+is not treated as verified until the destination is read back. After a verified
+change, linked project, library, and Git knowledge locators are reconciled
+transactionally. Active workspaces and conflicting destination records
+prevent automatic changes. Historical citations retain their original source
+identity; uncertain transfers require explicit `github_account_reconcile` after
+the destination is independently verified.
+
+## MCP attachment and study-pack ingestion
+
+`library_attachment_send` receives up to 512 KiB of real base64-encoded
+attachment bytes, verifies SHA-256 and stores the original in an approved shared
+library. Prepared study-pack JSON can be admitted directly as an immutable
+`study-pack` object with its supplied digest. An accepted object is an intact
+original, not proof that its source references have been validated. Large originals use existing authenticated chunked REST uploads.
+`study_pack_prepare` composes a non-persistent packet from project-authorized
+research passages and their verified source locators. It never generates
+invented page numbers. A ChatGPT client must explicitly forward native
+attachment bytes; a server cannot read them from the conversation implicitly.
+
+See [Execution and Git knowledge contract](docs/execution-and-knowledge-contract.md)
+for execution scopes, external-resource policy and the knowledge repository
+layout.
+
 ## Source-linked research ingestion and search
 
 Shared research libraries retain the **original** binary paper, dataset or
@@ -1119,13 +1299,30 @@ Project notes use `expected_version` to reject conflicting writes. Search, artif
 
 ## Verification
 
+Run the native offline verification workflow from a clean source checkout. It does
+not require GitHub Actions or contact the production Kubernetes cluster.
+
 ```sh
-go test ./...
-go test -race ./internal/controller ./internal/worker
-go vet ./...
+bash scripts/verify-local.sh --full
 ```
 
-GitHub Actions runs Go unit and protocol tests, cross-architecture builds, and an optional Docker controller/worker integration. The latter requires Docker and a `python:3.12-slim` test image **inside the container only**; no Python interpreter runs on the controller or worker host.
+The verifier requires Go, `pkg-config`, SQLite development headers and Helm.
+It checks Go formatting, vet, unit/race tests, controller and worker builds,
+Helm linting and the default/local Git manifest renders. On NixOS, enter a
+shell with `go_1_27`, `pkg-config`, `sqlite` and `kubernetes-helm` first.
+Use `--quick` for the faster unit/build checks or `--images` for full
+verification plus local container image builds. Neither mode proves live
+hardware execution, authenticated client integration or independent recovery;
+those require separate tests on approved resources.
+
+The repository-owned Project Stewardship skill uses the native Go checker
+`go run ./skills/project-stewardship/scripts/check_knowledge.go --strict ./knowledge`
+for the optional Git knowledge layout. A missing knowledge directory is valid
+without `--strict` when persistence is disabled.
+
+GitHub Actions also defines verification jobs. Its Docker tests may use a
+`python:3.12-slim` **test container**, but the controller, worker and
+repository-maintained validation tools require no Python service runtime.
 
 ## Checkpoint-preserving workspace shutdown
 
@@ -1311,7 +1508,7 @@ This is a trusted-machine system with optional OIDC bearer authentication and pr
 
 ## GitHub Projects planning and shared research libraries
 
-Workspace can use a native GitHub Projects V2 board as the authoritative
+Project Workspace can use a native GitHub Projects V2 board as the authoritative
 planning record. Local projects remain usable without GitHub. GitHub planning
 items, custom fields, and the Project README are read live from GitHub; the
 controller stores only the verified Project association. The linked board may
@@ -1446,9 +1643,16 @@ permission system is not yet implemented.
 
 ## GitHub issues, branches, and pull-request lifecycle
 
-Each project can link multiple GitHub repositories. All GitHub operations act on
-an explicitly linked repository; repository credentials remain on the Go
-controller. GitHub Projects V2 remains the planning authority. Issues, commits,
+Each project can link multiple GitHub repositories. Project-scoped GitHub
+operations require explicit repository links; separate administrator-only
+`github_account_search`, `github_account_repositories`,
+`github_account_repository`, `github_account_rename`, and
+`github_account_transfer` tools can act on repositories accessible to the
+connected GitHub identity without first linking them to a project. Rename and
+transfer require an exact immutable repository ID, provider administrator
+permission, and operation-specific confirmation. Provider state is checked
+before and after a mutation; transfers may remain pending. Credentials stay on
+the Go controller. GitHub Projects V2 remains the planning authority. Issues, commits,
 reviews, checks, merges, and branch refs remain authoritative on GitHub.
 
 The MCP tools provide these operations without enabling unrestricted GitHub REST

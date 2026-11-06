@@ -200,6 +200,13 @@ func (db *Database) CreateWorkspace(req WorkspaceRequest) (map[string]any, error
 			for _, r := range leaseRows {
 				busy[asString(r["device_id"])] = true
 			}
+			jobLeases, err := db.queryLocked("SELECT device_id FROM task_job_device_leases WHERE node=? AND released IS NULL", id)
+			if err != nil {
+				return err
+			}
+			for _, lease := range jobLeases {
+				busy[asString(lease["device_id"])] = true
+			}
 			possible := []map[string]any{}
 			for _, d := range devicesIn(caps) {
 				if busy[asString(d["id"])] {

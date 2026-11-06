@@ -18,8 +18,6 @@
 - [Docker container run](https://docs.docker.com/reference/cli/docker/container/run/) — Docker. Used for: isolated workspaces and quotas.
 - [Docker build context](https://docs.docker.com/build/concepts/context/) — Docker. Used for: administrator-controlled build inputs.
 - [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) — Docker. Used for: portable environment archives.
-- [Docker Buildx imagetools inspect](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/) — Docker. Used for: checking published OCI manifests by immutable registry digest.
-- [Docker image pull](https://docs.docker.com/reference/cli/docker/image/pull/) — Docker. Used for: checking complete linux/amd64 image retrieval and platform before deployment.
 - [NVIDIA Container Toolkit CDI](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html) — NVIDIA. Used for: approved GPU device identifiers.
 - [AMD Vivado supported platforms](https://docs.amd.com/r/2025.2-English/ug973-vivado-release-notes-install-license/Supported-Operating-Systems) — AMD. Used for: vendor toolchain host and license constraints.
 - [GitHub Projects V2 GraphQL API](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects) — GitHub. Used for: native Project association, item pagination, draft issues, issue and pull request linking, and field updates.
@@ -50,6 +48,8 @@
 - [RFC 7517: JSON Web Key](https://www.rfc-editor.org/rfc/rfc7517) — IETF. Used for: JSON Web Key Set parsing and key selection.
 - [RFC 7518: JSON Web Algorithms](https://www.rfc-editor.org/rfc/rfc7518) — IETF. Used for: RS256 signature validation.
 - [RFC 9728: OAuth 2.0 Protected Resource Metadata](https://www.rfc-editor.org/rfc/rfc9728) — IETF. Used for: OAuth resource metadata and bearer challenges.
+- [Cloudflare Access Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) — Cloudflare. Used for: OAuth discovery, authorization code flow and opaque token resolution at the protected MCP edge.
+- [Validate Cloudflare Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) — Cloudflare. Used for: validating origin identity assertions by signing keys, issuer, audience, and expiry.
 
 - [systemd service execution settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) — systemd maintainers. Used for: service credentials, restricted state directories, environment files, and filesystem hardening.
 - [Docker Engine Linux post-installation](https://docs.docker.com/engine/install/linux-postinstall/) — Docker. Used for: systemd Docker startup and the root-equivalent trust boundary of the docker group.
@@ -83,4 +83,24 @@
 - [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) — GitHub. Used for: gating OCI package publication on Kubernetes Helm integration tests.
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) — Kubernetes. Used for: isolated controller-only backup password projection, init-container copies, and backend credential injection.
 - [Kubernetes init containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) — Kubernetes. Used for: preparing owner-only Restic credentials before controller startup.
+
+- [GitHub REST API: List repositories for the authenticated user](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user) — GitHub. Used for: owner-authorized account repository discovery independent of project links.
+- [GitHub REST API: Update a repository](https://docs.github.com/en/rest/repos/repos#update-a-repository) — GitHub. Used for: provider-verified repository renaming, archiving, unarchiving, and typed repository settings with exact repository identity and administrator permission.
+- [GitHub REST API: Transfer a repository](https://docs.github.com/en/rest/repos/repos#transfer-a-repository) — GitHub. Used for: explicitly confirmed account-level repository transfers and destination verification.
+- [GitHub REST API: Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository) — GitHub. Used for: repository identity, permission and destination checks.
+- [SQLite partial indexes](https://www.sqlite.org/partialindex.html) — SQLite. Used for: excluding concurrent active reservations on externally managed resources.
+- [GitHub REST API: Search repositories](https://docs.github.com/en/rest/search/search#search-repositories) — GitHub. Used for: bounded account-authorized repository discovery across linked and unlinked repositories.
+- [GitHub Projects best practices](https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/best-practices-for-projects) — GitHub. Used for: project status authority, field selection, board views and planning workflow guidance.
+- [Linking a pull request to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue) — GitHub. Used for: accurate issue linkage and branch-target-dependent automatic closing behavior.
+- [GitHub repository rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) — GitHub. Used for: protecting branch publication and respecting layered review requirements.
+
+- [Git reference updates](https://git-scm.com/docs/git-update-ref) — Git. Used for: atomic compare-and-swap publication of local bare Git branch heads without force-updating a concurrent writer.
+- [Git commit-tree](https://git-scm.com/docs/git-commit-tree) — Git. Used for: creating source-controlled knowledge commits from staged trees without a persistent working tree.
+- [Git archive](https://git-scm.com/docs/git-archive) — Git. Used for: streaming exact local repository revisions into isolated workspace artifact transfers.
+- [Git hooks](https://git-scm.com/docs/githooks) — Git. Used for: ensuring repository-controlled hooks do not execute during controller-owned Git plumbing.
+- [Git rev-parse](https://git-scm.com/docs/git-rev-parse) — Git. Used for: resolving approved local bare Git branch references into immutable commit IDs.
+- [NVIDIA Kubernetes device plugin](https://github.com/NVIDIA/k8s-device-plugin) — NVIDIA. Used for: publishing GPU extended resources through kubelet device-plugin sockets.
+- [Intel device plugins for Kubernetes](https://github.com/intel/intel-device-plugins-for-kubernetes) — Intel. Used for: Intel NPU discovery and kubelet registration.
+- [Docker Buildx imagetools inspect](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/) — Docker. Used for: checking published OCI manifests by immutable registry digest.
+- [Docker image pull](https://docs.docker.com/reference/cli/docker/image/pull/) — Docker. Used for: checking complete linux/amd64 image retrieval and platform before deployment.
 - [NixOS module system](https://nixos.org/manual/nixos/stable/#sec-writing-modules) — NixOS; Used for: externally imported service modules, option validation, and declarative systemd/Helm deployment integration.

@@ -40,7 +40,7 @@ func (db *Database) RegisterResearchSource(req ResearchSourceRequest) (map[strin
 		if !validArtifactName.MatchString(req.OriginName) || req.OriginRevision != "" || req.OriginPath != "" {
 			return nil, errors.New("object source requires one immutable library object")
 		}
-	} else if !validGitRepository(req.OriginName) ||
+	} else if !validSourceRepository(req.OriginName) ||
 		!validCommitSHA.MatchString(req.OriginRevision) ||
 		req.OriginPath != "" && !validRelativePath(req.OriginPath) {
 		return nil, errors.New("Git source requires a pinned repository revision and path")
