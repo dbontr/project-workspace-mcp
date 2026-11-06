@@ -213,7 +213,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request, who caller) {
 	response := map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID)}
 	switch msg.Method {
 	case "initialize":
-		response["result"] = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": false}}, "serverInfo": map[string]any{"name": "project-workspace-mcp", "version": "0.6.0"}, "instructions": "Operations are asynchronous. Wait for worker-confirmed completion before claiming success."}
+		response["result"] = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": false}}, "serverInfo": map[string]any{"name": "workspace-mcp", "version": "0.6.0"}, "instructions": "Operations are asynchronous. Wait for worker-confirmed completion before claiming success."}
 	case "ping":
 		response["result"] = map[string]any{}
 	case "tools/list":
