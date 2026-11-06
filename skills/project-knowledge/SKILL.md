@@ -1,11 +1,11 @@
 ---
 name: project-knowledge
-description: Optional Git-backed project knowledge for Project Workspace. Use only when a user explicitly enables persistent project notes, research evidence, decisions, or handoffs. Read and write versioned Markdown and source references through a user-selected Git remote, including GitHub, GitLab, or self-hosted Git. When disabled, store no intentional project knowledge. This skill is independent of the mandatory Git source-code workflow and optional for ordinary compute.
+description: Optional Git-backed project knowledge for Workspace. Use only when a user explicitly enables persistent project notes, research evidence, decisions, or handoffs. Read and write versioned Markdown and source references through a user-selected Git remote, including GitHub, GitLab, or self-hosted Git. When disabled, store no intentional project knowledge. This skill is independent of the mandatory Git source-code workflow and optional for ordinary compute.
 ---
 
 # Project Knowledge
 
-Use this skill only when the project owner chooses durable knowledge. Project Workspace requires Git for authoritative code, but does not require project knowledge. A user may put knowledge in an existing code repository or in a separate Git repository; never create an additional repository automatically. A Git host is a transport and authorization choice, not a different skill.
+Use this skill only when the project owner chooses durable knowledge. Workspace requires Git for authoritative code, but does not require project knowledge. A user may put knowledge in an existing code repository or in a separate Git repository; never create an additional repository automatically. A Git host is a transport and authorization choice, not a different skill.
 
 ## Storage policy
 
@@ -16,7 +16,7 @@ Use this skill only when the project owner chooses durable knowledge. Project Wo
 
 ## Capabilities and authorization
 
-- Inspect the currently connected MCP tools and Git provider. This skill provides operating instructions, not a Git backend. The current Project Workspace controller exposes GitHub-specific APIs; do not claim native GitLab or generic Git write support until the operator has installed and verified a corresponding adapter.
+- Inspect the currently connected MCP tools and Git provider. This skill provides operating instructions, not a Git backend. The current Workspace controller exposes GitHub-specific APIs; do not claim native GitLab or generic Git write support until the operator has installed and verified a corresponding adapter.
 - Resolve project ownership and a configured repository before reading or writing. Require a credential scoped to the selected repository; keep it in controller-managed secrets and never pass it to a worker Pod, file, note, output log, or shell command payload.
 - Prefer an operator-approved generic Git adapter for clone, exact-commit checkout, branch creation, revision-guarded commit, push and remote verification. GitHub-specific issue/PR methods are optional enhancements, never Git protocol requirements.
 - Reject unknown remote hosts, redirects, credential-in-URL inputs, local filesystem escape paths, Git command-option injection and unreviewed remote hooks. Do not weaken network or credential restrictions merely to make a remote accessible.
@@ -49,7 +49,7 @@ The exact layout may follow existing repository conventions; do not add empty fo
 - For a handoff, preserve the project objective, decisions, exact source revision, verified output hashes, test outcomes, remaining blockers and next action. Distinguish staged/reviewed software from deployed and independently recovered software.
 - Use different branches or independent contribution files for concurrent writers. Apply an expected revision when consolidating Context.md. Protect confidential research, secrets, licensed materials and personal data according to the selected Git host's access and retention policy.
 
-## Relationship to Project Workspace
+## Relationship to Workspace
 
 Use the separate `project-workspace` skill for Kubernetes workspaces, toolchain images, source-code Git operations, hardware resources and executable artifacts. This skill is not required for those operations and does not change the code repository. A project with knowledge mode `none` must not generate knowledge commits. A project with knowledge mode `git` writes durable knowledge only after verifying a commit in its selected Git remote.
 
