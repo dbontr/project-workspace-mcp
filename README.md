@@ -62,7 +62,12 @@ worker resource policy, and controller lifecycle belong to this repository.
 
 The module does not create credentials or manage the host's K3s network.
 Image references must be resolvable from the nodes where the controller and
-workers run. Off-host backups are optional; an empty `backupInterval` disables
+workers run. Before installing a release, verify both immutable registry
+references with `bash scripts/verify-published-images.sh CONTROLLER_REF WORKER_REF`.
+The check requires a package-read credential when images are private. It
+verifies full linux/amd64 image retrieval; source-to-image correspondence must
+also be established by the release build record. Off-host backups are
+optional; an empty `backupInterval` disables
 their scheduler. Existing controller state must be preserved when changing the
 running deployment.
 
