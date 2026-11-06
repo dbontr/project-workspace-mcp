@@ -52,6 +52,21 @@ ready. GitHub remains the configured authoritative remote for this installation.
 
 ## Kubernetes deployment and execution
 
+The repository owns the Kubernetes Helm chart and the NixOS module at
+`deploy/nixos/module.nix`. A NixOS host can import that module from an
+immutable source revision, enable `services.workspaceMcp`, and supply its
+node placement, authorized Kubernetes Secret names, and public ingress.
+The module selects the bundled Helm chart, renders controller and worker
+values, and enforces release image integrity. Container-image publication,
+worker resource policy, and controller lifecycle belong to this repository.
+
+The module does not create credentials or manage the host's K3s network.
+Image references must be resolvable from the nodes where the controller and
+workers run. Off-host backups are optional; an empty `backupInterval` disables
+their scheduler. Existing controller state must be preserved when changing the
+running deployment.
+
+
 The production execution backend is Kubernetes. Each project has a dedicated
 workload namespace and a worker identity that can access only that namespace.
 The controller, worker credentials, and GitHub PAT live in the separate
