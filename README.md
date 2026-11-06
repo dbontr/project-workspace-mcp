@@ -394,6 +394,40 @@ verify SQLite integrity and artifact checksums before describing the backup
 system as recovered. Schedule and periodic checks alone are not substitutes
 for a verified restore on an independent machine.
 
+### Hardware device-plugin installation
+
+The Helm chart can register NVIDIA GPUs and Intel NPUs as Kubernetes extended
+resources. Device plugins run on their physical worker nodes; the controller
+retains authorization and hardware-lease ownership. They are not MCP servers and
+do not run inside the Project Workspace controller.
+
+Registration is disabled by default. Enable each plugin only after installing
+its vendor driver, container runtime support, and matching node permissions.
+Each enabled plugin requires an explicit `nodeSelector` to prevent scheduling
+on unapproved nodes:
+
+```yaml
+hardware:
+  nvidia:
+    enabled: true
+    nodeSelector:
+      kubernetes.io/hostname: jupiter
+  intelNpu:
+    enabled: true
+    nodeSelector:
+      kubernetes.io/hostname: jupiter
+```
+
+The NVIDIA runtime class `nvidia-cdi` must already be registered and supported
+by the selected node. The chart deliberately does not modify host drivers,
+kubelet settings, or container runtime handlers.
+
+Do not enable these templates beside a separately managed device plugin of the
+same type. Transfer existing DaemonSet ownership to the Helm release in a
+controlled maintenance operation, then verify the reported extended resources
+and execute a real device-backed job before retiring host-managed manifests.
+A Helm template rendering alone is not evidence of hardware acceptance.
+
 ## Install and start
 
 ```sh

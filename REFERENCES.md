@@ -97,3 +97,5 @@
 - [Git archive](https://git-scm.com/docs/git-archive) — Git. Used for: streaming exact local repository revisions into isolated workspace artifact transfers.
 - [Git hooks](https://git-scm.com/docs/githooks) — Git. Used for: ensuring repository-controlled hooks do not execute during controller-owned Git plumbing.
 - [Git rev-parse](https://git-scm.com/docs/git-rev-parse) — Git. Used for: resolving approved local bare Git branch references into immutable commit IDs.
+- [NVIDIA Kubernetes device plugin](https://github.com/NVIDIA/k8s-device-plugin) — NVIDIA. Used for: publishing GPU extended resources through kubelet device-plugin sockets.
+- [Intel device plugins for Kubernetes](https://github.com/intel/intel-device-plugins-for-kubernetes) — Intel. Used for: Intel NPU discovery and kubelet registration.

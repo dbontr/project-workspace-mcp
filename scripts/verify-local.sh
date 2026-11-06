@@ -76,6 +76,27 @@ helm template pwm-system deploy/helm/project-workspace \
   > "$build_dir/local-git.yaml"
 grep -q 'PWM_GIT_LOCAL_ROOT' "$build_dir/local-git.yaml"
 
+# Devices are registered only when the administrator names eligible worker nodes.
+hardware_values='{"kubernetes.io/hostname":"jupiter"}'
+helm template pwm-system deploy/helm/project-workspace \
+  --set hardware.nvidia.enabled=true \
+  --set hardware.intelNpu.enabled=true \
+  --set-json "hardware.nvidia.nodeSelector=$hardware_values" \
+  --set-json "hardware.intelNpu.nodeSelector=$hardware_values" \
+  > "$build_dir/hardware.yaml"
+grep -q 'name: nvidia-device-plugin-daemonset' "$build_dir/hardware.yaml"
+grep -q 'name: intel-npu-plugin' "$build_dir/hardware.yaml"
+if helm template pwm-system deploy/helm/project-workspace \
+  --set hardware.nvidia.enabled=true > /dev/null 2>&1; then
+  printf 'An NVIDIA device plugin without a node selector must be rejected.\n' >&2
+  exit 1
+fi
+if helm template pwm-system deploy/helm/project-workspace \
+  --set hardware.intelNpu.enabled=true > /dev/null 2>&1; then
+  printf 'An Intel NPU device plugin without a node selector must be rejected.\n' >&2
+  exit 1
+fi
+
 if [[ "$mode" == --images ]]; then
   require docker
   docker build -f deploy/kubernetes/Dockerfile.controller \
