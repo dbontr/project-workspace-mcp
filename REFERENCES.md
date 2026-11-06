@@ -83,7 +83,7 @@
 - [Kubernetes init containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) — Kubernetes. Used for: preparing owner-only Restic credentials before controller startup.
 
 - [GitHub REST API: List repositories for the authenticated user](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user) — GitHub. Used for: owner-authorized account repository discovery independent of project links.
-- [GitHub REST API: Update a repository](https://docs.github.com/en/rest/repos/repos#update-a-repository) — GitHub. Used for: provider-verified repository renaming with exact repository identity and administrator permission.
+- [GitHub REST API: Update a repository](https://docs.github.com/en/rest/repos/repos#update-a-repository) — GitHub. Used for: provider-verified repository renaming, archiving, unarchiving, and typed repository settings with exact repository identity and administrator permission.
 - [GitHub REST API: Transfer a repository](https://docs.github.com/en/rest/repos/repos#transfer-a-repository) — GitHub. Used for: explicitly confirmed account-level repository transfers and destination verification.
 - [GitHub REST API: Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository) — GitHub. Used for: repository identity, permission and destination checks.
 - [SQLite partial indexes](https://www.sqlite.org/partialindex.html) — SQLite. Used for: excluding concurrent active reservations on externally managed resources.
