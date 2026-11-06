@@ -211,6 +211,12 @@ func (c *Client) runWithHeartbeatInterval(parent context.Context, runner *Runner
 			if err := runner.ReconcileStaleJobs(ctx, c.Node); err != nil {
 				return fmt.Errorf("stale job recovery: %w", err)
 			}
+			// Runtime cleanup must succeed before the controller fences old
+			// claims and admits new work on this worker.
+			if err := c.request(ctx, "POST",
+				fmt.Sprintf("/api/worker/%s/reconcile", c.Node), nil, nil); err != nil {
+				return fmt.Errorf("record worker reconciliation: %w", err)
+			}
 			reconciled = true
 		}
 		var op struct {
