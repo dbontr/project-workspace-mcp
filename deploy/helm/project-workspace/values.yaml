@@ -43,6 +43,7 @@ worker:
   imagePullPolicy: Always
   imagePullSecrets: []
   nodeSelector: {}
+  workloadNode: ""
   name: research-agent
   projectID: research
   instanceID: ""

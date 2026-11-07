@@ -237,3 +237,41 @@ func TestKubernetesRejectsRequestsBeyondWorkerCapacity(t *testing.T) {
 		t.Fatalf("rejected work reached Kubernetes API: %v", err)
 	}
 }
+
+func TestKubernetesWorkerNodePlacement(t *testing.T) {
+	t.Setenv("PWM_KUBE_WORKLOAD_NODE", "jupiter")
+	k, _ := testKubernetes(t)
+	if k.WorkloadNode != "jupiter" {
+		t.Fatalf("worker placement not configured: %q", k.WorkloadNode)
+	}
+	id := strings.Repeat("a", 32)
+	pod := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, nil)
+	workloadNode := kubeObject(kubeObject(pod, "spec"), "nodeSelector")["kubernetes.io/hostname"]
+	if workloadNode != "jupiter" {
+		t.Fatalf("workspace scheduled outside declared node: %v", workloadNode)
+	}
+	job := Job{ID: id, Image: "debian:bookworm-slim", CPU: 1, MemoryMB: 512, Command: "true"}
+	manifest := k.jobManifest(job, "worker-one")
+	spec := kubeObject(kubeObject(kubeObject(manifest, "spec"), "template"), "spec")
+	if kubeObject(spec, "nodeSelector")["kubernetes.io/hostname"] != "jupiter" {
+		t.Fatal("job scheduled outside declared node")
+	}
+	r := NewRunner(nil)
+	r.Kube = k
+	caps, err := r.Capabilities()
+	if err != nil || caps["workload_node"] != "jupiter" {
+		t.Fatalf("worker does not advertise placement restriction: %v %v", caps, err)
+	}
+}
+
+func TestKubernetesWorkerNodeValidation(t *testing.T) {
+	k, _ := testKubernetes(t)
+	id := strings.Repeat("a", 32)
+	if kubeObject(k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, nil), "spec")["nodeSelector"] != nil {
+		t.Fatal("unrestricted workload unexpectedly pinned to a node")
+	}
+	t.Setenv("PWM_KUBE_WORKLOAD_NODE", "../host")
+	if _, err := NewKubernetes("pwm-research", "research", 2, 2048, 1); err == nil {
+		t.Fatal("unsafe Kubernetes node name accepted")
+	}
+}

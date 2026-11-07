@@ -57,6 +57,7 @@ type Kubernetes struct {
 	StorageClass    string
 	ImagePullSecret string
 	GPURuntimeClass string
+	WorkloadNode    string
 	Devices         []KubernetesDevice
 	CPU             float64
 	MemoryMB        int
@@ -89,13 +90,17 @@ func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*K
 	if pullSecret != "" && !kubernetesName.MatchString(pullSecret) {
 		return nil, errors.New("invalid Kubernetes workload registry pull secret")
 	}
+	workloadNode := os.Getenv("PWM_KUBE_WORKLOAD_NODE")
+	if workloadNode != "" && !kubernetesName.MatchString(workloadNode) {
+		return nil, errors.New("invalid Kubernetes workload node")
+	}
 	runtimeClass := os.Getenv("PWM_KUBE_GPU_RUNTIME_CLASS")
 	if runtimeClass != "" && !kubernetesName.MatchString(runtimeClass) {
 		return nil, errors.New("invalid Kubernetes GPU runtime class")
 	}
 	k := &Kubernetes{Namespace: namespace, Project: project, Binary: binary,
 		Storage: storage, StorageClass: class, ImagePullSecret: pullSecret,
-		CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
+		WorkloadNode: workloadNode, CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
 	k.GPURuntimeClass = runtimeClass
 	if err := k.configureServiceAccount(); err != nil {
 		return nil, err
@@ -374,6 +379,9 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 			},
 		},
 	}
+	if k.WorkloadNode != "" {
+		kubeObject(result, "spec")["nodeSelector"] = map[string]any{"kubernetes.io/hostname": k.WorkloadNode}
+	}
 	k.addGPURuntimeClass(kubeObject(result, "spec"), devices)
 	if k.ImagePullSecret != "" {
 		kubeObject(result, "spec")["imagePullSecrets"] =
@@ -600,6 +608,10 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 				"volumes": []any{map[string]any{"name": "scratch", "emptyDir": map[string]any{"sizeLimit": "64Mi"}}},
 			}},
 		},
+	}
+	if k.WorkloadNode != "" {
+		pod := kubeObject(kubeObject(kubeObject(result, "spec"), "template"), "spec")
+		pod["nodeSelector"] = map[string]any{"kubernetes.io/hostname": k.WorkloadNode}
 	}
 	if k.ImagePullSecret != "" {
 		jobTemplate := kubeObject(kubeObject(result, "spec"), "template")

@@ -9,6 +9,9 @@
 {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,50}[a-z0-9])?$" .Values.worker.projectID) }}
 {{- fail "worker.projectID must be a DNS label of at most 52 characters" }}
 {{- end }}
+{{- if and .Values.worker.workloadNode (not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" .Values.worker.workloadNode)) }}
+{{- fail "worker.workloadNode must be a valid Kubernetes DNS label" }}
+{{- end }}
 {{- $instance := default .Values.worker.projectID .Values.worker.instanceID }}
 {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,50}[a-z0-9])?$" $instance) }}
 {{- fail "worker.instanceID must be a DNS label of at most 52 characters" }}
@@ -171,6 +174,10 @@ spec:
             {{- if .Values.worker.deviceManifestConfigMap }}
             - name: PWM_KUBE_DEVICE_MANIFEST
               value: /etc/pwm-devices/devices.json
+            {{- end }}
+            {{- if .Values.worker.workloadNode }}
+            - name: PWM_KUBE_WORKLOAD_NODE
+              value: {{ .Values.worker.workloadNode | quote }}
             {{- end }}
             {{- if .Values.worker.gpuRuntimeClassName }}
             - name: PWM_KUBE_GPU_RUNTIME_CLASS
