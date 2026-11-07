@@ -31,7 +31,7 @@ test "${#admin}" -ge 32 || { echo "controller administrator credential unavailab
 
 api() {
   local method="$1" path="$2" body="${3:-}"
-  local args=(--fail-with-body --silent --show-error --max-time 35
+  local args=(--fail-with-body --silent --show-error --noproxy '*' --max-time 35
     --cacert "$scratch/controller-ca.pem" --resolve "$fqdn:8443:$ip"
     -H 'Content-Type: application/json' -X "$method")
   if [[ -n "$body" ]]; then args+=(--data-binary "@$body"); fi
