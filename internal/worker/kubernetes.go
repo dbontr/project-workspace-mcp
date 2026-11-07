@@ -535,6 +535,16 @@ func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byt
 	return k.checked(ctx, nil, command...)
 }
 
+// prepareWorkspaceCommand sets driver search paths for new exec processes;
+// shell exports used by Pod PID 1 do not extend to Kubernetes exec sessions.
+func (k *Kubernetes) prepareWorkspaceCommand(pod map[string]any, command string) string {
+	if k.GPURuntimeClass == "nvidia-cdi" &&
+		kubeObject(pod, "spec")["runtimeClassName"] == "nvidia-cdi" {
+		return nvidiaLibrarySetup + command
+	}
+	return command
+}
+
 func (k *Kubernetes) Command(ctx context.Context, id, command string, input io.Reader) (map[string]any, error) {
 	if !workspaceID.MatchString(id) || strings.TrimSpace(command) == "" || len(command) > 16000 {
 		return nil, errors.New("invalid workspace command")
@@ -543,11 +553,7 @@ func (k *Kubernetes) Command(ctx context.Context, id, command string, input io.R
 	if err != nil {
 		return nil, err
 	}
-	if k.GPURuntimeClass == "nvidia-cdi" &&
-		kubeObject(pod, "spec")["runtimeClassName"] == "nvidia-cdi" {
-		// kubectl exec starts a separate process; exports in Pod PID 1 are not inherited.
-		command = nvidiaLibrarySetup + command
-	}
+	command = k.prepareWorkspaceCommand(pod, command)
 	args := []string{"exec"}
 	if input != nil {
 		args = append(args, "-i")
