@@ -100,8 +100,7 @@ func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*K
 	}
 	k := &Kubernetes{Namespace: namespace, Project: project, Binary: binary,
 		Storage: storage, StorageClass: class, ImagePullSecret: pullSecret,
-		WorkloadNode: workloadNode,
-		CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
+		WorkloadNode: workloadNode, CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
 	k.GPURuntimeClass = runtimeClass
 	if err := k.configureServiceAccount(); err != nil {
 		return nil, err
