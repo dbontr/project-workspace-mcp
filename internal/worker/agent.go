@@ -383,12 +383,16 @@ func (r *Runner) Capabilities() (map[string]any, error) {
 		if !kubernetesName.MatchString(k.Worker) {
 			return nil, errors.New("invalid Kubernetes worker identity")
 		}
-		return map[string]any{
+		caps := map[string]any{
 			"cpu": k.CPU, "memory_mb": k.MemoryMB, "max_jobs": k.MaxJobs,
 			"kubernetes": true, "docker": false, "project_id": k.Project,
 			"namespace": k.Namespace, "os": "linux", "arch": runtime.GOARCH,
 			"devices": PublicKubernetesDevices(k.Devices), "images": r.ApprovedImages(),
-		}, nil
+		}
+		if k.WorkloadNode != "" {
+			caps["workload_node"] = k.WorkloadNode
+		}
+		return caps, nil
 	}
 	capabilities, err := Capabilities(r.AvailableDevices())
 	if err != nil {
