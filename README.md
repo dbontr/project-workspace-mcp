@@ -179,7 +179,10 @@ provide an unpaired worker credential or rely on the chart to enroll workers.
 
 Choose a dedicated DNS-label workload namespace for each worker instance.
 Multiple workers may serve the same project, but must use distinct workload
-namespaces and worker credentials. The Helm chart refuses worker installation
+namespaces and worker credentials. Node-scoped workers should set
+`worker.workloadNode` to their compute-node hostname and `worker.nodeSelector`
+to place the worker Deployment on that node; the controller can remain on a
+separate orchestration host. The Helm chart refuses worker installation
 in the controller namespace or Kubernetes system namespaces. Worker and project identifiers must fit Kubernetes resource
 name limits. Kubernetes StorageClass names may contain DNS subdomain labels.
 Each worker rejects a workspace or batch Job that requests more CPU or memory
@@ -229,9 +232,7 @@ sha256sum -c SHA256SUMS
 
 For imported local images, set `worker.nodeSelector` to a node that has the
 worker image, or import the verified archive on every eligible worker node.
-This selector places the **worker service**; it does not override Kubernetes
-scheduling, volume node affinity, or device-plugin placement for workspaces.
-The default remains scheduler-selected placement when no selector is set.
+The worker service node selector and the workload node constraint serve different purposes. `worker.nodeSelector` places the worker service; `worker.workloadNode` limits its workspace Pods and Jobs to a specified `kubernetes.io/hostname`. Without `worker.workloadNode`, the Kubernetes scheduler chooses eligible compute nodes. For a node-scoped worker pool, configure both and register device-plugin slots with only the worker responsible for the corresponding physical node.
 
 The bundle records the complete source commit, local image tags, image IDs,
 and checksums. It refuses dirty source trees, paths within the repository,
