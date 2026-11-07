@@ -381,7 +381,7 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 		},
 	}
 	if k.WorkloadNode != "" {
-		kubeObject(result, "spec")["nodeSelector"] = map[string]string{"kubernetes.io/hostname": k.WorkloadNode}
+		kubeObject(result, "spec")["nodeSelector"] = map[string]any{"kubernetes.io/hostname": k.WorkloadNode}
 	}
 	k.addGPURuntimeClass(kubeObject(result, "spec"), devices)
 	if k.ImagePullSecret != "" {
@@ -612,7 +612,7 @@ func (k *Kubernetes) jobManifest(job Job, worker string) map[string]any {
 	}
 	if k.WorkloadNode != "" {
 		pod := kubeObject(kubeObject(kubeObject(result, "spec"), "template"), "spec")
-		pod["nodeSelector"] = map[string]string{"kubernetes.io/hostname": k.WorkloadNode}
+		pod["nodeSelector"] = map[string]any{"kubernetes.io/hostname": k.WorkloadNode}
 	}
 	if k.ImagePullSecret != "" {
 		jobTemplate := kubeObject(kubeObject(result, "spec"), "template")
