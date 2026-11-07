@@ -55,6 +55,7 @@
 - [Validate Cloudflare Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) — Cloudflare. Used for: validating origin identity assertions by signing keys, issuer, audience, and expiry.
 
 - [systemd service execution settings](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) — systemd maintainers. Used for: service credentials, restricted state directories, environment files, and filesystem hardening.
+- [systemd timer units](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html) — systemd maintainers. Used for: scheduled, restart-resilient reconciliation of isolated Kubernetes project workers.
 - [Docker Engine Linux post-installation](https://docs.docker.com/engine/install/linux-postinstall/) — Docker. Used for: systemd Docker startup and the root-equivalent trust boundary of the docker group.
 - [Docker container listing filters](https://docs.docker.com/reference/cli/docker/container/ls/) — Docker. Used for: worker-scoped managed-job inventory and crash reconciliation.
 - [FFmpeg X11 input device](https://ffmpeg.org/ffmpeg-devices.html#x11grab) — FFmpeg. Used for: bounded X11 framebuffer capture and PNG encoding inside isolated workspaces.
