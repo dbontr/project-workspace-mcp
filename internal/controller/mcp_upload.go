@@ -239,6 +239,8 @@ func (db *Database) AppendMCPUpload(owner, id, project, task string,
 	return progress, err
 }
 
+// FinishMCPUpload publishes bytes and session completion in one SQL
+// transaction. A retry either finds the open upload or the committed result.
 func (db *Database) FinishMCPUpload(owner, id, project, task string, limit int64) (map[string]any, error) {
 	row, err := db.mcpUploadRow(owner, id, project, task)
 	if err != nil {
@@ -247,67 +249,120 @@ func (db *Database) FinishMCPUpload(owner, id, project, task string, limit int64
 	if asString(row["state"]) == "complete" {
 		return decodeObject(asString(row["result"])), nil
 	}
-	if int64(asFloat(row["received"])) != int64(asFloat(row["size"])) {
-		return nil, errors.New("upload is incomplete")
+	size := int64(asFloat(row["size"]))
+	if asString(row["state"]) != "open" || size > limit ||
+		int64(asFloat(row["received"])) != size {
+		return nil, errors.New("upload is not ready for completion")
 	}
-	err = db.transaction(func() error {
-		latest, err := db.lockedOne("SELECT state,received,size FROM mcp_upload_sessions WHERE id=? AND owner=?",
-			id, owner)
-		if err != nil {
-			return err
-		}
-		if latest == nil || asString(latest["state"]) != "open" ||
-			asFloat(latest["received"]) != asFloat(latest["size"]) {
-			return errors.New("upload finalize conflict")
-		}
-		return db.execLocked("UPDATE mcp_upload_sessions SET state='finalizing' WHERE id=? AND owner=?", id, owner)
-	})
+	path := db.mcpUploadPath(id)
+	source, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	complete := false
-	defer func() {
-		if !complete {
-			_ = db.exec("UPDATE mcp_upload_sessions SET state='open' WHERE id=? AND owner=? AND state='finalizing'", id, owner)
-		}
-	}()
-	file, err := os.Open(db.mcpUploadPath(id))
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != int64(asFloat(row["size"])) {
+	info, err := source.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() != size {
+		source.Close()
 		return nil, errors.New("upload backing file size mismatch")
 	}
 	hash := sha256.New()
-	count, err := io.Copy(hash, io.LimitReader(file, limit+1))
-	if err != nil || count != int64(asFloat(row["size"])) ||
+	count, err := io.Copy(hash, io.LimitReader(source, limit+1))
+	closeErr := source.Close()
+	if err != nil || closeErr != nil || count != size ||
 		hex.EncodeToString(hash.Sum(nil)) != asString(row["digest"]) {
 		return nil, errors.New("upload SHA-256 or size mismatch")
 	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
+
 	var result map[string]any
-	if asString(row["scope"]) == "task" {
-		result, err = db.SavePersonalTaskStream(owner, asString(row["target"]),
-			asString(row["name"]), asString(row["digest"]), file, limit,
-			asInt(row["revision"]))
-	} else {
-		result, err = db.ImportStream(asString(row["target"]), asString(row["name"]),
-			asString(row["digest"]), file, limit, "", "", "", "")
-	}
+	var destination string
+	err = db.transaction(func() error {
+		latest, err := db.lockedOne(
+			"SELECT * FROM mcp_upload_sessions WHERE id=? AND owner=? AND scope=? AND target=?",
+			id, owner, row["scope"], row["target"])
+		if err != nil {
+			return err
+		}
+		if latest == nil || asFloat(latest["expires"]) <= stamp() {
+			return errors.New("upload session expired or unavailable")
+		}
+		if asString(latest["state"]) == "complete" {
+			result = decodeObject(asString(latest["result"]))
+			return nil
+		}
+		if asString(latest["state"]) != "open" ||
+			int64(asFloat(latest["received"])) != size {
+			return errors.New("upload completion conflict")
+		}
+		checked, err := os.Lstat(path)
+		if err != nil || !checked.Mode().IsRegular() || checked.Size() != size ||
+			!os.SameFile(info, checked) || !info.ModTime().Equal(checked.ModTime()) {
+			return errors.New("upload backing file changed during verification")
+		}
+		scope := asString(row["scope"])
+		target := asString(row["target"])
+		now := stamp()
+		if scope == "task" {
+			taskRow, err := db.lockedOne(
+				"SELECT status FROM personal_tasks WHERE id=? AND owner=?", target, owner)
+			if err != nil {
+				return err
+			}
+			if taskRow == nil || asString(taskRow["status"]) != "active" {
+				return errors.New("personal task not found or archived")
+			}
+			last, err := db.lockedOne(
+				"SELECT coalesce(max(revision),0) revision FROM personal_task_files WHERE task=? AND name=?",
+				target, row["name"])
+			if err != nil {
+				return err
+			}
+			if asInt(last["revision"]) != asInt(row["revision"]) {
+				return errors.New("task file revision conflict")
+			}
+		} else if err := requireProject(db, target); err != nil {
+			return err
+		}
+
+		artifactID := randomHex(16)
+		destination = db.artifactPath(artifactID)
+		if err := os.Link(path, destination); err != nil {
+			destination = ""
+			return err
+		}
+		artifactProject := target
+		if scope == "task" {
+			artifactProject = taskFileScope(target)
+		}
+		if err := db.execLocked("INSERT INTO artifacts VALUES(?,?,?,?,?,?)",
+			artifactID, artifactProject, row["name"], row["digest"], size, now); err != nil {
+			return err
+		}
+		if scope == "task" {
+			revision := asInt(row["revision"]) + 1
+			if err := db.execLocked(
+				"INSERT INTO personal_task_files(task,name,revision,artifact_id,sha256,size,created) VALUES(?,?,?,?,?,?,?)",
+				target, row["name"], revision, artifactID, row["digest"], size, now); err != nil {
+				return err
+			}
+			result = map[string]any{
+				"task_id": target, "name": row["name"], "revision": revision,
+				"artifact_id": artifactID, "sha256": row["digest"], "size": size, "created": now,
+			}
+		} else {
+			result = map[string]any{
+				"id": artifactID, "name": row["name"], "sha256": row["digest"], "size": size,
+			}
+		}
+		return db.execLocked(
+			"UPDATE mcp_upload_sessions SET state='complete',result=? WHERE id=? AND owner=? AND state='open'",
+			encode(result), id, owner)
+	})
 	if err != nil {
+		if destination != "" {
+			_ = os.Remove(destination)
+		}
 		return nil, err
 	}
-	if err := db.exec(
-		"UPDATE mcp_upload_sessions SET state='complete',result=? WHERE id=? AND owner=? AND state='finalizing'",
-		encode(result), id, owner); err != nil {
-		return nil, err
-	}
-	complete = true
-	_ = os.Remove(db.mcpUploadPath(id))
+	_ = os.Remove(path)
 	return result, nil
 }
 
