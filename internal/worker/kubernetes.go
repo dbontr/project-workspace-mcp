@@ -340,6 +340,20 @@ func (k *Kubernetes) addGPURuntimeClass(spec map[string]any, resources map[strin
 	for _, device := range k.Devices {
 		if device.Kind == "gpu" && resources[device.Resource] != "" {
 			spec["runtimeClassName"] = k.GPURuntimeClass
+			if k.GPURuntimeClass == "nvidia-cdi" {
+				// CDI exposes NVIDIA libraries under the injected driver paths.
+				// Preserve the image's existing LD_LIBRARY_PATH.
+				const setup = `export LD_LIBRARY_PATH="/usr/local/nvidia/lib64:/run/opengl-driver/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; `
+				containers, _ := spec["containers"].([]any)
+				for _, raw := range containers {
+					container, _ := raw.(map[string]any)
+					command, _ := container["command"].([]string)
+					if len(command) == 3 && command[0] == "sh" && command[1] == "-c" {
+						command[2] = setup + command[2]
+						container["command"] = command
+					}
+				}
+			}
 			return
 		}
 	}
