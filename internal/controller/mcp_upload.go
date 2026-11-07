@@ -257,6 +257,11 @@ func (db *Database) FinishMCPUpload(owner, id, project, task string, limit int64
 	path := db.mcpUploadPath(id)
 	source, err := os.Open(path)
 	if err != nil {
+		// A concurrent finalize can commit and remove the staging file.
+		if latest, lookupErr := db.mcpUploadRow(owner, id, project, task); lookupErr == nil &&
+			asString(latest["state"]) == "complete" {
+			return decodeObject(asString(latest["result"])), nil
+		}
 		return nil, err
 	}
 	info, err := source.Stat()
@@ -367,15 +372,28 @@ func (db *Database) FinishMCPUpload(owner, id, project, task string, limit int64
 }
 
 func (db *Database) CancelMCPUpload(owner, id, project, task string) (map[string]any, error) {
-	row, err := db.mcpUploadRow(owner, id, project, task)
+	scope, target, err := uploadScope(project, task)
+	if err != nil || !contributionArtifactID.MatchString(id) || !validTaskOwner(owner) {
+		return nil, errors.New("invalid upload identity")
+	}
+	err = db.transaction(func() error {
+		row, err := db.lockedOne(
+			"SELECT state,expires FROM mcp_upload_sessions WHERE id=? AND owner=? AND scope=? AND target=?",
+			id, owner, scope, target)
+		if err != nil {
+			return err
+		}
+		if row == nil || asFloat(row["expires"]) <= stamp() {
+			return errors.New("upload session expired or unavailable")
+		}
+		if asString(row["state"]) != "open" {
+			return errors.New("completed uploads cannot be cancelled")
+		}
+		return db.execLocked(
+			"DELETE FROM mcp_upload_sessions WHERE id=? AND owner=? AND scope=? AND target=?",
+			id, owner, scope, target)
+	})
 	if err != nil {
-		return nil, err
-	}
-	if asString(row["state"]) == "finalizing" {
-		return nil, errors.New("upload cannot be cancelled during finalization")
-	}
-	if err := db.exec("DELETE FROM mcp_upload_sessions WHERE id=? AND owner=? AND scope=? AND target=? AND state!='finalizing'",
-		id, owner, row["scope"], row["target"]); err != nil {
 		return nil, err
 	}
 	_ = os.Remove(db.mcpUploadPath(id))
