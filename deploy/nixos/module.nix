@@ -40,6 +40,7 @@ let
       image = cfg.workerImage;
       imagePullPolicy = "IfNotPresent";
       nodeSelector = worker.nodeSelector;
+      workloadNode = worker.workloadNode;
       imagePullSecrets = map (secretName: { name = secretName; }) cfg.imagePullSecretNames;
       name = worker.name;
       projectID = worker.projectID;
@@ -50,8 +51,13 @@ let
       cpuCapacity = worker.cpuCapacity;
       memoryCapacityMB = worker.memoryCapacityMB;
       maxJobs = worker.maxJobs;
+      workspaceStorage = worker.workspaceStorage;
+      workspaceStorageClass = worker.workspaceStorageClass;
+      deviceManifestConfigMap = worker.deviceManifestConfigMap;
+      gpuRuntimeClassName = worker.gpuRuntimeClassName;
       allowedImages = lib.concatStringsSep "," worker.allowedImages;
     };
+    quota = worker.quota;
   });
   imageIsPinned = image:
     image != null && builtins.match ".+@sha256:[a-f0-9]{64}" image != null;
@@ -82,6 +88,11 @@ let
         default = {};
         description = "Explicit Kubernetes node placement for this worker service.";
       };
+      workloadNode = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Optional hostname required for every workspace Pod and batch Job managed by this worker.";
+      };
       tokenSecretName = lib.mkOption {
         type = lib.types.str;
         default = "pwm-worker-${name}-credentials";
@@ -98,6 +109,29 @@ let
       maxJobs = lib.mkOption {
         type = lib.types.int;
         default = 1;
+      };
+      workspaceStorage = lib.mkOption {
+        type = lib.types.str;
+        default = "10Gi";
+      };
+      workspaceStorageClass = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+      deviceManifestConfigMap = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Approved Kubernetes device-plugin inventory ConfigMap name.";
+      };
+      gpuRuntimeClassName = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "RuntimeClass used only for approved GPU requests.";
+      };
+      quota = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { cpu = "16"; memory = "32Gi"; storage = "500Gi"; maxPods = "64"; maxPVCs = "64"; maxJobs = "64"; };
+        description = "Namespace ResourceQuota values for the worker.";
       };
       allowedImages = lib.mkOption {
         type = lib.types.listOf lib.types.str;
