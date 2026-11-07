@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 const mcpUploadChunkBytes = 256 << 10
@@ -210,7 +209,11 @@ func (db *Database) AppendMCPUpload(owner, id, project, task string,
 			_, err = file.Seek(received, io.SeekStart)
 		}
 		if err == nil {
-			_, err = file.Write(data)
+			var written int
+			written, err = file.Write(data)
+			if err == nil && written != len(data) {
+				err = io.ErrShortWrite
+			}
 		}
 		if err == nil {
 			err = file.Sync()
@@ -273,6 +276,10 @@ func (db *Database) FinishMCPUpload(owner, id, project, task string, limit int64
 		return nil, err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() != int64(asFloat(row["size"])) {
+		return nil, errors.New("upload backing file size mismatch")
+	}
 	hash := sha256.New()
 	count, err := io.Copy(hash, io.LimitReader(file, limit+1))
 	if err != nil || count != int64(asFloat(row["size"])) ||
@@ -309,7 +316,10 @@ func (db *Database) CancelMCPUpload(owner, id, project, task string) (map[string
 	if err != nil {
 		return nil, err
 	}
-	if err := db.exec("DELETE FROM mcp_upload_sessions WHERE id=? AND owner=? AND scope=? AND target=?",
+	if asString(row["state"]) == "finalizing" {
+		return nil, errors.New("upload cannot be cancelled during finalization")
+	}
+	if err := db.exec("DELETE FROM mcp_upload_sessions WHERE id=? AND owner=? AND scope=? AND target=? AND state!='finalizing'",
 		id, owner, row["scope"], row["target"]); err != nil {
 		return nil, err
 	}
