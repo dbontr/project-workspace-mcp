@@ -56,6 +56,7 @@ type Kubernetes struct {
 	Storage         string
 	StorageClass    string
 	ImagePullSecret string
+	GPURuntimeClass string
 	Devices         []KubernetesDevice
 	CPU             float64
 	MemoryMB        int
@@ -88,9 +89,14 @@ func NewKubernetes(namespace, project string, cpu float64, memory, jobs int) (*K
 	if pullSecret != "" && !kubernetesName.MatchString(pullSecret) {
 		return nil, errors.New("invalid Kubernetes workload registry pull secret")
 	}
+	runtimeClass := os.Getenv("PWM_KUBE_GPU_RUNTIME_CLASS")
+	if runtimeClass != "" && !kubernetesName.MatchString(runtimeClass) {
+		return nil, errors.New("invalid Kubernetes GPU runtime class")
+	}
 	k := &Kubernetes{Namespace: namespace, Project: project, Binary: binary,
 		Storage: storage, StorageClass: class, ImagePullSecret: pullSecret,
 		CPU: cpu, MemoryMB: memory, MaxJobs: jobs}
+	k.GPURuntimeClass = runtimeClass
 	if err := k.configureServiceAccount(); err != nil {
 		return nil, err
 	}
@@ -320,6 +326,20 @@ func sandboxPodSecurity() map[string]any {
 		"seccompProfile": map[string]any{"type": "RuntimeDefault"}}
 }
 
+// addGPURuntimeClass selects an operator-configured device-injection runtime
+// only for Pods with an approved GPU device-plugin resource.
+func (k *Kubernetes) addGPURuntimeClass(spec map[string]any, resources map[string]string) {
+	if k.GPURuntimeClass == "" {
+		return
+	}
+	for _, device := range k.Devices {
+		if device.Kind == "gpu" && resources[device.Resource] != "" {
+			spec["runtimeClassName"] = k.GPURuntimeClass
+			return
+		}
+	}
+}
+
 func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, display bool, width, height int, devices map[string]string) map[string]any {
 	command := "exec sleep 2147483647"
 	env := []map[string]string{{"name": "HOME", "value": "/workspace"}}
@@ -354,6 +374,7 @@ func (k *Kubernetes) workspacePod(id, image string, cpu float64, memory int, dis
 			},
 		},
 	}
+	k.addGPURuntimeClass(kubeObject(result, "spec"), devices)
 	if k.ImagePullSecret != "" {
 		kubeObject(result, "spec")["imagePullSecrets"] =
 			[]any{map[string]string{"name": k.ImagePullSecret}}
@@ -606,6 +627,7 @@ func (k *Kubernetes) jobManifestWithDevices(job Job, worker string) (map[string]
 		return nil, errors.New("invalid Kubernetes task container")
 	}
 	container["resources"] = kubernetesResources(job.CPU, job.MemoryMB, resources)
+	k.addGPURuntimeClass(podSpec, resources)
 	return manifest, nil
 }
 

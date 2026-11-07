@@ -124,3 +124,42 @@ func TestKubernetesTaskJobUsesVerifiedDevicePluginResources(t *testing.T) {
 		t.Fatal("Kubernetes task accepted unapproved GPU device")
 	}
 }
+
+func TestKubernetesGPURuntimeClass(t *testing.T) {
+	k, _ := testKubernetes(t)
+	k.GPURuntimeClass = "nvidia-cdi"
+	k.Devices = []KubernetesDevice{
+		{ID: "gpu-0", Kind: "gpu", Resource: "nvidia.com/gpu"},
+		{ID: "npu-0", Kind: "npu", Resource: "npu.intel.com/accel"},
+	}
+	id := strings.Repeat("a", 32)
+	gpuPod := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, map[string]string{"nvidia.com/gpu": "1"})
+	if kubeObject(gpuPod, "spec")["runtimeClassName"] != "nvidia-cdi" {
+		t.Fatal("GPU workspace does not select the approved runtime class")
+	}
+	cpuPod := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, nil)
+	if kubeObject(cpuPod, "spec")["runtimeClassName"] != nil {
+		t.Fatal("CPU workspace unexpectedly selects GPU runtime class")
+	}
+	npuPod := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, map[string]string{"npu.intel.com/accel": "1"})
+	if kubeObject(npuPod, "spec")["runtimeClassName"] != nil {
+		t.Fatal("NPU workspace unexpectedly selects GPU runtime class")
+	}
+	job := Job{ID: id, Image: "debian:bookworm-slim", CPU: 1, MemoryMB: 512, Command: "true", Devices: []DeviceClaim{{ID: "gpu-0", Kind: "gpu"}}}
+	manifest, err := k.jobManifestWithDevices(job, "worker-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobPod := kubeObject(kubeObject(kubeObject(manifest, "spec"), "template"), "spec")
+	if jobPod["runtimeClassName"] != "nvidia-cdi" {
+		t.Fatal("GPU job does not select the approved runtime class")
+	}
+}
+
+func TestKubernetesGPUInvalidRuntimeClass(t *testing.T) {
+	_, _ = testKubernetes(t)
+	t.Setenv("PWM_KUBE_GPU_RUNTIME_CLASS", "../unsafe")
+	if _, err := NewKubernetes("pwm-research", "research", 2, 2048, 1); err == nil {
+		t.Fatal("invalid GPU runtime class accepted")
+	}
+}

@@ -56,6 +56,7 @@ worker:
   workspaceStorageClass: ""
   allowedImages: "debian:bookworm-slim"
   deviceManifestConfigMap: ""
+  gpuRuntimeClassName: ""
   workspaceImagePullSecret: ""
   resources:
     requests:
