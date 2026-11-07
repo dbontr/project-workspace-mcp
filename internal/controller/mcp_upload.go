@@ -277,6 +277,9 @@ func (db *Database) FinishMCPUpload(owner, id, project, task string, limit int64
 		return nil, errors.New("upload SHA-256 or size mismatch")
 	}
 
+	if err := os.MkdirAll(db.artifactDir(), 0700); err != nil {
+		return nil, err
+	}
 	var result map[string]any
 	var destination string
 	err = db.transaction(func() error {
