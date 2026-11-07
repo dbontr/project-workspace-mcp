@@ -163,3 +163,34 @@ func TestKubernetesGPUInvalidRuntimeClass(t *testing.T) {
 		t.Fatal("invalid GPU runtime class accepted")
 	}
 }
+
+func TestNVIDIACDIExposesDriverLibrariesWithoutClobberingImageEnvironment(t *testing.T) {
+	k, _ := testKubernetes(t)
+	k.GPURuntimeClass = "nvidia-cdi"
+	k.Devices = []KubernetesDevice{{ID: "gpu-0", Kind: "gpu", Resource: "nvidia.com/gpu"}}
+	id := strings.Repeat("a", 32)
+	workspace := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, map[string]string{"nvidia.com/gpu": "1"})
+	workspaceSpec := kubeObject(workspace, "spec")
+	workspaceContainer := workspaceSpec["containers"].([]any)[0].(map[string]any)
+	workspaceCommand := workspaceContainer["command"].([]string)[2]
+	for _, wanted := range []string{"/usr/local/nvidia/lib64", "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"} {
+		if !strings.Contains(workspaceCommand, wanted) {
+			t.Fatalf("NVIDIA CDI command missing %q: %s", wanted, workspaceCommand)
+		}
+	}
+	cpuPod := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, nil)
+	cpuContainer := kubeObject(cpuPod, "spec")["containers"].([]any)[0].(map[string]any)
+	if strings.Contains(cpuContainer["command"].([]string)[2], "LD_LIBRARY_PATH") {
+		t.Fatal("CPU workload modified by NVIDIA runtime")
+	}
+	job := Job{ID: id, Image: "debian:bookworm-slim", CPU: 1, MemoryMB: 512, Command: "true", Devices: []DeviceClaim{{ID: "gpu-0", Kind: "gpu"}}}
+	jobObject, err := k.jobManifestWithDevices(job, "worker-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := kubeObject(kubeObject(kubeObject(jobObject, "spec"), "template"), "spec")
+	jobContainer := spec["containers"].([]any)[0].(map[string]any)
+	if !strings.Contains(jobContainer["command"].([]string)[2], "/usr/local/nvidia/lib64") {
+		t.Fatal("NVIDIA CDI driver libraries unavailable to GPU batch jobs")
+	}
+}
