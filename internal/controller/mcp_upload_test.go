@@ -286,3 +286,57 @@ func TestResumableUploadDeniedToNonEditor(t *testing.T) {
 		t.Fatalf("viewer uploaded project file: %v", response)
 	}
 }
+
+func TestResumableMCPConcurrentFinishIsIdempotent(t *testing.T) {
+	db, err := OpenDatabase(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.CreateProject("uploads", "Concurrent upload"); err != nil {
+		t.Fatal(err)
+	}
+	payload := bytes.Repeat([]byte("ABCDEF012345"), 12000)
+	owner := "controller-owner"
+	session, err := db.BeginMCPUpload(owner, "uploads", "", "result.bin",
+		uploadTestDigest(payload), int64(len(payload)), 0, 4<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := asString(session["upload_id"])
+	_, err = db.AppendMCPUpload(owner, id, "uploads", "", 0,
+		base64.StdEncoding.EncodeToString(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type finished struct {
+		id string
+		err error
+	}
+	out := make(chan finished, 12)
+	for i := 0; i < cap(out); i++ {
+		go func() {
+			result, err := db.FinishMCPUpload(owner, id, "uploads", "", 4<<20)
+			out <- finished{id: asString(result["id"]), err: err}
+		}()
+	}
+	var firstID string
+	for i := 0; i < cap(out); i++ {
+		got := <-out
+		if got.err != nil {
+			t.Fatalf("concurrent finalize: %v", got.err)
+		}
+		if firstID == "" {
+			firstID = got.id
+		} else if got.id != firstID {
+			t.Fatalf("duplicate artifact: %s versus %s", firstID, got.id)
+		}
+	}
+	files, err := db.Artifacts("uploads")
+	if err != nil || len(files) != 1 {
+		t.Fatalf("expected one committed artifact, got %d: %v", len(files), err)
+	}
+	if _, err := db.CancelMCPUpload(owner, id, "uploads", ""); err == nil {
+		t.Fatal("completed upload was cancelled")
+	}
+}
