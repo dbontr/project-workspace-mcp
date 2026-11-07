@@ -55,6 +55,11 @@ var tools = []toolDefinition{
 	{"task_attach_base64", "Accept a ChatGPT-transferred attachment with real bytes, MIME type and SHA-256 for an owner task", []string{"task_id", "name", "media_type", "sha256", "data_base64", "expected_revision"}, nil},
 	{"task_study_pack_import", "Store a structured, source-referenced study pack as an explicit task file", []string{"task_id", "name", "pack", "expected_revision"}, nil},
 	{"task_send_base64", "Save a binary task file revision up to 512 KiB with an independently verified SHA-256", []string{"task_id", "name", "sha256", "data_base64", "expected_revision"}, nil},
+	{"upload_begin", "Begin a durable resumable project artifact or owner task upload with a complete SHA-256 digest", []string{"name", "sha256", "size_bytes"}, []string{"project_id", "task_id", "expected_revision"}},
+	{"upload_chunk", "Append a verified base64 chunk at the current offset; each chunk is at most 256 KiB", []string{"upload_id", "offset", "data_base64"}, []string{"project_id", "task_id"}},
+	{"upload_status", "Inspect authenticated resumable upload progress and next offset", []string{"upload_id"}, []string{"project_id", "task_id"}},
+	{"upload_finish", "Verify the full SHA-256 and commit an immutable project artifact or personal task file", []string{"upload_id"}, []string{"project_id", "task_id"}},
+	{"upload_cancel", "Cancel an incomplete upload and discard the uncommitted bytes", []string{"upload_id"}, []string{"project_id", "task_id"}},
 	{"task_read_base64", "Download an integrity-verified task file up to 512 KiB inline", []string{"task_id", "name"}, []string{"revision"}},
 	{"task_compute_submit", "Run an independent task on an authorized worker without a project or knowledge destination", []string{"task_id", "command"}, []string{"image", "cpu", "memory_mb", "hardware", "min_gpu_memory_mb"}},
 	{"task_hardware_recover", "Release an uncertain device lease only after independent cleanup verification", []string{"job_id", "cleanup_verified", "confirm"}, nil},
@@ -174,7 +179,7 @@ func kindFor(key string) string {
 	switch key {
 	case "cpu":
 		return "number"
-	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page":
+	case "memory_mb", "min_gpu_memory_mb", "duration_minutes", "expected_version", "expected_revision", "expected_repo_id", "revision", "number", "generation", "lease_seconds", "limit", "page", "size_bytes", "offset":
 		return "integer"
 	case "usb_passthrough", "draft", "confirm", "cleanup_branch", "enabled", "allowed", "cleanup_verified":
 		return "boolean"
@@ -550,6 +555,18 @@ func (s *Server) callToolFor(who caller, name string, a map[string]any) (any, er
 		return db.SavePersonalTaskText(who.Principal, get("task_id"), get("name"), get("body"), asInt(a["expected_revision"]))
 	case "task_send_base64":
 		return db.SavePersonalTaskBase64(who.Principal, get("task_id"), get("name"), get("sha256"), get("data_base64"), asInt(a["expected_revision"]))
+	case "upload_begin":
+		return db.BeginMCPUpload(who.Principal, project, get("task_id"), get("name"),
+			get("sha256"), int64(asFloat(a["size_bytes"])), asInt(a["expected_revision"]), s.MaxArtifactBytes)
+	case "upload_chunk":
+		return db.AppendMCPUpload(who.Principal, get("upload_id"), project, get("task_id"),
+			int64(asFloat(a["offset"])), get("data_base64"))
+	case "upload_status":
+		return db.MCPUploadStatus(who.Principal, get("upload_id"), project, get("task_id"))
+	case "upload_finish":
+		return db.FinishMCPUpload(who.Principal, get("upload_id"), project, get("task_id"), s.MaxArtifactBytes)
+	case "upload_cancel":
+		return db.CancelMCPUpload(who.Principal, get("upload_id"), project, get("task_id"))
 	case "task_read_base64":
 		return db.PersonalTaskFileBase64(who.Principal, get("task_id"), get("name"), asInt(a["revision"]))
 	case "task_export_project":
