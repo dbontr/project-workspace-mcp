@@ -279,6 +279,22 @@ func (db *Database) expireLocked(now float64) error {
 	if e := db.execLocked("UPDATE operations SET status='expired',token_hash=NULL,updated=? WHERE status='leased' AND lease_until<?", now, now); e != nil {
 		return e
 	}
+	// A worker may restart after deleting the Pod but before reporting a stop
+	// completion. Retry only expired stops, and retain their hardware leases
+	// until the worker reconfirms that the Pod is absent and the owned PVC exists.
+	// The Kubernetes stop operation is idempotent and verifies ownership.
+	expiredStops, e := db.queryLocked(`SELECT w.id,w.node FROM workspaces w
+		WHERE w.status='stopping'
+		AND EXISTS(SELECT 1 FROM operations o WHERE o.workspace=w.id AND o.action='stop' AND o.status='expired')
+		AND NOT EXISTS(SELECT 1 FROM operations o WHERE o.workspace=w.id AND o.action='stop' AND o.status IN ('queued','leased','succeeded'))`)
+	if e != nil {
+		return e
+	}
+	for _, stopped := range expiredStops {
+		if _, e := db.EnqueueLocked(asString(stopped["id"]), asString(stopped["node"]), "stop", map[string]any{}); e != nil {
+			return e
+		}
+	}
 	if e := db.execLocked("UPDATE workspaces SET status='failed',updated=? WHERE status='starting' AND EXISTS (SELECT 1 FROM operations WHERE workspace=workspaces.id AND action='start' AND status='expired')", now); e != nil {
 		return e
 	}
