@@ -109,6 +109,17 @@ func (s *Server) authorizeTool(who caller, name string, args map[string]any) boo
 		s.DB.AuditAccess(who.Principal, asString(args["project_id"]), "mcp:"+name, false)
 		return false
 	}
+	if name == "upload_begin" || name == "upload_chunk" || name == "upload_status" ||
+		name == "upload_finish" || name == "upload_cancel" {
+		if project := asString(args["project_id"]); project != "" {
+			allowed := s.authorizedFor(project, who, 2)
+			s.DB.AuditAccess(who.Principal, project, "mcp:"+name, allowed)
+			return allowed
+		}
+		// Personal task checks occur inside each DB operation and bind the
+		// session to the exact authenticated principal.
+		return asString(args["task_id"]) != ""
+	}
 	if name == "task_list" || name == "task_create" || name == "task_details" ||
 		name == "task_update" || name == "task_files" || name == "task_file_info" ||
 		name == "task_compute_submit" || name == "task_compute_jobs" ||
