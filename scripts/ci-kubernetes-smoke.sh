@@ -109,6 +109,7 @@ worker:
   imagePullPolicy: IfNotPresent
   name: research-agent
   projectID: research
+  instanceID: research
   workloadNamespace: pwm-research
   cpuCapacity: 2
   memoryCapacityMB: 2048
