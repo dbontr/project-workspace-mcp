@@ -308,6 +308,25 @@ func (db *Database) expireLocked(now float64) error {
 			return e
 		}
 	}
+	// Keep an unverified hardware lease until a worker confirms teardown.
+	// A lost stop lease must remain retryable after a worker restart.
+	stale, e := db.queryLocked(`SELECT id,node FROM workspaces w
+		WHERE status='stopping' AND updated<?
+		AND NOT EXISTS (SELECT 1 FROM operations o WHERE o.workspace=w.id
+			AND o.action='stop' AND o.status IN ('queued','leased'))
+		ORDER BY updated,id LIMIT 100`, now-60)
+	if e != nil {
+		return e
+	}
+	for _, item := range stale {
+		id := asString(item["id"])
+		if _, e := db.EnqueueLocked(id, asString(item["node"]), "stop", map[string]any{}); e != nil {
+			return e
+		}
+		if e := db.execLocked("UPDATE workspaces SET updated=? WHERE id=? AND status='stopping'", now, id); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 func (db *Database) ClaimOperation(node string) (map[string]any, error) {

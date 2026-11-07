@@ -506,7 +506,25 @@ func (db *Database) StopWorkspace(project, id string) (map[string]any, error) {
 			return errors.New("checkpoint-before-stop is pending; ordinary stop is denied")
 		}
 		status := asString(ws["status"])
-		if status == "stopping" || status == "stopped" || status == "expired" {
+		if status == "stopping" {
+			active, err := db.lockedOne(
+				"SELECT id FROM operations WHERE workspace=? AND action='stop' AND status IN ('queued','leased') ORDER BY created DESC LIMIT 1",
+				id)
+			if err != nil {
+				return err
+			}
+			if active != nil {
+				out = map[string]any{"status": status, "operation_id": active["id"]}
+				return nil
+			}
+			op, err := db.EnqueueLocked(id, asString(ws["node"]), "stop", map[string]any{})
+			if err != nil {
+				return err
+			}
+			out = map[string]any{"status": "stopping", "operation_id": op}
+			return db.execLocked("UPDATE workspaces SET updated=? WHERE id=?", stamp(), id)
+		}
+		if status == "stopped" || status == "expired" {
 			out["status"] = status
 			return nil
 		}
