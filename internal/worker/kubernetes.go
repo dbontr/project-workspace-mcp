@@ -331,6 +331,8 @@ func sandboxPodSecurity() map[string]any {
 		"seccompProfile": map[string]any{"type": "RuntimeDefault"}}
 }
 
+const nvidiaLibrarySetup = `export LD_LIBRARY_PATH="/usr/local/nvidia/lib64:/run/opengl-driver/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; `
+
 // addGPURuntimeClass selects an operator-configured device-injection runtime
 // only for Pods with an approved GPU device-plugin resource.
 func (k *Kubernetes) addGPURuntimeClass(spec map[string]any, resources map[string]string) {
@@ -343,13 +345,13 @@ func (k *Kubernetes) addGPURuntimeClass(spec map[string]any, resources map[strin
 			if k.GPURuntimeClass == "nvidia-cdi" {
 				// CDI exposes NVIDIA libraries under the injected driver paths.
 				// Preserve the image's existing LD_LIBRARY_PATH.
-				const setup = `export LD_LIBRARY_PATH="/usr/local/nvidia/lib64:/run/opengl-driver/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; `
+
 				containers, _ := spec["containers"].([]any)
 				for _, raw := range containers {
 					container, _ := raw.(map[string]any)
 					command, _ := container["command"].([]string)
 					if len(command) == 3 && command[0] == "sh" && command[1] == "-c" {
-						command[2] = setup + command[2]
+						command[2] = nvidiaLibrarySetup + command[2]
 						container["command"] = command
 					}
 				}
@@ -503,21 +505,26 @@ func (k *Kubernetes) hardwareResources(p map[string]any) (map[string]string, err
 }
 
 // requireWorkspace checks project and worker ownership before any Pod exec.
-func (k *Kubernetes) requireWorkspace(ctx context.Context, id string) error {
+func (k *Kubernetes) inspectWorkspace(ctx context.Context, id string) (map[string]any, error) {
 	if !workspaceID.MatchString(id) {
-		return errors.New("invalid workspace ID")
+		return nil, errors.New("invalid workspace ID")
 	}
 	pod, err := k.get(ctx, "pod", kubePodName(id))
 	if err != nil {
-		return fmt.Errorf("inspect workspace Pod: %w", err)
+		return nil, fmt.Errorf("inspect workspace Pod: %w", err)
 	}
 	if !k.owns(pod, id, "workspace") {
-		return errors.New("workspace Pod does not belong to this worker and project")
+		return nil, errors.New("workspace Pod does not belong to this worker and project")
 	}
 	if kubeObject(pod, "metadata")["deletionTimestamp"] != nil {
-		return errors.New("workspace Pod is terminating")
+		return nil, errors.New("workspace Pod is terminating")
 	}
-	return nil
+	return pod, nil
+}
+
+func (k *Kubernetes) requireWorkspace(ctx context.Context, id string) error {
+	_, err := k.inspectWorkspace(ctx, id)
+	return err
 }
 
 func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byte, error) {
@@ -528,13 +535,25 @@ func (k *Kubernetes) exec(ctx context.Context, id string, args ...string) ([]byt
 	return k.checked(ctx, nil, command...)
 }
 
+// prepareWorkspaceCommand sets driver search paths for new exec processes;
+// shell exports used by Pod PID 1 do not extend to Kubernetes exec sessions.
+func (k *Kubernetes) prepareWorkspaceCommand(pod map[string]any, command string) string {
+	if k.GPURuntimeClass == "nvidia-cdi" &&
+		kubeObject(pod, "spec")["runtimeClassName"] == "nvidia-cdi" {
+		return nvidiaLibrarySetup + command
+	}
+	return command
+}
+
 func (k *Kubernetes) Command(ctx context.Context, id, command string, input io.Reader) (map[string]any, error) {
 	if !workspaceID.MatchString(id) || strings.TrimSpace(command) == "" || len(command) > 16000 {
 		return nil, errors.New("invalid workspace command")
 	}
-	if err := k.requireWorkspace(ctx, id); err != nil {
+	pod, err := k.inspectWorkspace(ctx, id)
+	if err != nil {
 		return nil, err
 	}
+	command = k.prepareWorkspaceCommand(pod, command)
 	args := []string{"exec"}
 	if input != nil {
 		args = append(args, "-i")

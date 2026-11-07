@@ -194,3 +194,21 @@ func TestNVIDIACDIExposesDriverLibrariesWithoutClobberingImageEnvironment(t *tes
 		t.Fatal("NVIDIA CDI driver libraries unavailable to GPU batch jobs")
 	}
 }
+
+func TestNVIDIACDIWorkspaceCommandPreservesDriverLibraries(t *testing.T) {
+	k, _ := testKubernetes(t)
+	k.GPURuntimeClass = "nvidia-cdi"
+	k.Devices = []KubernetesDevice{{ID: "gpu-0", Kind: "gpu", Resource: "nvidia.com/gpu"}}
+	id := strings.Repeat("a", 32)
+	cudaPod := k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, map[string]string{"nvidia.com/gpu": "1"})
+	command := k.prepareWorkspaceCommand(cudaPod, "/workspace/cuda-smoke")
+	if !strings.Contains(command, "/usr/local/nvidia/lib64") ||
+		!strings.Contains(command, "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}") {
+		t.Fatalf("CUDA driver libraries absent from interactive command: %s", command)
+	}
+	if strings.Contains(k.prepareWorkspaceCommand(
+		k.workspacePod(id, "debian:bookworm-slim", 1, 512, false, 0, 0, nil),
+		"echo cpu"), "LD_LIBRARY_PATH") {
+		t.Fatal("CPU interactive command received GPU runtime configuration")
+	}
+}
