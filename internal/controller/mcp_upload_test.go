@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func uploadTestDigest(data []byte) string {
@@ -200,5 +201,88 @@ func TestResumableMCPChunkValidation(t *testing.T) {
 	}
 	if _, err := db.CancelMCPUpload(owner, id, "xfer", ""); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestResumableMCPJSONRPCTransferAndProjectAuthorization(t *testing.T) {
+	_, _, httpServer := fixture(t)
+	project(t, httpServer)
+	transfer := func(name string, arguments map[string]any) (map[string]any, bool) {
+		t.Helper()
+		status, response := call(t, httpServer, "POST", "/mcp/", testOwner, map[string]any{
+			"jsonrpc": "2.0", "id": 31, "method": "tools/call",
+			"params": map[string]any{"name": name, "arguments": arguments},
+		})
+		wantOK(t, status, response)
+		result := gitObj(response["result"])
+		return gitObj(result["structuredContent"]), result["isError"] == true
+	}
+	data := bytes.Repeat([]byte("verified-client-attachment"), 45000)
+	digest := uploadTestDigest(data)
+	start, failed := transfer("upload_begin", map[string]any{
+		"project_id": "demo", "name": "source.bin",
+		"sha256": digest, "size_bytes": len(data),
+	})
+	if failed {
+		t.Fatalf("MCP begin failed: %v", start)
+	}
+	id := asString(start["upload_id"])
+	received := 0
+	for received < len(data) {
+		end := received + 150000
+		if end > len(data) {
+			end = len(data)
+		}
+		status, failed := transfer("upload_chunk", map[string]any{
+			"project_id": "demo", "upload_id": id, "offset": received,
+			"data_base64": base64.StdEncoding.EncodeToString(data[received:end]),
+		})
+		if failed || asInt(status["received_bytes"]) != end {
+			t.Fatalf("MCP chunk rejected at %d: %v failed=%v", received, status, failed)
+		}
+		received = end
+	}
+	progress, failed := transfer("upload_status", map[string]any{
+		"project_id": "demo", "upload_id": id,
+	})
+	if failed || progress["state"] != "open" || asInt(progress["received_bytes"]) != len(data) {
+		t.Fatalf("MCP status: %v failed=%v", progress, failed)
+	}
+	result, failed := transfer("upload_finish", map[string]any{
+		"project_id": "demo", "upload_id": id,
+	})
+	if failed || result["sha256"] != digest {
+		t.Fatalf("MCP finish: %v failed=%v", result, failed)
+	}
+	repeat, failed := transfer("upload_finish", map[string]any{
+		"project_id": "demo", "upload_id": id,
+	})
+	if failed || repeat["id"] != result["id"] {
+		t.Fatalf("MCP finish retry not idempotent: %v", repeat)
+	}
+}
+
+func TestResumableUploadDeniedToNonEditor(t *testing.T) {
+	db, server, httpServer := fixture(t)
+	project(t, httpServer)
+	key, issuer := testOIDCIssuer(t, server)
+	token := signedTestToken(t, key, issuer, "project-workspace",
+		"upload-viewer", time.Now().Add(time.Hour).Unix())
+	principal := "oidc:" + issuer + "#upload-viewer"
+	if _, err := db.SetProjectGrant("demo", principal, "viewer", ""); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("unauthorized write")
+	arguments := map[string]any{
+		"project_id": "demo", "name": "denied.txt",
+		"sha256": uploadTestDigest(data), "size_bytes": len(data),
+	}
+	status, response := call(t, httpServer, "POST", "/mcp/", token, map[string]any{
+		"jsonrpc": "2.0", "id": 33, "method": "tools/call",
+		"params": map[string]any{"name": "upload_begin", "arguments": arguments},
+	})
+	wantOK(t, status, response)
+	if gitObj(response["result"])["isError"] != true {
+		t.Fatalf("viewer uploaded project file: %v", response)
 	}
 }
