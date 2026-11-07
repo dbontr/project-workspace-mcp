@@ -124,9 +124,9 @@ spec:
       labels:
         app: pwm-worker
         pwm-project: {{ .Values.worker.projectID }}
-      {{- if .Values.worker.instanceID }}
-      pwm-instance: {{ $instance }}
-      {{- end }}
+        {{- if .Values.worker.instanceID }}
+        pwm-instance: {{ $instance }}
+        {{- end }}
     spec:
       serviceAccountName: pwm-worker-{{ $instance }}
       {{- with .Values.worker.nodeSelector }}
